@@ -2,8 +2,14 @@
 
 A repository dedicated to researching, experimenting with, and building movie recommendation systems using the MovieLens dataset.
 
----
+## 👥 Team Members
 
+| Name | Department | Institution |
+| :--- | :--- | :--- |
+| **Le Dinh Duc** | Computer Science | Ho Chi Minh City University of Technology (HCMUT) |
+| **Huynh Le Duy Khanh** | Information Technology | Ho Chi Minh City University of Science (HCMUS) |
+
+---
 ## 🎯 Development Roadmap
 
 ### 📌 Phase 1: Algorithm Exploration & Modeling (Current)
