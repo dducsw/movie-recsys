@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Navbar from './components/Navbar';
+import MovieRow from './components/MovieRow';
+import MovieCard from './components/MovieCard';
+import ChatbotView from './components/ChatbotView';
+import Footer from './components/Footer';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
@@ -518,33 +523,15 @@ function App() {
   return (
     <div className="app-container">
       {/* 1. Header/Navbar */}
-      <nav className="navbar">
-        <div className="navbar-left">
-          <div className="navbar-logo" onClick={() => { setView('home'); handleClearSearch(); setSelectedMovieId(null); }}>
-            TMDB <span>RecSys</span>
-          </div>
-          <ul className="navbar-menu">
-            <li style={view === 'home' ? { color: 'var(--tmdbLightBlue)', opacity: 1 } : {}} onClick={() => { setView('home'); handleClearSearch(); setSelectedMovieId(null); }}>Home</li>
-            <li style={view === 'all' && allType === 'trending' ? { color: 'var(--tmdbLightBlue)', opacity: 1 } : {}} onClick={() => handleSeeAll('trending')}>Movies</li>
-            <li style={view === 'chatbot' ? { color: 'var(--tmdbLightBlue)', opacity: 1 } : {}} onClick={() => setView('chatbot')}>AI Chatbot</li>
-            <li style={view === 'all' && allType === 'recs' ? { color: 'var(--tmdbLightBlue)', opacity: 1 } : {}} onClick={() => handleSeeAll('recs')}>RecSys</li>
-          </ul>
-        </div>
-        <div className="navbar-right">
-          <span className="nav-icon" style={{ fontSize: '18px' }} onClick={() => alert("System Status: Recommendation System is active and running!")}>🔔</span>
-          <span className="nav-lang">EN</span>
-          <div className="nav-avatar">
-            <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '100%', height: '100%', opacity: 0.9 }}>
-              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-            </svg>
-          </div>
-          {isSearching && (
-            <button className="search-clear-btn" style={{ padding: '2px 10px', fontSize: '12px' }} onClick={handleClearSearch}>
-              Close Search
-            </button>
-          )}
-        </div>
-      </nav>
+      <Navbar 
+        view={view}
+        allType={allType}
+        setView={setView}
+        handleClearSearch={handleClearSearch}
+        setSelectedMovieId={setSelectedMovieId}
+        handleSeeAll={handleSeeAll}
+        isSearching={isSearching}
+      />
 
       {view === 'home' ? (
         /* ================= HOMEPAGE VIEW ================= */
@@ -585,24 +572,11 @@ function App() {
                 ) : (
                   <div className="search-grid">
                     {searchResults.map((movie) => (
-                      <div key={movie.movieId} className="movie-card" onClick={() => handleMovieClick(movie.movieId)}>
-                        <div className="poster-container">
-                          <img
-                            className="movie-poster"
-                            src={movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300'}
-                            alt={movie.title}
-                            loading="lazy"
-                          />
-                          <div className="movie-dots-btn">•••</div>
-                        </div>
-                        <div className="movie-info">
-                          <div className="rating-badge-container">
-                            {renderRatingCircle(movie.vote_average)}
-                          </div>
-                          <div className="movie-title">{movie.title}</div>
-                          <div className="movie-date">{formatDate(movie.release_date)}</div>
-                        </div>
-                      </div>
+                      <MovieCard 
+                        key={movie.movieId} 
+                        movie={movie} 
+                        onClick={handleMovieClick} 
+                      />
                     ))}
                   </div>
                 )}
@@ -626,61 +600,32 @@ function App() {
                 )}
 
                 {/* Row 1: Personalized Recommendations (RecSys) */}
-                <div className="section-wrapper">
-                  <div className="section-header">
-                    <h2>Recommended for You</h2>
+                <MovieRow 
+                  title="Recommended for You"
+                  movies={recommendations}
+                  loading={loadingRecs}
+                  scrollRef={recsScrollRef}
+                  onScroll={(dir) => scrollRow(recsScrollRef, dir)}
+                  onMovieClick={handleMovieClick}
+                  onSeeAll={() => handleSeeAll('recs')}
+                  fallbackMessage="Like some movies in the Trending section below to start building your personalized recommendation profile!"
+                  headerExtra={
                     <span style={{ fontSize: '11px', background: 'rgba(1, 180, 228, 0.1)', color: 'var(--tmdbLightBlue)', border: '1px solid rgba(1, 180, 228, 0.2)', padding: '2px 10px', borderRadius: '12px', fontWeight: 700, marginRight: '10px' }}>
                       RecSys Active
                     </span>
-                    {recommendations.length > 0 && (
-                      <span className="see-all-link" onClick={() => handleSeeAll('recs')}>See All</span>
-                    )}
-                  </div>
-
-                  {loadingRecs ? (
-                    <div className="spinner-container"><div className="spinner"></div></div>
-                  ) : recommendations.length === 0 ? (
-                    <div className="no-results" style={{ padding: '30px', background: 'rgba(0,0,0,0.01)', borderRadius: '10px' }}>
-                      Like some movies in the Trending section below to start building your personalized recommendation profile!
-                    </div>
-                  ) : (
-                    <div className="scroll-row-wrapper">
-                      {/* Swipe Left Arrow */}
-                      <button className="scroll-arrow-btn left" onClick={() => scrollRow(recsScrollRef, 'left')}>‹</button>
-                      
-                      <div className="horizontal-scroll" ref={recsScrollRef}>
-                        {recommendations.map((movie) => (
-                          <div key={movie.movieId} className="movie-card" onClick={() => handleMovieClick(movie.movieId)}>
-                            <div className="poster-container">
-                              <img
-                                className="movie-poster"
-                                src={movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300'}
-                                alt={movie.title}
-                                loading="lazy"
-                              />
-                              <div className="movie-dots-btn">•••</div>
-                            </div>
-                            <div className="movie-info">
-                              <div className="rating-badge-container">
-                                {renderRatingCircle(movie.vote_average)}
-                              </div>
-                              <div className="movie-title">{movie.title}</div>
-                              <div className="movie-date">{formatDate(movie.release_date)}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Swipe Right Arrow */}
-                      <button className="scroll-arrow-btn right" onClick={() => scrollRow(recsScrollRef, 'right')}>›</button>
-                    </div>
-                  )}
-                </div>
+                  }
+                />
 
                 {/* Row 2: Trending Row */}
-                <div className="section-wrapper">
-                  <div className="section-header">
-                    <h2>Trending</h2>
+                <MovieRow 
+                  title="Trending"
+                  movies={trendingMovies}
+                  loading={loadingTrending}
+                  scrollRef={trendingScrollRef}
+                  onScroll={(dir) => scrollRow(trendingScrollRef, dir)}
+                  onMovieClick={handleMovieClick}
+                  onSeeAll={() => handleSeeAll('trending')}
+                  headerExtra={
                     <div className="selector-tabs">
                       <div
                         className={`tab ${activeTab === 'today' ? 'active' : ''}`}
@@ -695,130 +640,39 @@ function App() {
                         This Week
                       </div>
                     </div>
-                    <span className="see-all-link" onClick={() => handleSeeAll('trending')}>See All</span>
-                  </div>
-
-                  {loadingTrending && trendingMovies.length === 0 ? (
-                    <div className="spinner-container"><div className="spinner"></div></div>
-                  ) : (
-                    <div className="scroll-row-wrapper">
-                      {/* Swipe Left Arrow */}
-                      <button className="scroll-arrow-btn left" onClick={() => scrollRow(trendingScrollRef, 'left')}>‹</button>
-                      
-                      <div className="horizontal-scroll" ref={trendingScrollRef}>
-                        {trendingMovies.map((movie) => (
-                          <div key={movie.movieId} className="movie-card" onClick={() => handleMovieClick(movie.movieId)}>
-                            <div className="poster-container">
-                              <img
-                                className="movie-poster"
-                                src={movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300'}
-                                alt={movie.title}
-                                loading="lazy"
-                              />
-                              <div className="movie-dots-btn">•••</div>
-                            </div>
-                            <div className="movie-info">
-                              <div className="rating-badge-container">
-                                {renderRatingCircle(movie.vote_average)}
-                              </div>
-                              <div className="movie-title">{movie.title}</div>
-                              <div className="movie-date">{formatDate(movie.release_date)}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Swipe Right Arrow */}
-                      <button className="scroll-arrow-btn right" onClick={() => scrollRow(trendingScrollRef, 'right')}>›</button>
-                    </div>
-                  )}
-                </div>
+                  }
+                />
 
                 {/* Row 3: Latest Row */}
-                <div className="section-wrapper">
-                  <div className="section-header">
-                    <h2>Latest</h2>
-                    <span className="see-all-link" onClick={() => handleSeeAll('latest')}>See All</span>
-                  </div>
+                <MovieRow 
+                  title="Latest"
+                  movies={latestMovies}
+                  loading={loadingLatest}
+                  scrollRef={latestScrollRef}
+                  onScroll={(dir) => scrollRow(latestScrollRef, dir)}
+                  onMovieClick={handleMovieClick}
+                  onSeeAll={() => handleSeeAll('latest')}
+                />
 
-                  {loadingLatest && latestMovies.length === 0 ? (
-                    <div className="spinner-container"><div className="spinner"></div></div>
-                  ) : (
-                    <div className="scroll-row-wrapper">
-                      {/* Swipe Left Arrow */}
-                      <button className="scroll-arrow-btn left" onClick={() => scrollRow(latestScrollRef, 'left')}>‹</button>
-                      
-                      <div className="horizontal-scroll" ref={latestScrollRef}>
-                        {latestMovies.map((movie) => (
-                          <div key={movie.movieId} className="movie-card" onClick={() => handleMovieClick(movie.movieId)}>
-                            <div className="poster-container">
-                              <img
-                                className="movie-poster"
-                                src={movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300'}
-                                alt={movie.title}
-                                loading="lazy"
-                              />
-                              <div className="movie-dots-btn">•••</div>
-                            </div>
-                            <div className="movie-info">
-                              <div className="rating-badge-container">
-                                {renderRatingCircle(movie.vote_average)}
-                              </div>
-                              <div className="movie-title">{movie.title}</div>
-                              <div className="movie-date">{formatDate(movie.release_date)}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Swipe Right Arrow */}
-                      <button className="scroll-arrow-btn right" onClick={() => scrollRow(latestScrollRef, 'right')}>›</button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Row 3: Liked Movies (Interactive History) */}
+                {/* Row 4: Liked Movies (Interactive History) */}
                 {likedMoviesDetails.length > 0 && (
-                  <div className="section-wrapper" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '24px' }}>
-                    <div className="section-header">
-                      <h2>Your Favorite Movies ({likedMoviesDetails.length})</h2>
-                      <button 
-                        onClick={() => { if(confirm("Reset all liked history?")) setLikedMovies([]); }}
-                        className="search-clear-btn" 
-                        style={{ padding: '4px 14px', fontSize: '12px', marginLeft: 'auto' }}
-                      >
-                        Reset History
-                      </button>
-                    </div>
-                    <div className="scroll-row-wrapper">
-                      {/* Swipe Left Arrow */}
-                      <button className="scroll-arrow-btn left" onClick={() => scrollRow(favoritesScrollRef, 'left')}>‹</button>
-
-                      <div className="horizontal-scroll" ref={favoritesScrollRef}>
-                        {likedMoviesDetails.map((movie) => (
-                          <div key={movie.movieId} className="movie-card" onClick={() => handleMovieClick(movie.movieId)}>
-                            <div className="poster-container">
-                              <img
-                                className="movie-poster"
-                                src={movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300'}
-                                alt={movie.title}
-                              />
-                              <div className="movie-dots-btn">•••</div>
-                            </div>
-                            <div className="movie-info">
-                              <div className="rating-badge-container">
-                                {renderRatingCircle(movie.vote_average)}
-                              </div>
-                              <div className="movie-title">{movie.title}</div>
-                              <div className="movie-date">{formatDate(movie.release_date)}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Swipe Right Arrow */}
-                      <button className="scroll-arrow-btn right" onClick={() => scrollRow(favoritesScrollRef, 'right')}>›</button>
-                    </div>
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '24px' }}>
+                    <MovieRow 
+                      title={`Your Favorite Movies (${likedMoviesDetails.length})`}
+                      movies={likedMoviesDetails}
+                      scrollRef={favoritesScrollRef}
+                      onScroll={(dir) => scrollRow(favoritesScrollRef, dir)}
+                      onMovieClick={handleMovieClick}
+                      headerExtra={
+                        <button 
+                          onClick={() => { if(confirm("Reset all liked history?")) setLikedMovies([]); }}
+                          className="search-clear-btn" 
+                          style={{ padding: '4px 14px', fontSize: '12px', marginLeft: 'auto' }}
+                        >
+                          Reset History
+                        </button>
+                      }
+                    />
                   </div>
                 )}
               </div>
@@ -891,11 +745,21 @@ function App() {
                           onClick={() => toggleLike(selectedMovie.movieId)}
                           title={likedMovies.includes(selectedMovie.movieId) ? "Unlike" : "Mark as Favorite"}
                         >
-                          ❤️
+                          {likedMovies.includes(selectedMovie.movieId) ? (
+                            <svg viewBox="0 0 24 24" fill="white" style={{ width: '18px', height: '18px' }}>
+                              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" style={{ width: '18px', height: '18px' }}>
+                              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                            </svg>
+                          )}
                         </button>
 
                         <button className="circle-action-btn" title="Add to Watchlist" onClick={() => alert("Added to watchlist (Mockup)!")}>
-                          🔖
+                          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" style={{ width: '18px', height: '18px' }}>
+                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                          </svg>
                         </button>
 
                         {/* Interactive Ratings Bar */}
@@ -941,131 +805,36 @@ function App() {
               </div>
 
               {/* Similar Recommendations Section (Recsys) */}
+              {/* Similar Recommendations Section (Recsys) */}
               <div className="detail-recs-wrapper">
-                <h2>Recommendations</h2>
-                <div className="info-alert-box" style={{ background: 'rgba(0,0,0,0.01)', borderLeft: 'none' }}>
-                  <span>
-                    <strong>🎯 Item-Based Similarities:</strong> The recommended movies below are calculated on-the-fly based on genre overlaps and popularity relative to the current movie. Click any movie to view its detail page!
-                  </span>
-                </div>
-
-                {similarMovies.length === 0 ? (
-                  <div className="no-results">No similar movies found.</div>
-                ) : (
-                  <div className="scroll-row-wrapper">
-                    {/* Swipe Left Arrow */}
-                    <button className="scroll-arrow-btn left" onClick={() => scrollRow(similarScrollRef, 'left')}>‹</button>
-
-                    <div className="horizontal-scroll" ref={similarScrollRef}>
-                      {similarMovies.map((movie) => (
-                        <div key={movie.movieId} className="movie-card" onClick={() => handleMovieClick(movie.movieId)}>
-                          <div className="poster-container">
-                            <img
-                              className="movie-poster"
-                              src={movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300'}
-                              alt={movie.title}
-                              loading="lazy"
-                            />
-                            <div className="movie-dots-btn">•••</div>
-                          </div>
-                          <div className="movie-info">
-                            <div className="rating-badge-container">
-                              {renderRatingCircle(movie.vote_average)}
-                            </div>
-                            <div className="movie-title">{movie.title}</div>
-                            <div className="movie-date">{formatDate(movie.release_date)}</div>
-                          </div>
-                        </div>
-                      ))}
+                <MovieRow 
+                  title="Recommendations"
+                  movies={similarMovies}
+                  scrollRef={similarScrollRef}
+                  onScroll={(dir) => scrollRow(similarScrollRef, dir)}
+                  onMovieClick={handleMovieClick}
+                  fallbackMessage="No similar movies found."
+                  headerExtra={
+                    <div style={{ color: 'var(--textSecondary)', fontSize: '13.5px', margin: '4px 0 16px 0', fontWeight: 500 }}>
+                      If you liked <strong>{selectedMovie.title}</strong>, you might also like...
                     </div>
-
-                    {/* Swipe Right Arrow */}
-                    <button className="scroll-arrow-btn right" onClick={() => scrollRow(similarScrollRef, 'right')}>›</button>
-                  </div>
-                )}
+                  }
+                />
               </div>
             </div>
           )}
         </div>
       ) : view === 'chatbot' ? (
         /* ================= AI CHATBOT VIEW ================= */
-        <div className="chatbot-container">
-          <div className="chatbot-header">
-            <h1>AI Movie Recommender</h1>
-            <p>Trò chuyện với AI để nhận gợi ý phim theo sở thích cá nhân của bạn</p>
-          </div>
-
-          <div className="chatbot-chatbox">
-            <div className="chatbot-messages">
-              {chatMessages.map((msg, index) => (
-                <div key={index} className={`chat-bubble ${msg.sender}`}>
-                  <p>{msg.text}</p>
-                  
-                  {msg.movies && msg.movies.length > 0 && (
-                    <div className="chat-movie-list">
-                      {msg.movies.map((movie) => (
-                        <div 
-                          key={movie.movieId} 
-                          className="chat-movie-card"
-                          onClick={() => handleMovieClick(movie.movieId)}
-                          title={`Xem chi tiết ${movie.title}`}
-                        >
-                          <img 
-                            className="chat-movie-poster" 
-                            src={movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=150'} 
-                            alt={movie.title} 
-                          />
-                          <div className="chat-movie-info">
-                            <div className="chat-movie-title">{movie.title}</div>
-                            <div className="chat-movie-date">{getYear(movie.release_date)}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-              
-              {isTyping && (
-                <div className="chatbot-typing">
-                  <div className="typing-dot"></div>
-                  <div className="typing-dot"></div>
-                  <div className="typing-dot"></div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            <div className="chatbot-input-container">
-              <input
-                type="text"
-                className="chatbot-input"
-                placeholder="Nhập yêu cầu của bạn (ví dụ: phim hoạt hình lãng mạn, phim giống Toy Story...)"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
-              />
-              <button className="chatbot-send-btn" onClick={() => handleSendChatMessage()}>
-                Gửi
-              </button>
-            </div>
-          </div>
-
-          <div className="chatbot-chips">
-            <span className="chatbot-chip" onClick={() => handleSendChatMessage("Gợi ý phim hành động viễn tưởng")}>
-              🍿 Phim hành động viễn tưởng
-            </span>
-            <span className="chatbot-chip" onClick={() => handleSendChatMessage("Tôi muốn xem phim hoạt hình gia đình")}>
-              👶 Phim hoạt hình gia đình
-            </span>
-            <span className="chatbot-chip" onClick={() => handleSendChatMessage("Tìm phim giống như Toy Story")}>
-              🧸 Phim giống Toy Story
-            </span>
-            <span className="chatbot-chip" onClick={() => handleSendChatMessage("Gợi ý phim kinh dị kịch tính")}>
-              👻 Phim kinh dị kịch tính
-            </span>
-          </div>
-        </div>
+        <ChatbotView 
+          chatMessages={chatMessages}
+          chatInput={chatInput}
+          setChatInput={setChatInput}
+          isTyping={isTyping}
+          chatEndRef={chatEndRef}
+          handleSendChatMessage={handleSendChatMessage}
+          handleMovieClick={handleMovieClick}
+        />
       ) : (
         /* ================= PAGINATED GRID VIEW ("SEE ALL") ================= */
         <div className="detail-page-container" style={{ paddingBottom: '80px' }}>
@@ -1094,24 +863,11 @@ function App() {
                 <div>
                   <div className="search-grid">
                     {allMovies.map((movie) => (
-                      <div key={movie.movieId} className="movie-card" onClick={() => handleMovieClick(movie.movieId)}>
-                        <div className="poster-container">
-                          <img
-                            className="movie-poster"
-                            src={movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300'}
-                            alt={movie.title}
-                            loading="lazy"
-                          />
-                          <div className="movie-dots-btn">•••</div>
-                        </div>
-                        <div className="movie-info">
-                          <div className="rating-badge-container">
-                            {renderRatingCircle(movie.vote_average)}
-                          </div>
-                          <div className="movie-title">{movie.title}</div>
-                          <div className="movie-date">{formatDate(movie.release_date)}</div>
-                        </div>
-                      </div>
+                      <MovieCard 
+                        key={movie.movieId} 
+                        movie={movie} 
+                        onClick={handleMovieClick} 
+                      />
                     ))}
                   </div>
 
@@ -1123,6 +879,7 @@ function App() {
           </main>
         </div>
       )}
+      <Footer />
     </div>
   );
 }
