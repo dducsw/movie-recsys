@@ -4,14 +4,32 @@ import MovieRow from './components/MovieRow';
 import MovieCard from './components/MovieCard';
 import ChatbotView from './components/ChatbotView';
 import Footer from './components/Footer';
+import AuthView from './components/AuthView';
+import WatchView from './components/WatchView';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
 function App() {
   // Navigation & View State
-  const [view, setView] = useState('home'); // 'home', 'detail', or 'all'
+  const [view, setView] = useState('home'); // 'home', 'detail', 'all', 'auth', 'watch'
   const [selectedMovieId, setSelectedMovieId] = useState(null);
   const [selectedMovie, setSelectedMovie] = useState(null);
+
+  // Active User session state
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const activeUser = localStorage.getItem('movienex_active_user');
+    if (activeUser) {
+      setUser(JSON.parse(activeUser).username);
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('movienex_active_user');
+    setUser(null);
+    setView('home');
+  };
 
   // Lists of Movies (Homepage)
   const [trendingMovies, setTrendingMovies] = useState([]);
@@ -531,6 +549,8 @@ function App() {
         setSelectedMovieId={setSelectedMovieId}
         handleSeeAll={handleSeeAll}
         isSearching={isSearching}
+        user={user}
+        onLogout={handleLogout}
       />
 
       {view === 'home' ? (
@@ -588,7 +608,7 @@ function App() {
                 {showGuide && (
                   <div className="info-alert-box">
                     <div>
-                      <strong>💡 Recommendation System Demo:</strong> This interface simulates the TMDB movie platform.
+                      <strong>💡 Recommendation System Demo:</strong> This interface simulates the MovieNex movie platform.
                       The <strong>"Recommended for You"</strong> row is dynamically computed in real-time using a <em>Content-based Filtering</em> algorithm on the Backend. 
                       Click on any movie card, then click the <strong>❤️ Like</strong> button or select star ratings to teach the system your preferences. 
                       When you return to the Homepage, your recommendations will automatically refresh to reflect your taste!
@@ -762,6 +782,23 @@ function App() {
                           </svg>
                         </button>
 
+                        <button
+                          className="watch-now-btn"
+                          onClick={() => {
+                            if (!user) {
+                              alert("Please sign in to watch this movie!");
+                              setView('auth');
+                            } else {
+                              setView('watch');
+                            }
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '16px', height: '16px', marginRight: '6px' }}>
+                            <path d="M8 5v14l11-7z"/>
+                          </svg>
+                          Watch Now
+                        </button>
+
                         {/* Interactive Ratings Bar */}
                         <div className="rate-wrapper">
                           <span className="rate-label">Rate:</span>
@@ -834,6 +871,18 @@ function App() {
           chatEndRef={chatEndRef}
           handleSendChatMessage={handleSendChatMessage}
           handleMovieClick={handleMovieClick}
+        />
+      ) : view === 'auth' ? (
+        /* ================= AUTH VIEW ================= */
+        <AuthView 
+          setView={setView} 
+          onLoginSuccess={(username) => setUser(username)} 
+        />
+      ) : view === 'watch' ? (
+        /* ================= SIMULATED WATCH VIEW ================= */
+        <WatchView 
+          movie={selectedMovie} 
+          onClose={() => setView('detail')} 
         />
       ) : (
         /* ================= PAGINATED GRID VIEW ("SEE ALL") ================= */

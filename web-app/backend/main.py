@@ -7,8 +7,8 @@ from app.controllers.movie import router as movie_router
 from app.controllers.recsys import router as recsys_router
 
 app = FastAPI(
-    title="Movie Recommendation System API (MVC)",
-    description="Backend API for TMDB Recsys Demo structured in MVC architecture",
+    title="MovieNex Recommendation System API (MVC)",
+    description="Backend API for MovieNex Recsys Demo structured in MVC architecture",
     version="1.1.0"
 )
 

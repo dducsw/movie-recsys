@@ -6,7 +6,7 @@ function Footer() {
       <div className="footer-content">
         <div className="footer-brand">
           <div className="footer-logo">
-            TMDB <span>RecSys</span>
+            MovieNex <span>RecSys</span>
           </div>
           <p className="footer-desc">
             This is a personal demonstration project showcasing modern Movie Recommendation Systems. 
@@ -61,7 +61,7 @@ function Footer() {
       </div>
       
       <div className="footer-bottom">
-        <p>&copy; {new Date().getFullYear()} TMDB RecSys Demo. Personal Project.</p>
+        <p>&copy; {new Date().getFullYear()} MovieNex RecSys Demo. Personal Project.</p>
       </div>
     </footer>
   );
