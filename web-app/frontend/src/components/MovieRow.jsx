@@ -1,0 +1,54 @@
+import React from 'react';
+import MovieCard from './MovieCard';
+
+function MovieRow({ 
+  title, 
+  movies, 
+  loading, 
+  scrollRef, 
+  onScroll, 
+  onMovieClick, 
+  headerExtra, 
+  onSeeAll,
+  fallbackMessage 
+}) {
+  return (
+    <div className="section-wrapper">
+      <div className="section-header">
+        <h2>{title}</h2>
+        {headerExtra}
+        {onSeeAll && movies && movies.length > 0 && (
+          <span className="see-all-link" onClick={onSeeAll}>See All</span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="spinner-container"><div className="spinner"></div></div>
+      ) : !movies || movies.length === 0 ? (
+        fallbackMessage ? (
+          <div className="no-results" style={{ padding: '30px', background: 'rgba(0,0,0,0.01)', borderRadius: '10px' }}>
+            {fallbackMessage}
+          </div>
+        ) : null
+      ) : (
+        <div className="scroll-row-wrapper">
+          <button className="scroll-arrow-btn left" onClick={() => onScroll('left')}>‹</button>
+          
+          <div className="horizontal-scroll" ref={scrollRef}>
+            {movies.map((movie) => (
+              <MovieCard 
+                key={movie.movieId} 
+                movie={movie} 
+                onClick={onMovieClick} 
+              />
+            ))}
+          </div>
+
+          <button className="scroll-arrow-btn right" onClick={() => onScroll('right')}>›</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default MovieRow;
