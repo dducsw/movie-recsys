@@ -1435,14 +1435,14 @@ body {
 }
 
 .auth-card {
-  background-color: #0d1e30;
-  border: 1px solid rgba(255,255,255,0.08);
+  background-color: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 16px;
   padding: 40px;
   width: 100%;
   max-width: 440px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-  color: var(--tmdbWhite);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  color: #0f172a;
 }
 
 .auth-logo {
@@ -1479,7 +1479,7 @@ body {
 
 .auth-subtitle {
   font-size: 13.5px;
-  color: rgba(255,255,255,0.6);
+  color: #475569;
   text-align: center;
   margin-bottom: 24px;
   line-height: 1.5;
@@ -1500,23 +1500,29 @@ body {
 .form-group label {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255,255,255,0.85);
+  color: #334155;
 }
 
 .form-group input {
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
   padding: 12px 16px;
-  color: var(--tmdbWhite);
+  color: #0f172a;
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s ease;
 }
 
+.form-group input::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
 .form-group input:focus {
   border-color: var(--tmdbLightBlue);
   box-shadow: 0 0 0 2px rgba(1, 180, 228, 0.15);
+  color: #0f172a;
 }
 
 .auth-submit-btn {
@@ -1542,7 +1548,7 @@ body {
   text-align: center;
   margin-top: 24px;
   font-size: 13.5px;
-  color: rgba(255,255,255,0.60);
+  color: #475569;
 }
 
 .toggle-mode-btn {
@@ -1897,5 +1903,147 @@ body {
   }
   .controls-group.right {
     justify-content: space-between;
+  }
+}
+
+/* Meta links & chips for Director, Cast, and Tags */
+.clickable-meta-link {
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.clickable-meta-link:hover {
+  color: var(--tmdbLightBlue) !important;
+  text-decoration: underline;
+  transform: translateY(-1px);
+}
+
+.detail-director-box {
+  margin-top: 15px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.detail-label {
+  font-weight: 700;
+  margin-right: 8px;
+  color: var(--textSecondary) !important;
+}
+
+.detail-value {
+  color: var(--tmdbWhite);
+}
+
+.detail-cast-box, .detail-tags-box {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-cast-chips, .detail-tags-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.actor-chip {
+  background-color: rgba(1, 180, 228, 0.1);
+  color: var(--tmdbLightBlue);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid rgba(1, 180, 228, 0.25);
+}
+
+.actor-chip:hover {
+  background-color: rgba(1, 180, 228, 0.2);
+  border-color: rgba(1, 180, 228, 0.5);
+  text-decoration: none;
+}
+
+.tag-chip {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tag-chip:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  text-decoration: none;
+}
+
+/* Trailer Watch Modal Styles */
+.watch-view-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 99999;
+}
+
+.watch-view-modal {
+  width: 90%;
+  max-width: 960px;
+  background-color: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.watch-header {
+  background-color: #000;
+  color: #fff;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.watch-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.watch-close-btn {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: all 0.2s ease-in-out;
+}
+
+.watch-close-btn:hover {
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.watch-video-screen {
+  width: 100%;
+  height: 540px; /* 16:9 aspect ratio helper */
+  background-color: #000;
+}
+
+@media (max-width: 768px) {
+  .watch-video-screen {
+    height: 300px;
   }
 }

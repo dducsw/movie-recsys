@@ -70,7 +70,7 @@ function Navbar({ view, allType, setView, handleClearSearch, setSelectedMovieId,
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
             </div>
-            <button className="nav-auth-btn signin" onClick={() => setView('auth')} style={{ background: 'linear-gradient(90deg, var(--tmdbLightTeal), var(--tmdbLightBlue))', border: 'none', color: 'white', padding: '6px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 700, boxShadow: '0 2px 5px rgba(0,0,0,0.15)', transition: 'all 0.2s ease' }}>
+            <button className="nav-auth-btn signin" onClick={() => setView('auth')} style={{ background: 'white', border: 'none', color: '#032541', padding: '6px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 700, boxShadow: '0 2px 5px rgba(0,0,0,0.15)', transition: 'all 0.2s ease' }}>
               Sign In
             </button>
           </div>

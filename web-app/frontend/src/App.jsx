@@ -14,6 +14,7 @@ function App() {
   const [view, setView] = useState('home'); // 'home', 'detail', 'all', 'auth', 'watch'
   const [selectedMovieId, setSelectedMovieId] = useState(null);
   const [selectedMovie, setSelectedMovie] = useState(null);
+  const [showTrailer, setShowTrailer] = useState(false);
 
   // Active User session state
   const [user, setUser] = useState(null);
@@ -66,7 +67,7 @@ function App() {
   const [chatMessages, setChatMessages] = useState([
     {
       sender: 'bot',
-      text: 'Xin chào! Tôi là AI Chatbot gợi ý phim. Bạn có thể hỏi tôi giới thiệu phim theo thể loại (ví dụ: "phim hành động", "phim hoạt hình") hoặc tìm phim tương tự một bộ phim bạn thích (ví dụ: "phim giống Toy Story").'
+      text: 'Hello! I am your AI movie recommendation chatbot. You can ask me to recommend movies by genre (e.g., "action movies", "animation") or find movies similar to one you like (e.g., "movies like Toy Story").'
     }
   ]);
   const [chatInput, setChatInput] = useState('');
@@ -251,6 +252,27 @@ function App() {
       setSelectedMovieId(null);
     } catch (error) {
       console.error('Error searching movies:', error);
+    } finally {
+      setLoadingTrending(false);
+    }
+  };
+
+  // Handle Click-to-Search (e.g., clicking tags, directors, actors, or genres)
+  const handleSearchSubmitWithQuery = async (queryText) => {
+    if (!queryText.trim()) return;
+
+    setSearchQuery(queryText);
+    setLoadingTrending(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/movies/search?query=${encodeURIComponent(queryText)}`);
+      const data = await response.json();
+      setSearchResults(data.results || []);
+      setCurrentSearch(queryText);
+      setIsSearching(true);
+      setView('home'); 
+      setSelectedMovieId(null);
+    } catch (error) {
+      console.error('Error searching movies by metadata:', error);
     } finally {
       setLoadingTrending(false);
     }
@@ -744,7 +766,11 @@ function App() {
                         <span className="detail-meta-item">• 2h 15m</span>
                         <div className="detail-genres-container">
                           {selectedMovie.genres && selectedMovie.genres.split('|').map((genre, i) => (
-                            <span key={i} className="detail-genre-tag">
+                            <span 
+                              key={i} 
+                              className="detail-genre-tag clickable-meta-link"
+                              onClick={() => handleSearchSubmitWithQuery(genre)}
+                            >
                               {genre}
                             </span>
                           ))}
@@ -782,22 +808,7 @@ function App() {
                           </svg>
                         </button>
 
-                        <button
-                          className="watch-now-btn"
-                          onClick={() => {
-                            if (!user) {
-                              alert("Please sign in to watch this movie!");
-                              setView('auth');
-                            } else {
-                              setView('watch');
-                            }
-                          }}
-                        >
-                          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '16px', height: '16px', marginRight: '6px' }}>
-                            <path d="M8 5v14l11-7z"/>
-                          </svg>
-                          Watch Now
-                        </button>
+
 
                         {/* Interactive Ratings Bar */}
                         <div className="rate-wrapper">
@@ -817,25 +828,68 @@ function App() {
                         </div>
                       </div>
 
+                      {/* Play Trailer Button */}
+                      <div className="play-trailer-container" style={{ margin: '15px 0 25px 0' }}>
+                        <button
+                          className="watch-now-btn"
+                          onClick={() => setShowTrailer(true)}
+                        >
+                          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '16px', height: '16px', marginRight: '6px' }}>
+                            <path d="M8 5v14l11-7z"/>
+                          </svg>
+                          Play Trailer
+                        </button>
+                      </div>
+
                       {/* Overview & Crew */}
-                      <p className="tagline">Your feedback updates the recommendation algorithms instantly...</p>
                       <h3 className="overview-header">Overview</h3>
                       <p className="overview-text">{selectedMovie.overview || 'No overview available for this movie.'}</p>
 
-                      <div className="crew-container">
-                        <div className="crew-member">
-                          <span className="crew-name">Christopher Nolan</span>
-                          <span className="crew-job">Director, Screenplay</span>
+                      {selectedMovie.director && (
+                        <div className="detail-director-box">
+                          <span className="detail-label">Director:</span>
+                          <span 
+                            className="detail-value clickable-meta-link" 
+                            onClick={() => handleSearchSubmitWithQuery(selectedMovie.director)}
+                          >
+                            {selectedMovie.director}
+                          </span>
                         </div>
-                        <div className="crew-member">
-                          <span className="crew-name">Hans Zimmer</span>
-                          <span className="crew-job">Composer</span>
+                      )}
+
+                      {selectedMovie.cast && (
+                        <div className="detail-cast-box">
+                          <span className="detail-label">Cast:</span>
+                          <div className="detail-cast-chips">
+                            {selectedMovie.cast.split('|').slice(0, 10).map((actor, idx) => (
+                              <span 
+                                key={idx} 
+                                className="actor-chip clickable-meta-link"
+                                onClick={() => handleSearchSubmitWithQuery(actor)}
+                              >
+                                {actor}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                        <div className="crew-member">
-                          <span className="crew-name">Emma Thomas</span>
-                          <span className="crew-job">Producer</span>
+                      )}
+
+                      {selectedMovie.keywords && (
+                        <div className="detail-tags-box">
+                          <span className="detail-label">Tags:</span>
+                          <div className="detail-tags-chips">
+                            {selectedMovie.keywords.split('|').slice(0, 15).map((tag, idx) => (
+                              <span 
+                                key={idx} 
+                                className="tag-chip clickable-meta-link"
+                                onClick={() => handleSearchSubmitWithQuery(tag)}
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -877,12 +931,6 @@ function App() {
         <AuthView 
           setView={setView} 
           onLoginSuccess={(username) => setUser(username)} 
-        />
-      ) : view === 'watch' ? (
-        /* ================= SIMULATED WATCH VIEW ================= */
-        <WatchView 
-          movie={selectedMovie} 
-          onClose={() => setView('detail')} 
         />
       ) : (
         /* ================= PAGINATED GRID VIEW ("SEE ALL") ================= */
@@ -927,6 +975,12 @@ function App() {
             </div>
           </main>
         </div>
+      )}
+      {showTrailer && selectedMovie && (
+        <WatchView 
+          movie={selectedMovie} 
+          onClose={() => setShowTrailer(false)} 
+        />
       )}
       <Footer />
     </div>

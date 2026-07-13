@@ -18,7 +18,7 @@ function ChatbotView({
     <div className="chatbot-container">
       <div className="chatbot-header">
         <h1>AI Movie Recommender</h1>
-        <p>Trò chuyện với AI để nhận gợi ý phim theo sở thích cá nhân của bạn</p>
+        <p>Chat with AI to get movie recommendations tailored to your personal taste</p>
       </div>
 
       <div className="chatbot-chatbox">
@@ -34,7 +34,7 @@ function ChatbotView({
                       key={movie.movieId} 
                       className="chat-movie-card"
                       onClick={() => handleMovieClick(movie.movieId)}
-                      title={`Xem chi tiết ${movie.title}`}
+                      title={`View details of ${movie.title}`}
                     >
                       <img 
                         className="chat-movie-poster" 
@@ -66,29 +66,29 @@ function ChatbotView({
           <input
             type="text"
             className="chatbot-input"
-            placeholder="Nhập yêu cầu của bạn (ví dụ: phim hoạt hình lãng mạn, phim giống Toy Story...)"
+            placeholder="Type your request (e.g., sci-fi action movies, movies like Toy Story...)"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
           />
           <button className="chatbot-send-btn" onClick={() => handleSendChatMessage()}>
-            Gửi
+            Send
           </button>
         </div>
       </div>
 
       <div className="chatbot-chips">
-        <span className="chatbot-chip" onClick={() => handleSendChatMessage("Gợi ý phim hành động viễn tưởng")}>
-          🍿 Phim hành động viễn tưởng
+        <span className="chatbot-chip" onClick={() => handleSendChatMessage("Recommend sci-fi action movies")}>
+          🍿 Sci-Fi Action
         </span>
-        <span className="chatbot-chip" onClick={() => handleSendChatMessage("Tôi muốn xem phim hoạt hình gia đình")}>
-          👶 Phim hoạt hình gia đình
+        <span className="chatbot-chip" onClick={() => handleSendChatMessage("I want to watch family animation")}>
+          👶 Family Animation
         </span>
-        <span className="chatbot-chip" onClick={() => handleSendChatMessage("Tìm phim giống như Toy Story")}>
-          🧸 Phim giống Toy Story
+        <span className="chatbot-chip" onClick={() => handleSendChatMessage("Find movies like Toy Story")}>
+          🧸 Like Toy Story
         </span>
-        <span className="chatbot-chip" onClick={() => handleSendChatMessage("Gợi ý phim kinh dị kịch tính")}>
-          👻 Phim kinh dị kịch tính
+        <span className="chatbot-chip" onClick={() => handleSendChatMessage("Recommend thriller horror movies")}>
+          👻 Thriller Horror
         </span>
       </div>
     </div>
