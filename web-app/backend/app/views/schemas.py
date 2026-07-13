@@ -12,6 +12,10 @@ class MovieResponse(BaseModel):
     vote_average: Optional[float] = 0.0
     vote_count: Optional[int] = 0
     poster_url: Optional[str] = ""
+    director: Optional[str] = ""
+    cast: Optional[str] = ""
+    keywords: Optional[str] = ""
+    trailer_url: Optional[str] = ""
 
     class Config:
         from_attributes = True

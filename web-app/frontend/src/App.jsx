@@ -4,14 +4,33 @@ import MovieRow from './components/MovieRow';
 import MovieCard from './components/MovieCard';
 import ChatbotView from './components/ChatbotView';
 import Footer from './components/Footer';
+import AuthView from './components/AuthView';
+import WatchView from './components/WatchView';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
 function App() {
   // Navigation & View State
-  const [view, setView] = useState('home'); // 'home', 'detail', or 'all'
+  const [view, setView] = useState('home'); // 'home', 'detail', 'all', 'auth', 'watch'
   const [selectedMovieId, setSelectedMovieId] = useState(null);
   const [selectedMovie, setSelectedMovie] = useState(null);
+  const [showTrailer, setShowTrailer] = useState(false);
+
+  // Active User session state
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const activeUser = localStorage.getItem('movienex_active_user');
+    if (activeUser) {
+      setUser(JSON.parse(activeUser).username);
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('movienex_active_user');
+    setUser(null);
+    setView('home');
+  };
 
   // Lists of Movies (Homepage)
   const [trendingMovies, setTrendingMovies] = useState([]);
@@ -48,7 +67,7 @@ function App() {
   const [chatMessages, setChatMessages] = useState([
     {
       sender: 'bot',
-      text: 'Xin chào! Tôi là AI Chatbot gợi ý phim. Bạn có thể hỏi tôi giới thiệu phim theo thể loại (ví dụ: "phim hành động", "phim hoạt hình") hoặc tìm phim tương tự một bộ phim bạn thích (ví dụ: "phim giống Toy Story").'
+      text: 'Hello! I am your AI movie recommendation chatbot. You can ask me to recommend movies by genre (e.g., "action movies", "animation") or find movies similar to one you like (e.g., "movies like Toy Story").'
     }
   ]);
   const [chatInput, setChatInput] = useState('');
@@ -233,6 +252,27 @@ function App() {
       setSelectedMovieId(null);
     } catch (error) {
       console.error('Error searching movies:', error);
+    } finally {
+      setLoadingTrending(false);
+    }
+  };
+
+  // Handle Click-to-Search (e.g., clicking tags, directors, actors, or genres)
+  const handleSearchSubmitWithQuery = async (queryText) => {
+    if (!queryText.trim()) return;
+
+    setSearchQuery(queryText);
+    setLoadingTrending(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/movies/search?query=${encodeURIComponent(queryText)}`);
+      const data = await response.json();
+      setSearchResults(data.results || []);
+      setCurrentSearch(queryText);
+      setIsSearching(true);
+      setView('home'); 
+      setSelectedMovieId(null);
+    } catch (error) {
+      console.error('Error searching movies by metadata:', error);
     } finally {
       setLoadingTrending(false);
     }
@@ -531,6 +571,8 @@ function App() {
         setSelectedMovieId={setSelectedMovieId}
         handleSeeAll={handleSeeAll}
         isSearching={isSearching}
+        user={user}
+        onLogout={handleLogout}
       />
 
       {view === 'home' ? (
@@ -588,7 +630,7 @@ function App() {
                 {showGuide && (
                   <div className="info-alert-box">
                     <div>
-                      <strong>💡 Recommendation System Demo:</strong> This interface simulates the TMDB movie platform.
+                      <strong>💡 Recommendation System Demo:</strong> This interface simulates the MovieNex movie platform.
                       The <strong>"Recommended for You"</strong> row is dynamically computed in real-time using a <em>Content-based Filtering</em> algorithm on the Backend. 
                       Click on any movie card, then click the <strong>❤️ Like</strong> button or select star ratings to teach the system your preferences. 
                       When you return to the Homepage, your recommendations will automatically refresh to reflect your taste!
@@ -724,7 +766,11 @@ function App() {
                         <span className="detail-meta-item">• 2h 15m</span>
                         <div className="detail-genres-container">
                           {selectedMovie.genres && selectedMovie.genres.split('|').map((genre, i) => (
-                            <span key={i} className="detail-genre-tag">
+                            <span 
+                              key={i} 
+                              className="detail-genre-tag clickable-meta-link"
+                              onClick={() => handleSearchSubmitWithQuery(genre)}
+                            >
                               {genre}
                             </span>
                           ))}
@@ -762,6 +808,8 @@ function App() {
                           </svg>
                         </button>
 
+
+
                         {/* Interactive Ratings Bar */}
                         <div className="rate-wrapper">
                           <span className="rate-label">Rate:</span>
@@ -780,25 +828,68 @@ function App() {
                         </div>
                       </div>
 
+                      {/* Play Trailer Button */}
+                      <div className="play-trailer-container" style={{ margin: '15px 0 25px 0' }}>
+                        <button
+                          className="watch-now-btn"
+                          onClick={() => setShowTrailer(true)}
+                        >
+                          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '16px', height: '16px', marginRight: '6px' }}>
+                            <path d="M8 5v14l11-7z"/>
+                          </svg>
+                          Play Trailer
+                        </button>
+                      </div>
+
                       {/* Overview & Crew */}
-                      <p className="tagline">Your feedback updates the recommendation algorithms instantly...</p>
                       <h3 className="overview-header">Overview</h3>
                       <p className="overview-text">{selectedMovie.overview || 'No overview available for this movie.'}</p>
 
-                      <div className="crew-container">
-                        <div className="crew-member">
-                          <span className="crew-name">Christopher Nolan</span>
-                          <span className="crew-job">Director, Screenplay</span>
+                      {selectedMovie.director && (
+                        <div className="detail-director-box">
+                          <span className="detail-label">Director:</span>
+                          <span 
+                            className="detail-value clickable-meta-link" 
+                            onClick={() => handleSearchSubmitWithQuery(selectedMovie.director)}
+                          >
+                            {selectedMovie.director}
+                          </span>
                         </div>
-                        <div className="crew-member">
-                          <span className="crew-name">Hans Zimmer</span>
-                          <span className="crew-job">Composer</span>
+                      )}
+
+                      {selectedMovie.cast && (
+                        <div className="detail-cast-box">
+                          <span className="detail-label">Cast:</span>
+                          <div className="detail-cast-chips">
+                            {selectedMovie.cast.split('|').slice(0, 10).map((actor, idx) => (
+                              <span 
+                                key={idx} 
+                                className="actor-chip clickable-meta-link"
+                                onClick={() => handleSearchSubmitWithQuery(actor)}
+                              >
+                                {actor}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                        <div className="crew-member">
-                          <span className="crew-name">Emma Thomas</span>
-                          <span className="crew-job">Producer</span>
+                      )}
+
+                      {selectedMovie.keywords && (
+                        <div className="detail-tags-box">
+                          <span className="detail-label">Tags:</span>
+                          <div className="detail-tags-chips">
+                            {selectedMovie.keywords.split('|').slice(0, 15).map((tag, idx) => (
+                              <span 
+                                key={idx} 
+                                className="tag-chip clickable-meta-link"
+                                onClick={() => handleSearchSubmitWithQuery(tag)}
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -834,6 +925,12 @@ function App() {
           chatEndRef={chatEndRef}
           handleSendChatMessage={handleSendChatMessage}
           handleMovieClick={handleMovieClick}
+        />
+      ) : view === 'auth' ? (
+        /* ================= AUTH VIEW ================= */
+        <AuthView 
+          setView={setView} 
+          onLoginSuccess={(username) => setUser(username)} 
         />
       ) : (
         /* ================= PAGINATED GRID VIEW ("SEE ALL") ================= */
@@ -878,6 +975,12 @@ function App() {
             </div>
           </main>
         </div>
+      )}
+      {showTrailer && selectedMovie && (
+        <WatchView 
+          movie={selectedMovie} 
+          onClose={() => setShowTrailer(false)} 
+        />
       )}
       <Footer />
     </div>

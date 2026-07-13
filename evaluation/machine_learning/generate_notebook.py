@@ -36,16 +36,18 @@ Nội dung nghiên cứu dựa trên các hướng dẫn lý thuyết tại tệ
 
     # Cell 2: Code - Imports and Config
     cells.append(nbf.v4.new_code_cell("""import os
+import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from surprise import Dataset, Reader, KNNBasic, KNNWithMeans, SVD, SVDpp, NMF, accuracy
-from surprise.model_selection import train_test_split as surprise_train_test_split
 from collections import defaultdict
+import numba
+
+# Thêm đường dẫn cha để import recsys_utils
+sys.path.append(os.path.abspath('..'))
+import recsys_utils
 
 # Configure visualization styles
 %matplotlib inline
@@ -105,67 +107,16 @@ Thích hợp cho bài toán Top-K recommendations, đo lường sự hài lòng 
 """))
 
     # Cell 6: Code - Implementing metrics helper
-    cells.append(nbf.v4.new_code_cell("""def precision_recall_ndcg_at_k(predictions, k=10, threshold=3.5):
-    \"\"\"
-    Tính toán Precision@K, Recall@K và NDCG@K từ danh sách dự đoán của thư viện Surprise.
-    predictions: Danh sách đối tượng prediction từ Surprise.
-    \"\"\"
-    # Map predictions to each user
-    user_est_true = defaultdict(list)
-    for uid, iid, true_r, est, _ in predictions:
-        user_est_true[uid].append((est, true_r))
+    cells.append(nbf.v4.new_code_cell("""# Import các hàm đo lường, chia dữ liệu và metrics nâng cao từ recsys_utils
+from recsys_utils import (
+    split_data_explicit,
+    split_data_implicit_leave_one_out,
+    evaluate_explicit,
+    evaluate_implicit_loo,
+    calculate_beyond_accuracy_metrics
+)
 
-    precisions = {}
-    recalls = {}
-    ndcgs = {}
-
-    for uid, user_ratings in user_est_true.items():
-        # Sắp xếp các sản phẩm theo điểm dự đoán giảm dần
-        user_ratings.sort(key=lambda x: x[0], reverse=True)
-
-        # Số lượng phim thực sự liên quan trong tập test của user đó (điểm >= threshold)
-        n_rel = sum((true_r >= threshold) for (_, true_r) in user_ratings)
-
-        # Cắt lấy Top-K gợi ý
-        top_k = user_ratings[:k]
-
-        # Số lượng phim liên quan trong Top-K gợi ý
-        n_rel_and_rec_in_k = sum((true_r >= threshold) for (_, true_r) in top_k)
-
-        # Precision@K: Tỷ lệ phim liên quan trong Top-K gợi ý
-        precisions[uid] = n_rel_and_rec_in_k / k if k > 0 else 0
-
-        # Recall@K: Tỷ lệ phim liên quan được gợi ý so với tổng số phim liên quan thực tế
-        recalls[uid] = n_rel_and_rec_in_k / n_rel if n_rel > 0 else 0
-
-        # NDCG@K
-        dcg = 0.0
-        for i, (_, true_r) in enumerate(top_k):
-            # Nếu bộ phim thực sự có liên quan, tính độ liên quan là true_r hoặc nhị phân (1)
-            # Ở đây ta dùng định nghĩa nhị phân: rel = 1 nếu true_r >= threshold, ngược lại 0
-            rel = 1 if true_r >= threshold else 0
-            dcg += (2**rel - 1) / np.log2(i + 2)
-
-        # IDCG@K: Sắp xếp các rating thực tế trong tập test giảm dần, lấy top K
-        test_ratings = [true_r for (_, true_r) in user_ratings]
-        test_ratings.sort(reverse=True)
-        idcg_top_k = test_ratings[:k]
-        
-        idcg = 0.0
-        for i, true_r in enumerate(idcg_top_k):
-            rel = 1 if true_r >= threshold else 0
-            idcg += (2**rel - 1) / np.log2(i + 2)
-
-        ndcgs[uid] = dcg / idcg if idcg > 0 else 0.0
-
-    # Trả về giá trị trung bình trên tất cả người dùng
-    mean_precision = sum(p for p in precisions.values()) / len(precisions) if precisions else 0
-    mean_recall = sum(r for r in recalls.values()) / len(recalls) if recalls else 0
-    mean_ndcg = sum(n for n in ndcgs.values()) / len(ndcgs) if ndcgs else 0
-
-    return mean_precision, mean_recall, mean_ndcg
-
-print("Định nghĩa hàm đo lường thành công!")"""))
+print("Import các hàm tiện ích từ recsys_utils thành công!")"""))
 
     # Cell 7: Markdown Section 3
     cells.append(nbf.v4.new_markdown_cell("""## Phần 3: Lọc Cộng Tác dựa trên Lân Cận (Memory-Based Collaborative Filtering)
@@ -189,15 +140,18 @@ Ta sẽ đánh giá các thuật toán KNN với hai phương pháp tiếp cận
 """))
 
     # Cell 8: Code - Running KNN Models
-    cells.append(nbf.v4.new_code_cell("""# Thiết lập Reader và Dataset của Surprise
-reader = Reader(rating_scale=(0.5, 5.0))
-data = Dataset.load_from_df(ratings[['userId', 'movieId', 'rating']], reader)
+    cells.append(nbf.v4.new_code_cell("""# Chia dữ liệu Train/Test explicit nhất quán từ recsys_utils
+train_df, test_df = split_data_explicit(ratings, test_size=0.2, random_state=42)
 
-# Chia tập Train/Test theo tỉ lệ 80/20
-trainset, testset = surprise_train_test_split(data, test_size=0.2, random_state=42)
+# Thiết lập Reader và Dataset của Surprise
+reader = Reader(rating_scale=(0.5, 5.0))
+# Chuyển đổi DataFrame sang định dạng Trainset và Testset của Surprise để huấn luyện đồng nhất
+trainset = Dataset.load_from_df(train_df[['userId', 'movieId', 'rating']], reader).build_full_trainset()
+testset = list(zip(test_df['userId'], test_df['movieId'], test_df['rating']))
 
 # Khởi tạo bảng lưu trữ kết quả so sánh
-results = []
+explicit_results = []
+implicit_results = []
 
 # Cấu hình các tham số KNN để thử nghiệm
 knn_configs = [
@@ -210,35 +164,27 @@ knn_configs = [
 for config in knn_configs:
     print(f"Đang huấn luyện {config['name']}...")
     
-    # Cấu hình độ tương đồng
     sim_options = {
         'name': config['similarity'],
         'user_based': config['user_based']
     }
     
-    # Ở đây dùng KNNWithMeans để khắc phục thiên vị trung bình chấm điểm của user
     model = KNNWithMeans(sim_options=sim_options, verbose=False)
     model.fit(trainset)
     
-    # Dự đoán trên tập Test
     predictions = model.test(testset)
     
-    # Tính các chỉ số
-    rmse = accuracy.rmse(predictions, verbose=False)
-    mae = accuracy.mae(predictions, verbose=False)
-    precision_k, recall_k, ndcg_k = precision_recall_ndcg_at_k(predictions, k=10, threshold=3.5)
+    # Đo lường bằng RMSE và MAE trên explicit pipeline
+    rmse, mae = evaluate_explicit([(true_r, est) for _, _, true_r, est, _ in predictions])
     
-    results.append({
+    explicit_results.append({
         "Model": config['name'],
         "RMSE": rmse,
-        "MAE": mae,
-        "Precision@10": precision_k,
-        "Recall@10": recall_k,
-        "NDCG@10": ndcg_k
+        "MAE": mae
     })
-    print(f"-> RMSE: {rmse:.4f} | Precision@10: {precision_k:.4f} | NDCG@10: {ndcg_k:.4f}\\n")
+    print(f"-> RMSE: {rmse:.4f} | MAE: {mae:.4f}\\n")
 
-pd.DataFrame(results)"""))
+pd.DataFrame(explicit_results)"""))
 
     # Cell 9: Markdown Section 4
     cells.append(nbf.v4.new_markdown_cell("""## Phần 4: Phân rã Ma trận (Model-Based Matrix Factorization)
@@ -277,21 +223,17 @@ for config in mf_models:
     
     predictions = model.test(testset)
     
-    rmse = accuracy.rmse(predictions, verbose=False)
-    mae = accuracy.mae(predictions, verbose=False)
-    precision_k, recall_k, ndcg_k = precision_recall_ndcg_at_k(predictions, k=10, threshold=3.5)
+    # Đo lường bằng RMSE và MAE trên explicit pipeline
+    rmse, mae = evaluate_explicit([(true_r, est) for _, _, true_r, est, _ in predictions])
     
-    results.append({
+    explicit_results.append({
         "Model": config['name'],
         "RMSE": rmse,
-        "MAE": mae,
-        "Precision@10": precision_k,
-        "Recall@10": recall_k,
-        "NDCG@10": ndcg_k
+        "MAE": mae
     })
-    print(f"-> RMSE: {rmse:.4f} | Precision@10: {precision_k:.4f} | NDCG@10: {ndcg_k:.4f}\\n")
+    print(f"-> RMSE: {rmse:.4f} | MAE: {mae:.4f}\\n")
 
-pd.DataFrame(results)"""))
+pd.DataFrame(explicit_results)"""))
 
     # Cell 11: Markdown Section 5
     cells.append(nbf.v4.new_markdown_cell("""## Phần 5: Lọc Dựa trên Nội dung (Content-Based Filtering)
@@ -314,14 +256,14 @@ Các bước thực hiện trong thực nghiệm này:
 movies_genres = movies.copy()
 movies_genres['genres_clean'] = movies_genres['genres'].str.replace('|', ' ', regex=False)
 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
 tfidf = TfidfVectorizer(token_pattern=r'(?u)\\b\\w+\\b') # Hỗ trợ thể loại có 1 chữ
 tfidf_matrix = tfidf.fit_transform(movies_genres['genres_clean'])
 movie_features = pd.DataFrame(tfidf_matrix.toarray(), index=movies_genres['movieId'])
 
-# Phân tách ratings tập train/test theo sklearn tương ứng tập test của surprise
-train_df, test_df = train_test_split(ratings, test_size=0.2, random_state=42)
-
-# 2. Xây dựng User Profile trên tập Train
+# 2. Xây dựng User Profile trên tập Train (sử dụng train_df từ Cell 8)
 user_profiles = {}
 grouped = train_df.groupby('userId')
 
@@ -347,7 +289,7 @@ for uid, group in grouped:
     user_profile = np.dot(weights, movie_feats) / np.sum(weights)
     user_profiles[uid] = user_profile
 
-# 3. Dự đoán trên tập Test
+# 3. Dự đoán trên tập Test (sử dụng test_df từ Cell 8)
 content_predictions = []
 for idx, row in test_df.iterrows():
     uid = int(row['userId'])
@@ -365,24 +307,19 @@ for idx, row in test_df.iterrows():
         # Fallback về điểm rating trung bình toàn hệ thống của tập train
         est = train_df['rating'].mean()
         
-    content_predictions.append((uid, mid, true_r, est, None))
+    content_predictions.append((true_r, est))
 
-# 4. Tính toán Metrics cho Content-Based
-rmse_cb = np.sqrt(np.mean([(true_r - est)**2 for _, _, true_r, est, _ in content_predictions]))
-mae_cb = np.mean([abs(true_r - est) for _, _, true_r, est, _ in content_predictions])
-precision_cb, recall_cb, ndcg_cb = precision_recall_ndcg_at_k(content_predictions, k=10, threshold=3.5)
+# 4. Tính toán Metrics cho Content-Based sử dụng explicit evaluation helper
+rmse_cb, mae_cb = evaluate_explicit(content_predictions)
 
-results.append({
+explicit_results.append({
     "Model": "Content-Based Filtering (TF-IDF)",
     "RMSE": rmse_cb,
-    "MAE": mae_cb,
-    "Precision@10": precision_cb,
-    "Recall@10": recall_cb,
-    "NDCG@10": ndcg_cb
+    "MAE": mae_cb
 })
 
 print("Đánh giá mô hình Content-Based thành công!")
-print(f"RMSE: {rmse_cb:.4f} | Precision@10: {precision_cb:.4f} | NDCG@10: {ndcg_cb:.4f}")"""))
+print(f"RMSE: {rmse_cb:.4f} | MAE: {mae_cb:.4f}")"""))
 
     # Cell 13: Markdown Section 6
     cells.append(nbf.v4.new_markdown_cell("""## Phần 6: Tự xây dựng Factorization Machines (FM) bằng NumPy
@@ -407,19 +344,91 @@ Chúng ta sẽ tạo đặc trưng đầu vào $x$ gồm:
 """))
 
     # Cell 14: Code - FM Implementation in NumPy
-    cells.append(nbf.v4.new_code_cell("""class FactorizationMachine:
+    cells.append(nbf.v4.new_code_cell("""import numba
+
+@numba.njit
+def fm_sgd_update(indptr, indices, data, y, w0, w, V, lr, reg, k_latent, epochs):
+    n_samples = len(y)
+    for epoch in range(epochs):
+        loss_sum = 0.0
+        for idx in range(n_samples):
+            start = indptr[idx]
+            end = indptr[idx+1]
+            
+            idx_cols = indices[start:end]
+            val_cols = data[start:end]
+            y_true = y[idx]
+            
+            # 1. Tính toán giá trị dự đoán y_pred
+            # Thành phần tuyến tính w0 + w^T * x
+            linear_sum = w0
+            for i in range(len(idx_cols)):
+                j = idx_cols[i]
+                val = val_cols[i]
+                linear_sum += w[j] * val
+                
+            # Thành phần tương tác bậc hai
+            interaction_sum = 0.0
+            for f in range(k_latent):
+                sum_v_x = 0.0
+                sum_v2_x2 = 0.0
+                for i in range(len(idx_cols)):
+                    j = idx_cols[i]
+                    val = val_cols[i]
+                    v_jf = V[j, f]
+                    sum_v_x += v_jf * val
+                    sum_v2_x2 += (v_jf ** 2) * (val ** 2)
+                interaction_sum += (sum_v_x ** 2) - sum_v2_x2
+                
+            y_pred = linear_sum + 0.5 * interaction_sum
+            
+            # Ràng buộc dự đoán
+            if y_pred < 0.5:
+                y_pred = 0.5
+            elif y_pred > 5.0:
+                y_pred = 5.0
+                
+            err = y_pred - y_true
+            loss_sum += err ** 2
+            
+            # 2. Cập nhật các tham số qua Gradient Descent
+            w0 -= lr * err
+            
+            # Cập nhật linear weights w_j
+            for i in range(len(idx_cols)):
+                j = idx_cols[i]
+                val = val_cols[i]
+                w[j] -= lr * (err * val + reg * w[j])
+                
+            # Cập nhật latent factors V_{j,f}
+            for f in range(k_latent):
+                sum_v_x = 0.0
+                for i in range(len(idx_cols)):
+                    j = idx_cols[i]
+                    val = val_cols[i]
+                    sum_v_x += V[j, f] * val
+                    
+                for i in range(len(idx_cols)):
+                    j = idx_cols[i]
+                    val = val_cols[i]
+                    grad_v = err * val * (sum_v_x - V[j, f] * val)
+                    V[j, f] -= lr * (grad_v + reg * V[j, f])
+                    
+        rmse = np.sqrt(loss_sum / n_samples)
+        # Giảm tỷ lệ học (Learning rate decay)
+        lr *= 0.9
+        
+    return w0, w, V
+
+class FactorizationMachine:
     def __init__(self, k_latent=8, lr=0.01, reg=0.02, epochs=10, random_state=42):
         self.k = k_latent # Số latent factors
         self.lr = lr       # Tỷ lệ học (Learning rate)
-        self.reg = reg     # Hệ số chính quy hóa L2 (L2 regularization)
+        self.reg = reg     # L2 regularization
         self.epochs = epochs
         self.rng = np.random.default_rng(random_state)
         
     def _prepare_data(self, df, genres_df, is_train=True):
-        \"\"\"
-        Chuyển dữ liệu sang dạng ma trận thưa thớt x.
-        Với mỗi tương tác: x chứa userId index, movieId index và các genre indices.
-        \"\"\"
         if is_train:
             self.user_to_idx = {uid: i for i, uid in enumerate(df['userId'].unique())}
             self.movie_to_idx = {mid: i for i, mid in enumerate(df['movieId'].unique())}
@@ -451,7 +460,6 @@ Chúng ta sẽ tạo đặc trưng đầu vào $x$ gồm:
             uid = row['userId']
             mid = row['movieId']
             
-            # Chỉ xử lý các user và movie có trong tập train khi dự đoán trên test
             u_idx = self.user_to_idx.get(uid, None)
             m_idx = self.movie_to_idx.get(mid, None)
             
@@ -578,22 +586,17 @@ fm_model.fit(train_df, movies)
 # Dự đoán trên tập Test
 fm_predictions = fm_model.predict(test_df, movies)
 
-# Tính toán các Metrics
-rmse_fm = np.sqrt(np.mean([(true_r - est)**2 for _, _, true_r, est, _ in fm_predictions]))
-mae_fm = np.mean([abs(true_r - est) for _, _, true_r, est, _ in fm_predictions])
-precision_fm, recall_fm, ndcg_fm = precision_recall_ndcg_at_k(fm_predictions, k=10, threshold=3.5)
+# Tính toán các Metrics sử dụng explicit evaluation helper
+rmse_fm, mae_fm = evaluate_explicit([(true_r, est) for _, _, true_r, est, _ in fm_predictions])
 
-results.append({
+explicit_results.append({
     "Model": "Factorization Machine (NumPy)",
     "RMSE": rmse_fm,
-    "MAE": mae_fm,
-    "Precision@10": precision_fm,
-    "Recall@10": recall_fm,
-    "NDCG@10": ndcg_fm
+    "MAE": mae_fm
 })
 
 print("\\nĐánh giá mô hình FM thành công!")
-print(f"RMSE: {rmse_fm:.4f} | Precision@10: {precision_fm:.4f} | NDCG@10: {ndcg_fm:.4f}")"""))
+print(f"RMSE: {rmse_fm:.4f} | MAE: {mae_fm:.4f}")"""))
 
     # Cell 16: Markdown Section 7
     cells.append(nbf.v4.new_markdown_cell("""## Phần 7: Bayesian Personalized Ranking (BPR) và Alternating Least Squares (ALS) cho Implicit Feedback
@@ -613,6 +616,68 @@ Bây giờ chúng ta sẽ mở rộng đánh giá với hai thuật toán học 
 
     # Cell 17: Code for BPR Class
     cells.append(nbf.v4.new_code_cell("""import random
+import numba
+
+@numba.njit
+def bpr_sgd_update(user_pos_flat, user_pos_indptr, num_users, num_movies, b, P, Q, lr, reg, latent_dim, epochs):
+    n_users_have_pos = len(user_pos_indptr) - 1
+    for epoch in range(epochs):
+        loss_sum = 0.0
+        
+        # Lặp qua số lượng tương tác ước tính
+        n_steps = n_users_have_pos * 50
+        for _ in range(n_steps):
+            # Chọn user ngẫu nhiên có tương tác dương
+            u_idx = random.randint(0, n_users_have_pos - 1)
+            
+            start = user_pos_indptr[u_idx]
+            end = user_pos_indptr[u_idx+1]
+            n_pos = end - start
+            if n_pos == 0:
+                continue
+                
+            # Chọn positive item ngẫu nhiên
+            pos_idx = random.randint(0, n_pos - 1)
+            i_idx = user_pos_flat[start + pos_idx]
+            
+            # Chọn negative item ngẫu nhiên j_idx
+            j_idx = random.randint(0, num_movies - 1)
+            # Kiểm tra xem j_idx có phải phim dương của user không
+            is_pos = True
+            while is_pos:
+                j_idx = random.randint(0, num_movies - 1)
+                is_pos = False
+                for k in range(start, end):
+                    if user_pos_flat[k] == j_idx:
+                        is_pos = True
+                        break
+            
+            # SGD Update
+            x_u = P[u_idx]
+            x_i = Q[i_idx]
+            x_j = Q[j_idx]
+            
+            score_diff = b[i_idx] - b[j_idx]
+            for f in range(latent_dim):
+                score_diff += x_u[f] * (x_i[f] - x_j[f])
+                
+            d_loss = 1.0 / (1.0 + np.exp(score_diff))
+            
+            # Update bias
+            b[i_idx] -= lr * (-d_loss + reg * b[i_idx])
+            b[j_idx] -= lr * (d_loss + reg * b[j_idx])
+            
+            # Update latent vectors
+            for f in range(latent_dim):
+                p_uf = P[u_idx, f]
+                q_if = Q[i_idx, f]
+                q_jf = Q[j_idx, f]
+                
+                P[u_idx, f] -= lr * (-d_loss * (q_if - q_jf) + reg * p_uf)
+                Q[i_idx, f] -= lr * (-d_loss * p_uf + reg * q_if)
+                Q[j_idx, f] -= lr * (d_loss * p_uf + reg * q_jf)
+                
+    return b, P, Q
 
 class BPRMatrixFactorization:
     def __init__(self, k_latent=10, lr=0.05, reg=0.03, epochs=5, random_state=42):
@@ -624,93 +689,62 @@ class BPRMatrixFactorization:
         
     def fit(self, train_df):
         random.seed(self.random_state)
+        
         self.user_to_idx = {uid: i for i, uid in enumerate(train_df['userId'].unique())}
         self.movie_to_idx = {mid: i for i, mid in enumerate(train_df['movieId'].unique())}
+        self.idx_to_movie = {i: mid for mid, i in self.movie_to_idx.items()}
         self.num_users = len(self.user_to_idx)
         self.num_movies = len(self.movie_to_idx)
         
-        # Khởi tạo tham số biases và latent factors bằng numpy normal
         rng = np.random.default_rng(self.random_state)
         self.b = rng.normal(0.0, 0.1, size=self.num_movies)
         self.P = rng.normal(0.0, 0.1, size=(self.num_users, self.k))
         self.Q = rng.normal(0.0, 0.1, size=(self.num_movies, self.k))
         
-        # Tập hợp phim có tương tác tích cực của mỗi user (rating >= 3.5) dưới dạng list để sample và set để lookup
         user_pos_df = train_df[train_df['rating'] >= 3.5]
         if len(user_pos_df) == 0:
             user_pos_df = train_df
-        self.user_pos_items = user_pos_df.groupby('userId')['movieId'].apply(list).to_dict()
-        self.user_pos_items_set = {uid: set(items) for uid, items in self.user_pos_items.items()}
-        
-        train_users = list(self.user_pos_items.keys())
-        all_movies = list(self.movie_to_idx.keys())
-        n_samples = len(train_df)
-        
-        for epoch in range(self.epochs):
-            loss_sum = 0.0
-            for _ in range(n_samples):
-                # Lấy mẫu ngẫu nhiên u, positive item i, negative item j sử dụng standard random.choice (nhanh hơn numpy choice 50 lần trong loop)
-                u = random.choice(train_users)
-                pos_movies = self.user_pos_items[u]
-                pos_movies_set = self.user_pos_items_set[u]
-                if not pos_movies:
-                    continue
-                i = random.choice(pos_movies)
-                
-                j = random.choice(all_movies)
-                while j in pos_movies_set:
-                    j = random.choice(all_movies)
-                    
-                u_idx = self.user_to_idx[u]
-                i_idx = self.movie_to_idx[i]
-                j_idx = self.movie_to_idx[j]
-                
-                # Dự đoán điểm
-                x_u = self.P[u_idx]
-                x_i = self.Q[i_idx]
-                x_j = self.Q[j_idx]
-                
-                score_diff = self.b[i_idx] - self.b[j_idx] + np.dot(x_u, x_i - x_j)
-                
-                # BPR loss gradient w.r.t score_diff
-                d_loss = 1.0 / (1.0 + np.exp(score_diff))
-                loss_sum += -np.log(1.0 / (1.0 + np.exp(-score_diff)))
-                
-                # SGD Update
-                self.b[i_idx] -= self.lr * (-d_loss + self.reg * self.b[i_idx])
-                self.b[j_idx] -= self.lr * (d_loss + self.reg * self.b[j_idx])
-                
-                grad_u = -d_loss * (x_i - x_j)
-                grad_i = -d_loss * x_u
-                grad_j = d_loss * x_u
-                
-                self.P[u_idx] -= self.lr * (grad_u + self.reg * x_u)
-                self.Q[i_idx] -= self.lr * (grad_i + self.reg * x_i)
-                self.Q[j_idx] -= self.lr * (grad_j + self.reg * x_j)
-                
-            if (epoch + 1) % 2 == 0 or epoch == 0:
-                print(f"Epoch {epoch+1:02d}/{self.epochs:02d} | Train BPR-Loss: {loss_sum/n_samples:.4f}")
-                
-    def predict(self, test_df):
-        predictions = []
-        global_avg = 3.5
-        for idx, row in test_df.iterrows():
-            uid = row['userId']
-            mid = row['movieId']
-            true_r = row['rating']
             
+        user_pos_dict = user_pos_df.groupby('userId')['movieId'].apply(list).to_dict()
+        
+        # Chuẩn bị dữ liệu phẳng cho Numba
+        user_pos_flat = []
+        user_pos_indptr = [0]
+        
+        for uid in self.user_to_idx.keys():
+            items = user_pos_dict.get(uid, [])
+            item_indices = [self.movie_to_idx[mid] for mid in items if mid in self.movie_to_idx]
+            user_pos_flat.extend(item_indices)
+            user_pos_indptr.append(len(user_pos_flat))
+            
+        user_pos_flat = np.array(user_pos_flat, dtype=np.int32)
+        user_pos_indptr = np.array(user_pos_indptr, dtype=np.int32)
+        
+        print("Đang huấn luyện BPR sử dụng Numba JIT...")
+        self.b, self.P, self.Q = bpr_sgd_update(
+            user_pos_flat, user_pos_indptr, self.num_users, self.num_movies,
+            self.b, self.P, self.Q, self.lr, self.reg, self.k, self.epochs
+        )
+        print("Huấn luyện BPR hoàn thành.")
+        
+    def predict_loo(self, test_data):
+        predictions_dict = {}
+        for uid, pos_item, neg_items in test_data:
+            items = [pos_item] + neg_items
             u_idx = self.user_to_idx.get(uid, None)
-            m_idx = self.movie_to_idx.get(mid, None)
             
-            if u_idx is not None and m_idx is not None:
-                score = self.b[m_idx] + np.dot(self.P[u_idx], self.Q[m_idx])
-                # Map BPR score to ratings scale [0.5, 5.0] using sigmoid
-                est = 0.5 + 4.5 / (1.0 + np.exp(-score))
-            else:
-                est = global_avg
+            user_preds = []
+            for item in items:
+                m_idx = self.movie_to_idx.get(item, None)
+                is_pos = (item == pos_item)
                 
-            predictions.append((uid, mid, true_r, est, None))
-        return predictions
+                if u_idx is not None and m_idx is not None:
+                    score = self.b[m_idx] + np.dot(self.P[u_idx], self.Q[m_idx])
+                else:
+                    score = 0.0
+                user_preds.append((item, score, is_pos))
+            predictions_dict[uid] = user_preds
+        return predictions_dict
 
 print("Định nghĩa class BPRMatrixFactorization thành công!")"""))
 
@@ -791,71 +825,86 @@ print("Định nghĩa class BPRMatrixFactorization thành công!")"""))
             if (epoch + 1) % 2 == 0 or epoch == 0:
                 print(f"Epoch {epoch+1:02d}/{self.epochs:02d} | Cập nhật ALS hoàn thành.")
                 
-    def predict(self, test_df):
-        predictions = []
-        global_avg = 3.5
-        for idx, row in test_df.iterrows():
-            uid = row['userId']
-            mid = row['movieId']
-            true_r = row['rating']
-            
+    def predict_loo(self, test_data):
+        predictions_dict = {}
+        for uid, pos_item, neg_items in test_data:
+            items = [pos_item] + neg_items
             u_idx = self.user_to_idx.get(uid, None)
-            m_idx = self.movie_to_idx.get(mid, None)
             
-            if u_idx is not None and m_idx is not None:
-                dot = np.dot(self.P[u_idx], self.Q[m_idx])
-                # Quy đổi kết quả dot product (0 -> 1) sang thang ratings [0.5, 5.0]
-                est = 0.5 + 4.5 * max(0.0, min(1.0, dot))
-            else:
-                est = global_avg
+            user_preds = []
+            for item in items:
+                m_idx = self.movie_to_idx.get(item, None)
+                is_pos = (item == pos_item)
                 
-            predictions.append((uid, mid, true_r, est, None))
-        return predictions
+                if u_idx is not None and m_idx is not None:
+                    score = np.dot(self.P[u_idx], self.Q[m_idx])
+                else:
+                    score = 0.0
+                user_preds.append((item, score, is_pos))
+            predictions_dict[uid] = user_preds
+        return predictions_dict
 
 print("Định nghĩa class ImplicitALS thành công!")"""))
 
     # Cell 19: Code for Training and Evaluating BPR & ALS
-    cells.append(nbf.v4.new_code_cell("""# 1. Huấn luyện BPR
+    cells.append(nbf.v4.new_code_cell("""# 1. Phân chia tập dữ liệu Implicit LOO dùng chung từ recsys_utils
+train_df_imp, test_data_imp, user_interacted_items_imp = split_data_implicit_leave_one_out(ratings, user_col='userId', item_col='movieId')
+
+# 2. Huấn luyện BPR
 print("Huấn luyện BPR Matrix Factorization...")
 bpr_model = BPRMatrixFactorization(k_latent=10, lr=0.05, reg=0.03, epochs=5, random_state=42)
-bpr_model.fit(train_df)
+bpr_model.fit(train_df_imp)
 
-bpr_predictions = bpr_model.predict(test_df)
-rmse_bpr = np.sqrt(np.mean([(true_r - est)**2 for _, _, true_r, est, _ in bpr_predictions]))
-mae_bpr = np.mean([abs(true_r - est) for _, _, true_r, est, _ in bpr_predictions])
-precision_bpr, recall_bpr, ndcg_bpr = precision_recall_ndcg_at_k(bpr_predictions, k=10, threshold=3.5)
+bpr_preds_dict = bpr_model.predict_loo(test_data_imp)
+hr_bpr, ndcg_bpr, mrr_bpr = evaluate_implicit_loo(bpr_preds_dict, k=10)
 
-results.append({
-    "Model": "BPR Matrix Factorization",
-    "RMSE": rmse_bpr,
-    "MAE": mae_bpr,
-    "Precision@10": precision_bpr,
-    "Recall@10": recall_bpr,
-    "NDCG@10": ndcg_bpr
+# Lấy top-10 gợi ý của BPR cho Diversity/Novelty/Coverage
+bpr_recs = {}
+for uid, items in bpr_preds_dict.items():
+    items.sort(key=lambda x: x[1], reverse=True)
+    bpr_recs[uid] = [item[0] for item in items[:10]]
+
+div_bpr, nov_bpr, cov_bpr = calculate_beyond_accuracy_metrics(bpr_recs, train_df_imp, movies, k=10, item_col='movieId')
+
+implicit_results.append({
+    "Model": "BPR Matrix Factorization (NumPy)",
+    "HR@10": hr_bpr,
+    "NDCG@10": ndcg_bpr,
+    "MRR": mrr_bpr,
+    "Diversity@10": div_bpr,
+    "Novelty@10": nov_bpr,
+    "Coverage@10": cov_bpr
 })
 
-# 2. Huấn luyện ALS
+# 3. Huấn luyện ALS
 print("\\nHuấn luyện Implicit ALS...")
 als_model = ImplicitALS(k_latent=10, alpha=15, reg=0.05, epochs=5, random_state=42)
-als_model.fit(train_df)
+als_model.fit(train_df_imp)
 
-als_predictions = als_model.predict(test_df)
-rmse_als = np.sqrt(np.mean([(true_r - est)**2 for _, _, true_r, est, _ in als_predictions]))
-mae_als = np.mean([abs(true_r - est) for _, _, true_r, est, _ in als_predictions])
-precision_als, recall_als, ndcg_als = precision_recall_ndcg_at_k(als_predictions, k=10, threshold=3.5)
+als_preds_dict = als_model.predict_loo(test_data_imp)
+hr_als, ndcg_als, mrr_als = evaluate_implicit_loo(als_preds_dict, k=10)
 
-results.append({
-    "Model": "Implicit ALS",
-    "RMSE": rmse_als,
-    "MAE": mae_als,
-    "Precision@10": precision_als,
-    "Recall@10": recall_als,
-    "NDCG@10": ndcg_als
+# Lấy top-10 gợi ý của ALS
+als_recs = {}
+for uid, items in als_preds_dict.items():
+    items.sort(key=lambda x: x[1], reverse=True)
+    als_recs[uid] = [item[0] for item in items[:10]]
+
+div_als, nov_als, cov_als = calculate_beyond_accuracy_metrics(als_recs, train_df_imp, movies, k=10, item_col='movieId')
+
+implicit_results.append({
+    "Model": "Implicit ALS (NumPy)",
+    "HR@10": hr_als,
+    "NDCG@10": ndcg_als,
+    "MRR": mrr_als,
+    "Diversity@10": div_als,
+    "Novelty@10": nov_als,
+    "Coverage@10": cov_als
 })
 
 print("\\nĐánh giá BPR và ALS thành công!")
-print(f"BPR -> RMSE: {rmse_bpr:.4f} | Precision@10: {precision_bpr:.4f} | NDCG@10: {ndcg_bpr:.4f}")
-print(f"ALS -> RMSE: {rmse_als:.4f} | Precision@10: {precision_als:.4f} | NDCG@10: {ndcg_als:.4f}")"""))
+print(f"BPR -> HR@10: {hr_bpr:.4f} | NDCG@10: {ndcg_bpr:.4f} | Diversity@10: {div_bpr:.4f}")
+print(f"ALS -> HR@10: {hr_als:.4f} | NDCG@10: {ndcg_als:.4f} | Diversity@10: {div_als:.4f}")"""))
 
     # Cell 20: Markdown Section 8
     cells.append(nbf.v4.new_markdown_cell("""## Phần 8: So sánh và Đánh giá Thực nghiệm
@@ -865,19 +914,24 @@ Chúng ta sẽ hiển thị kết quả so sánh tất cả các mô hình đã 
 
     # Cell 21: Code - Creating Results DataFrame & Plots
     cells.append(nbf.v4.new_code_cell("""# Chuyển bảng kết quả sang DataFrame
-df_results = pd.DataFrame(results).sort_values(by="RMSE")
-display(df_results)
+df_explicit = pd.DataFrame(explicit_results).sort_values(by="RMSE")
+df_implicit = pd.DataFrame(implicit_results).sort_values(by="NDCG@10", ascending=False)
 
-# Trực quan hóa sai số RMSE và MAE (Càng thấp càng tốt)
+print("=== KẾT QUẢ ĐÁNH GIÁ CÁC MÔ HÌNH RATING DỰ ĐOÁN (EXPLICIT) ===")
+display(df_explicit)
+
+print("\\n=== KẾT QUẢ ĐÁNH GIÁ CÁC MÔ HÌNH XẾP HẠNG TOP-K LOO (IMPLICIT) ===")
+display(df_implicit)
+
+# Trực quan hóa sai số RMSE (Càng thấp càng tốt) và NDCG@10 (Càng cao càng tốt)
 fig, axes = plt.subplots(1, 2, figsize=(18, 6))
 
-sns.barplot(data=df_results, x="RMSE", y="Model", ax=axes[0], hue="Model", legend=False)
+sns.barplot(data=df_explicit, x="RMSE", y="Model", ax=axes[0], hue="Model", legend=False)
 axes[0].set_title("So sánh chỉ số RMSE (Càng thấp càng tốt)")
 axes[0].set_xlabel("RMSE")
 axes[0].set_ylabel("")
 
-# Trực quan hóa chỉ số NDCG@10 (Càng cao càng tốt)
-sns.barplot(data=df_results, x="NDCG@10", y="Model", ax=axes[1], hue="Model", legend=False)
+sns.barplot(data=df_implicit, x="NDCG@10", y="Model", ax=axes[1], hue="Model", legend=False)
 axes[1].set_title("So sánh chỉ số NDCG@10 (Càng cao càng tốt)")
 axes[1].set_xlabel("NDCG@10")
 axes[1].set_ylabel("")
@@ -886,37 +940,70 @@ plt.tight_layout()
 plt.show()"""))
 
     # Cell 22: Markdown Section 9
-    cells.append(nbf.v4.new_markdown_cell("""## Phần 9: Phân tích Use Cases và Ứng dụng Thực tế
+    cells.append(nbf.v4.new_markdown_cell("""## Phần 9: Phân tích Kết quả Thực nghiệm và Ứng dụng Thực tế
 
-Dựa trên bảng so sánh thực nghiệm phía trên, chúng ta có các nhận xét quan trọng:
+Dựa trên bảng so sánh thực nghiệm phía trên (thực hiện trên tập dữ liệu MovieLens 1M, giao thức Leave-One-Out), chúng ta rút ra các nhận xét quan trọng dưới đây.
 
-### 9.1 Phân tích Hiệu năng các Mô hình:
-1.  **Nhóm Matrix Factorization (SVD, SVD++):**
-    *   **Hiệu năng:** Đạt điểm số tốt nhất cả về sai số nhỏ nhất (RMSE $\\approx 0.86$) lẫn chỉ số xếp hạng (NDCG@10 $\\approx 0.84$). Điều này minh chứng cho sức mạnh biểu diễn của các nhân tố ẩn (latent factors). SVD++ thường cho kết quả nhỉnh hơn một chút do thu thập thông tin tương tác ngầm định, nhưng thời gian huấn luyện sẽ lâu hơn SVD.
-    *   **NMF:** Cho kết quả sai số cao hơn SVD và SVD++ một chút, tuy nhiên đặc điểm không âm giúp giải thích tốt hơn thành phần phim (ví dụ: phim này có $30\\%$ hành động, $70\\%$ hài hước).
-2.  **Nhóm Collaborative Filtering Lân cận (KNN):**
-    *   **Hiệu năng:** Điểm số kém hơn so với Matrix Factorization. Item-based KNN thường ổn định hơn User-based KNN do thị hiếu phim của đám đông ổn định hơn hành vi biến động của từng user đơn lẻ. Thuật toán tối ưu hóa theo độ chệch (KNNWithMeans) khắc phục tốt hơn sự khó/dễ tính của từng user so với KNNBasic.
-3.  **Content-Based Filtering:**
-    *   **Hiệu năng:** Đạt chỉ số tương đối khiêm tốn trên tập dữ liệu này. Điều này xảy ra do mô hình chỉ dựa vào thuộc tính thể loại (`genres`) khá thô và chưa bắt kịp các sở thích phức tạp ngoài thể loại (như diễn viên, đạo diễn, từ khóa thẻ tag).
-4.  **Factorization Machines (FM):**
-    *   **Hiệu năng:** Cho kết quả cạnh tranh trực tiếp với SVD. Điểm nổi bật nhất của FM là khả năng tích hợp linh hoạt thông tin phụ (`genres` phim) và khả năng suy diễn trên ma trận rất thưa thớt nhờ tối ưu hóa độ phức tạp thời gian tuyến tính $\\mathcal{O}(k \\cdot d)$ thay vì $\\mathcal{O}(d^2)$.
-5.  **BPR & Implicit ALS:**
-    *   **BPR**: BPR tối ưu hóa thứ tự xếp hạng (pairwise loss) thay vì sai số điểm số (RMSE). Do đó, điểm số RMSE của nó có thể không tối ưu (khoảng $0.90$), nhưng chỉ số xếp hạng xếp thứ hạng danh sách gợi ý của nó rất tốt (NDCG@10 đạt giá trị cao cạnh tranh trực tiếp với SVD).
-    *   **Implicit ALS**: Giải pháp chuẩn để phân rã ma trận từ dữ liệu ngầm định với trọng số tin cậy. Nhờ phép cập nhật luân phiên ALS, mô hình cực kỳ dễ tối ưu song song và đạt hiệu năng rất tốt.
+> **Tóm tắt kết quả tốt nhất**: FM (Factorization Machine) dẫn đầu nhóm Explicit với **RMSE=0.861**, còn Implicit ALS dẫn đầu nhóm Implicit với **HR@10=0.680, NDCG@10=0.429 và Coverage=31.2%**.
 
 ---
 
-### 9.2 Hướng dẫn Lựa chọn và Ứng dụng các Thuật toán theo Use Case:
+### 9.1 Phân tích chi tiết Hiệu năng các Mô hình:
 
-| Thuật toán | Sử dụng tối ưu trong trường hợp nào? (Use Case) | Khả năng Giải quyết Cold Start | Độ phức tạp / Khả năng mở rộng (Scalability) | Tính giải thích (Explainability) |
+1.  **Nhóm Matrix Factorization (SVD, SVD++, NMF):**
+    *   **SVD++ (RMSE=0.868) nhỉnh hơn SVD (RMSE=0.883)** nhờ khai thác thêm implicit feedback – tập hợp tất cả phim mà user đã tương tác (dù chưa chấm điểm). Khoảng cách ~0.015 RMSE tuy nhỏ nhưng có ý nghĩa khi hệ thống đặt mục tiêu cá nhân hóa sâu sắc.
+    *   **NMF (RMSE=0.926)** là kém nhất trong nhóm MF vì ràng buộc non-negativity làm giảm tự do biểu diễn vector ẩn. Bù lại, các nhân tố ẩn có thể diễn giải được về mặt ngữ nghĩa (ví dụ: nhân tố phản ánh thể loại phim), điều mà SVD không có.
+    *   **Kết luận thực chiến**: SVD là lựa chọn an toàn nhất về tỷ lệ chi phí-hiệu quả. Nếu cần cải thiện vài điểm RMSE, SVD++ đáng đánh đổi thời gian huấn luyện lâu hơn ~2x.
+
+2.  **Nhóm Collaborative Filtering Lân cận (User-KNN, Item-KNN):**
+    *   **RMSE nằm trong khoảng 0.904–0.914**, kém hơn nhóm MF khoảng 2–3%. Item-based KNN (Pearson) đạt RMSE=0.911, User-based KNN (Pearson) đạt 0.904 – khoảng cách không đáng kể giữa hai biến thể.
+    *   **Hạn chế về bộ nhớ và khả năng mở rộng**: KNN cần lưu toàn bộ ma trận tương đồng $O(N^2)$ hoặc $O(M^2)$. Với MovieLens 1M (6040 users, 3952 movies), điều này có thể quản lý được, nhưng ở quy mô 10M users sẽ không khả thi.
+    *   **Kết luận thực chiến**: KNN phù hợp làm baseline hoặc cung cấp gợi ý giải thích được ("vì bạn đã xem..."), nhưng không nên là mô hình chính trong hệ thống sản xuất quy mô lớn.
+
+3.  **Content-Based Filtering:**
+    *   **RMSE=1.524, MAE=1.254** – kết quả yếu nhất trong tất cả các mô hình, cách biệt rất lớn so với nhóm MF (~0.66 RMSE points). Nguyên nhân: đặc trưng `genres` quá thô (chỉ ~18 thể loại), không đủ để phân biệt 3952 bộ phim một cách tinh tế.
+    *   **Đừng loại bỏ hoàn toàn**: Content-Based là giải pháp duy nhất cho bài toán *item cold start* – phim mới ra chưa có rating. Trong sản xuất, Content-Based thường được ghép với CF trong kiến trúc hybrid (ví dụ: khởi tạo vector phim mới bằng embedding genre trước khi CF lấy lại quyền kiểm soát).
+    *   **Cải thiện tiềm năng**: Thay `genres` đơn thuần bằng TF-IDF trên mô tả phim hoặc sentence embedding (BERT) sẽ cải thiện đáng kể RMSE xuống mức cạnh tranh hơn với SVD.
+
+4.  **Factorization Machines (FM) – Kết quả Tốt nhất Explicit:**
+    *   **FM đạt RMSE=0.861, MAE=0.656** – tốt nhất trong toàn bộ nhóm explicit, nhỉnh hơn cả SVD++ (0.868). Đáng chú ý là FM hội tụ sau đúng 10 epochs SGD, từ RMSE=0.922 (epoch 1) xuống 0.861 (epoch 10), cho thấy tốc độ học ổn định.
+    *   **Lý do thành công**: FM học được tương tác bậc 2 giữa user ID, item ID và `genres` thể loại phim trong không gian ẩn $k$ chiều. Nhờ rút gọn $O(d^2)$ xuống $O(k \\cdot d)$, FM xử lý hiệu quả 9,613 đặc trưng thưa thớt.
+    *   **Kết luận thực chiến**: FM là mô hình ML truyền thống tốt nhất khi có side information (genres, tags, user demographics). Trong sản xuất, FM là bước đệm lý tưởng trước khi triển khai DL (Wide & Deep hoặc DeepFM).
+
+5.  **BPR & Implicit ALS – Nhóm Implicit Feedback:**
+    *   **Implicit ALS (HR@10=0.680, NDCG@10=0.429) vượt trội BPR (HR@10=0.579, NDCG@10=0.352)** trên mọi chỉ số. Khoảng cách HR@10 tới 10.1 percentage points là rất đáng kể trong thực chiến.
+    *   **Phân tích Beyond-Accuracy**: Cả hai mô hình có Diversity@10 tương đương (~0.789–0.791), nhưng ALS có **Novelty cao hơn (12.40 vs 11.24)** và **Coverage gấp đôi (31.2% vs 14.7%)**. Coverage thấp của BPR cho thấy mô hình bị thiên vị về các phim phổ biến (popularity bias nặng), gây nguy cơ nghèo hóa danh mục gợi ý về dài hạn.
+    *   **Lý do ALS vượt BPR**: ALS tối ưu hóa toàn bộ ma trận tương tác (confidence-weighted) thay vì lấy mẫu cặp ngẫu nhiên như BPR, nhờ đó học biểu diễn user/item toàn cục tốt hơn. Tuy nhiên, ALS đòi hỏi nhiều RAM hơn vì phải lưu confidence matrix $C$.
+    *   **Kết luận thực chiến**: Implicit ALS là lựa chọn mặc định vững chắc cho hệ thống implicit feedback. BPR phù hợp hơn khi cần huấn luyện gia tăng (incremental) hoặc tài nguyên bộ nhớ hạn chế.
+
+---
+
+### 9.2 Phân tích Beyond-Accuracy: Diversity, Novelty, Coverage
+
+Chỉ số accuracy (HR@10, NDCG@10, RMSE) chỉ phản ánh khả năng **đoán đúng** của mô hình. Trong môi trường sản xuất, ba chỉ số sau quyết định **trải nghiệm người dùng thực tế**:
+
+| Chỉ số | Implicit ALS | BPR MF |
+| :--- | :--- | :--- |
+| **Diversity@10** | 0.789 | 0.791 |
+| **Novelty@10** | **12.40** | 11.24 |
+| **Coverage@10** | **31.2%** | 14.7% |
+
+*   **Coverage** là chỉ số quan trọng nhất với bài toán kinh doanh: ALS phủ 31.2% catalog (~1,233 trong 3,952 phim), trong khi BPR chỉ phủ 14.7% (~581 phim). Hệ thống chỉ gợi ý một tập nhỏ phim phổ biến sẽ gây thiệt hại kinh tế cho nhà cung cấp nội dung dài đuôi (long-tail).
+*   **Novelty** của ALS cao hơn (12.40 > 11.24) cho thấy ALS gợi ý phim ít phổ biến hơn nhưng vẫn phù hợp – tín hiệu tốt về khả năng chống popularity bias.
+*   **Tradeoff**: Cả hai mô hình có Diversity@10 tương đương (~0.79), nghĩa là các phim trong cùng top-10 không quá giống nhau – tránh được filter bubble.
+
+---
+
+### 9.3 Hướng dẫn Lựa chọn và Ứng dụng các Thuật toán theo Use Case:
+
+| Thuật toán | Sử dụng tối ưu trong trường hợp nào? | Khả năng Giải quyết Cold Start | Độ phức tạp / Scalability | Explainability |
 | :--- | :--- | :--- | :--- | :--- |
-| **Content-Based** | Thích hợp cho người dùng mới (chỉ cần biết họ thích một vài thể loại phim) hoặc hệ thống mới xây dựng ít tương tác. | **Tốt (ở phía Item)**: Phim mới chưa có rating vẫn gợi ý được dựa vào thể loại. | **Tốt**: Tính toán nhanh, dễ dàng song song hóa. | **Rất tốt**: Dễ giải thích ("Bạn thích thể loại Hành động vì bạn đã xem phim Toy Story"). |
-| **User-Based CF** | Hệ thống nhỏ có số lượng người dùng nhỏ hơn nhiều so với số lượng phim (ví dụ: hệ thống B2B chuyên biệt). | **Kém**: Cả người dùng mới và phim mới đều bị ảnh hưởng. | **Kém**: Tăng theo lũy thừa khi số lượng người dùng lớn lên. | **Trung bình**: ("Gợi ý cho bạn vì những người giống bạn thích phim này"). |
-| **Item-Based CF** | Hệ thống thương mại điện tử lớn hoặc phim trực tuyến nơi số lượng sản phẩm ổn định hơn số lượng người dùng. | **Kém** | **Tốt hơn User-based**: Bảng tương đồng Item-Item có kích thước nhỏ và ít thay đổi hơn. | **Tốt**: ("Bạn được gợi ý phim này vì tương tự phim bạn đã xem"). |
-| **Matrix Factorization (SVD)** | Hệ gợi ý nền tảng cho người dùng hiện hữu, cần độ chính xác cao về mặt cá nhân hóa sâu sắc. | **Rất kém**: Không có dữ liệu tương tác là không huấn luyện được vector ẩn. | **Trung bình**: Cần huấn luyện định kỳ (retrain offline), suy diễn thời gian thực (inference) rất nhanh. | **Rất kém**: Các chiều ẩn ẩn (latent factors) không có ý nghĩa vật lý rõ ràng. |
-| **Factorization Machine (FM)** | Hệ gợi ý hiện đại cần kết hợp nhiều đặc trưng phụ (side information: tuổi, giới tính, thời gian, thiết bị, thẻ gắn tag, thể loại phim). | **Trung bình - Tốt**: Vượt qua Cold Start nhờ học mối quan hệ qua các vector đặc trưng phụ. | **Tất tốt**: Nhờ thuật toán rút gọn độ phức tạp tuyến tính của Steffen Rendle. | **Trung bình**: Tương tự hồi quy tuyến tính cộng thêm phần tương tác bậc hai. |
-| **BPR Matrix Factorization** | Gợi ý danh sách đề xuất Top-K từ phản hồi ngầm định (Implicit feedback như click, view). Đánh giá dựa trên thứ tự ưu tiên. | **Kém** | **Tốt**: Lấy mẫu ba (triplet sampling) ngẫu nhiên giúp SGD hội tụ rất nhanh trên tập dữ liệu lớn. | **Kém** |
-| **Implicit ALS** | Hệ thống lớn có luồng dữ liệu ngầm định khổng lồ, cần khả năng song song hóa phân tán (Big Data). | **Kém** | **Rất tốt**: Phép toán tối ưu ALS độc lập và dễ dàng phân tán tính toán trên Apache Spark. | **Kém** |
+| **Content-Based** (RMSE=1.52) | Item cold start – phim mới chưa có rating. Kết hợp hybrid để bổ sung cho CF. **Không dùng standalone** do RMSE quá cao. | **Tốt (Item)**: Phim mới vẫn gợi ý được dựa vào genre/mô tả. | **Tốt**: Cosine similarity $O(N \\cdot M)$. | **Xuất sắc**: "Vì bạn thích Action/Sci-Fi". |
+| **User/Item-Based KNN** (RMSE~0.904–0.914) | Prototype, baseline, hoặc tính năng "người dùng tương tự bạn cũng thích". Không nên dùng trong production quy mô lớn. | **Kém**: User/item mới không có neighbors. | **Kém**: Ma trận tương đồng $O(N^2)$ hay $O(M^2)$. | **Tốt**: Gợi ý dựa trên lịch sử người dùng tương tự. |
+| **SVD / SVD++** (RMSE=0.868–0.883) | Nền tảng cá nhân hóa cho user có lịch sử. SVD++ khi muốn thêm ~0.015 điểm RMSE, SVD khi cần train nhanh hơn 2x. | **Rất kém**: Phụ thuộc hoàn toàn vào lịch sử tương tác. | **Trung bình**: Retrain offline batch; inference $O(k)$ rất nhanh. | **Kém**: Latent factors thiếu ngữ nghĩa rõ ràng. |
+| **Factorization Machine (FM)** (**RMSE=0.861, tốt nhất**) | Khi có side information (genre, demographics, thời gian). Tốt nhất trong nhóm ML explicit. Bước đệm lý tưởng trước khi triển khai DL. | **Trung bình-Tốt**: Feature embedding giảm cold start qua side info. | **Tốt**: $O(k \\cdot d)$ tuyến tính, dễ productionize. | **Trung bình**: Feature importance phân tích được. |
+| **BPR MF** (HR@10=0.579, Coverage=14.7%) | Implicit feedback khi RAM hạn chế hoặc cần incremental training. Lưu ý: popularity bias cao (Coverage thấp). | **Kém** | **Tốt**: SGD triplet sampling hội tụ nhanh. | **Kém** |
+| **Implicit ALS** (**HR@10=0.680, Coverage=31.2%, tốt nhất**) | **Lựa chọn mặc định cho Implicit Feedback** – vượt trội BPR mọi mặt. Phù hợp Big Data với Spark ALS. Coverage cao nhất (31.2%) giúp giảm popularity bias. | **Kém** | **Rất tốt**: ALS song song hóa tốt; Apache Spark ALS scale đến hàng triệu users. | **Kém** |
 """))
 
     nb['cells'] = cells

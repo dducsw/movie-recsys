@@ -29,7 +29,7 @@ class ChatbotService:
                 # Filter the current movie from the list if present
                 similar_movies = [m for m in similar_movies if m["movieId"] != matched_movie["movieId"]][:5]
                 return {
-                    "text": f"Dựa trên bộ phim **{matched_movie['title']}** mà bạn quan tâm, tôi gợi ý cho bạn một số phim tương tự sau:",
+                    "text": f"Based on **{matched_movie['title']}** that you liked, here are some similar recommendations:",
                     "movies": similar_movies
                 }
 
@@ -71,20 +71,20 @@ class ChatbotService:
             genres_str = ", ".join(detected_genres)
             if recommended:
                 return {
-                    "text": f"Tôi tìm thấy một số phim thuộc thể loại **{genres_str}** phổ biến nhất dành cho bạn:",
+                    "text": f"Here are the most popular **{genres_str}** movies I found for you:",
                     "movies": recommended
                 }
             else:
                 return {
-                    "text": f"Xin lỗi, tôi chưa tìm thấy phim nào thuộc thể loại **{genres_str}** trong cơ sở dữ liệu.",
+                    "text": f"Sorry, I couldn't find any **{genres_str}** movies in the database.",
                     "movies": []
                 }
 
         # 3. Fallback / Greeting
         greeting_replies = [
-            "Xin chào! Tôi là AI Chatbot gợi ý phim. Bạn có thể yêu cầu tôi gợi ý phim theo thể loại (hành động, hài hước, kinh dị...) hoặc tìm phim tương tự một bộ phim bạn thích (ví dụ: 'phim giống Toy Story').",
-            "Chào bạn! Hôm nay bạn muốn tìm phim gì? Hãy nói cho tôi biết thể loại hoặc tên phim bạn yêu thích nhé!",
-            "Xin chào! Tôi có thể giúp gì cho bạn hôm nay? Hãy nhập thể loại phim bạn muốn xem (ví dụ: 'phim hoạt hình' hoặc 'phim khoa học viễn tưởng')."
+            "Hello! I am your AI movie recommendation chatbot. You can ask me to recommend movies by genre (e.g., 'action', 'comedy', 'horror') or find movies similar to one you like (e.g., 'movies like Toy Story').",
+            "Hi there! What kind of movies are you looking for today? Tell me your favorite genres or movie names!",
+            "Hello! How can I help you today? Enter a movie genre or title you'd like to explore (e.g., 'animation' or 'sci-fi')."
         ]
         return {
             "text": random.choice(greeting_replies),
