@@ -23,6 +23,7 @@ def query_movies_node(state: GraphState) -> dict:
 
     elif intent == "genre" and genres:
         genre_pop = MovieModel.get_all_genres_and_popularity()
+        print(genre_pop)
         for g in genres:
             g_lower = g.lower()
             if g_lower in genre_pop:
