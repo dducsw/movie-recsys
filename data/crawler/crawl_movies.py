@@ -195,8 +195,8 @@ if __name__ == "__main__":
                         help="End year to crawl (default: 2026)")
     parser.add_argument("--pages", type=int, default=10,
                         help="Number of pages to fetch, 20 movies per page (default: 10)")
-    parser.add_argument("--output", type=str, default="data/movies_crawled.csv",
-                        help="Output path for CSV file (default: data/movies_crawled.csv)")
+    parser.add_argument("--output", type=str, default=os.path.join(os.path.dirname(__file__), "movies_crawled.csv"),
+                        help="Output path for CSV file (default: data/crawler/movies_crawled.csv)")
                         
     args = parser.parse_args()
     
