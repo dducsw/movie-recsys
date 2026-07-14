@@ -74,6 +74,12 @@ pydantic>=2.0.0
 pandas>=2.0.0
 numpy>=1.24.0
 scikit-surprise>=1.1.3
+
+# Chatbot
+langchain-core==1.4.6
+langchain-google-genai==4.2.1
+langgraph>=1.2.2
+tavily-python>=0.7.26
 ```
 
 ### Bước 2: Thiết kế Database Models (`backend/models.py`)
