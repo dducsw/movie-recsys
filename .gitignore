@@ -226,3 +226,6 @@ evaluation/ml_pipeline/processed_data/
 evaluation/ml_pipeline/catboost_info/
 *.pkl
 *.h5
+
+# vscode
+.vscode/
