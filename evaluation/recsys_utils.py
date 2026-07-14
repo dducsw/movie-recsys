@@ -232,3 +232,111 @@ def calculate_beyond_accuracy_metrics(recommendations, train_df, movies_df, movi
     mean_diversity = np.mean(diversity_scores) if diversity_scores else 0.0
     
     return mean_diversity, mean_novelty, coverage
+
+# ==========================================
+# 5. THUẬT TOÁN HỖ TRỢ NÂNG CẤP (BM25, RRF, DYNAMIC LAMBDA)
+# ==========================================
+
+class BM25:
+    """
+    Thuật toán BM25 (Okapi BM25) phục vụ lọc thô dựa trên nội dung (Content-Based Retrieval).
+    Sử dụng CountVectorizer của scikit-learn để tối ưu hóa hiệu năng tính toán.
+    """
+    def __init__(self, b=0.75, k1=1.5):
+        from sklearn.feature_extraction.text import CountVectorizer
+        self.vectorizer = CountVectorizer(stop_words='english', token_pattern=r'(?u)\b\w+\b')
+        self.b = b
+        self.k1 = k1
+        self.tf = None
+        self.doc_len = None
+        self.avg_doc_len = None
+        self.idf = None
+
+    def fit(self, corpus):
+        """
+        corpus: list of strings (mô tả nội dung phim)
+        """
+        self.tf = self.vectorizer.fit_transform(corpus) # shape (N, V)
+        self.doc_len = np.array(self.tf.sum(axis=1)).flatten()
+        self.avg_doc_len = self.doc_len.mean()
+        
+        N = self.tf.shape[0]
+        # Tính Document Frequency (DF) cho từng từ
+        df = np.bincount(self.tf.indices, minlength=self.tf.shape[1])
+        # Công thức IDF của BM25
+        self.idf = np.log(1.0 + (N - df + 0.5) / (df + 0.5))
+        return self
+
+    def transform(self, query_str):
+        """
+        Trả về mảng điểm số BM25 cho tất cả tài liệu trong corpus tương ứng với query_str
+        """
+        q_vec = self.vectorizer.transform([query_str]).toarray()[0]
+        q_indices = np.where(q_vec > 0)[0]
+        if len(q_indices) == 0:
+            return np.zeros(self.tf.shape[0])
+            
+        # Trích xuất term frequency cho các từ trong query
+        tf_q = self.tf[:, q_indices].toarray() # shape (N, len(q_indices))
+        idf_q = self.idf[q_indices] # shape (len(q_indices),)
+        
+        # Công thức BM25: score = sum( idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * L / L_avg)) )
+        denom = tf_q + self.k1 * (1.0 - self.b + self.b * self.doc_len[:, np.newaxis] / self.avg_doc_len)
+        scores = (tf_q * (self.k1 + 1.0) / denom) * idf_q
+        return scores.sum(axis=1)
+
+
+def reciprocal_rank_fusion(als_candidates, bm25_candidates, k=60):
+    """
+    Gộp danh sách xếp hạng từ hai nguồn bằng thuật toán Reciprocal Rank Fusion (RRF).
+    als_candidates: list of item_ids (đã sắp xếp từ tốt nhất đến kém nhất)
+    bm25_candidates: list of item_ids (đã sắp xếp từ tốt nhất đến kém nhất)
+    k: hằng số làm mượt (smoothing constant)
+    
+    Trả về:
+        sorted_candidates: list of (item_id, rrf_score) được xếp hạng giảm dần
+    """
+    rrf_scores = {}
+    
+    # Đăng ký thứ hạng từ nguồn ALS (Collaborative Filtering)
+    for rank, item_id in enumerate(als_candidates, start=1):
+        rrf_scores[item_id] = rrf_scores.get(item_id, 0.0) + (1.0 / (k + rank))
+        
+    # Đăng ký thứ hạng từ nguồn BM25 (Content-Based)
+    for rank, item_id in enumerate(bm25_candidates, start=1):
+        rrf_scores[item_id] = rrf_scores.get(item_id, 0.0) + (1.0 / (k + rank))
+        
+    # Sắp xếp theo rrf_score giảm dần
+    sorted_candidates = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+    return sorted_candidates
+
+
+def calculate_user_lambda(user_liked_genres, all_genres, base_min=0.4, base_max=0.9):
+    """
+    Tính toán lambda động cho người dùng dựa trên Shannon Entropy của các thể loại đã thích.
+    user_liked_genres: list các thể loại từ lịch sử phim user đã xem/thích.
+    all_genres: danh sách tất cả các thể loại độc bản trong hệ thống để chuẩn hóa entropy.
+    """
+    if not user_liked_genres:
+        return 0.7 # fallback mặc định
+        
+    from collections import Counter
+    import math
+    
+    counts = Counter(user_liked_genres)
+    total = len(user_liked_genres)
+    
+    # Tính Shannon Entropy
+    entropy = 0.0
+    for g, cnt in counts.items():
+        p = cnt / total
+        entropy -= p * math.log2(p)
+        
+    # Entropy cực đại khi thể loại phân bố đều trên tất cả các thể loại độc bản
+    max_entropy = math.log2(len(all_genres)) if len(all_genres) > 1 else 1.0
+    norm_entropy = min(1.0, entropy / max_entropy) if max_entropy > 0 else 0.0
+    
+    # Entropy càng cao (sở thích đa dạng) -> lambda càng thấp (đa dạng hóa nhiều hơn)
+    # Entropy càng thấp (sở thích chuyên biệt) -> lambda càng cao (đa dạng hóa ít hơn)
+    dynamic_lambda = base_max - (base_max - base_min) * norm_entropy
+    return dynamic_lambda

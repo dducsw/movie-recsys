@@ -280,7 +280,8 @@ def import_movies(csv_path, host, port, database, user, password):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Import Crawled Movies CSV to PostgreSQL using Psycopg2 with normalized schema")
-    parser.add_argument("--csv_path", type=str, default="data/crawler/movies_crawled_10k.csv",
+    default_csv = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "crawler", "movies_crawled_10k.csv"))
+    parser.add_argument("--csv_path", type=str, default=default_csv,
                         help="Path to crawled movies CSV (default: data/crawler/movies_crawled_10k.csv)")
     parser.add_argument("--host", type=str, default="localhost",
                         help="PostgreSQL host (default: localhost)")
