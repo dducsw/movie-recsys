@@ -36,6 +36,16 @@ This phase focuses on Exploratory Data Analysis (EDA) and implementing recommend
 
 ---
 
+### 🚀 ML Pipeline (3-Stage Recommendation Engine)
+Chúng tôi đã xây dựng và kiểm nghiệm thành công một Pipeline gợi ý hoàn chỉnh gồm 3 tầng theo tiêu chuẩn công nghiệp:
+1. **Retrieval (Lọc thô)**: Kết hợp Implicit ALS và Content-Based TF-IDF.
+2. **Ranking (Xếp hạng chi tiết)**: Dùng LightGBM LambdaRanker với Feature Engineering.
+3. **Re-ranking (Đa dạng hóa)**: Áp dụng thuật toán MMR (Maximal Marginal Relevance).
+
+👉 Chi tiết kiến trúc, các quyết định thiết kế và cách chạy được mô tả chi tiết tại [README.md của ML Pipeline](./evaluation/ml_pipeline/README.md).
+
+---
+
 ### 📌 Phase 2: Production System Architecture
 Transitioning from offline models to a production-grade, real-time recommendation application:
 * **Backend API**: FastAPI for serving recommendation results.

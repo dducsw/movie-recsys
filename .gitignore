@@ -219,3 +219,10 @@ __marimo__/
 
 # Environment variables
 .env
+
+# Movie Recsys custom ML pipeline ignores
+evaluation/ml_pipeline/models/
+evaluation/ml_pipeline/processed_data/
+evaluation/ml_pipeline/catboost_info/
+*.pkl
+*.h5

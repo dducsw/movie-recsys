@@ -89,37 +89,41 @@ print(f"Chia dữ liệu thành công! Train ratings: {len(train_ratings)} | Tes
     nb2 = nbf.v4.new_notebook()
     nb2_cells = []
     
-    nb2_cells.append(nbf.v4.new_markdown_cell("""# 02. Stage 1A: Content-Based Retrieval
-
-Notebook này xây dựng tầng lọc thô dựa trên nội dung (Content-Based) để đề xuất các ứng viên ban đầu cho người dùng.
-
----
-
-### Phân tích Quyết định Thiết kế:
-*   **Tại sao chọn TF-IDF + Cosine Similarity?**
-    *   Dữ liệu phim từ TMDB chứa các đặc trưng từ khóa có cấu trúc rõ ràng: `genres`, `director`, `cast`, và `keywords`. Các đặc trưng này mang tính phân loại từ khóa rất cao. TF-IDF kết hợp biểu diễn n-gram là giải thuật cực kỳ tối ưu để định lượng mức độ quan trọng của từ khóa mà không lo bị quá khớp (overfitting). Cosine Similarity giúp tính toán độ tương đồng góc giữa các vector tần suất một cách nhanh chóng.
-*   **Tại sao không chọn Deep Learning (Sentence-BERT)?**
-    *   Sentence-BERT (SBERT) là mạng Transformer dùng để hiểu **ngữ nghĩa tự nhiên** của các câu văn tự do (như `overview`). Với dữ liệu từ khóa rời rạc (như genres hay tên diễn viên), SBERT không mang lại lợi ích về ngữ nghĩa mà còn gây ra Overhead tính toán cực lớn (tải model ~400MB, suy luận chậm trên CPU). TF-IDF là đủ và hiệu quả hơn rất nhiều cho keyword matching.
-*   **Tại sao không chọn Word2Vec / FastText?**
-    *   Các mô hình Word Embedding tĩnh yêu cầu khối lượng văn bản cực lớn để huấn luyện các mối quan hệ từ vựng, hoặc nếu dùng pre-trained thì thường không tối ưu cho các danh từ riêng (tên đạo diễn, diễn viên) hay thuật ngữ điện ảnh đặc thù.
-"""))
-
+    nb2_cells.append(nbf.v4.new_markdown_cell("""# 02. Stage 1A: Content-Based Retrieval (BM25)
+ 
+ Notebook này xây dựng tầng lọc thô dựa trên nội dung (Content-Based) để đề xuất các ứng viên ban đầu cho người dùng sử dụng thuật toán BM25.
+ 
+ ---
+ 
+ ### Phân tích Quyết định Thiết kế:
+ *   **Tại sao chọn BM25 thay vì TF-IDF?**
+     *   BM25 tích hợp hai cơ chế tiên tiến hơn TF-IDF truyền thống: **Bão hòa Tần suất từ (TF Saturation)** giúp giới hạn tầm ảnh hưởng của một từ khóa lặp lại quá nhiều lần, và **Chuẩn hóa Độ dài Tài liệu (Document Length Normalization)** giúp cân bằng điểm số giữa các phim có metadata ngắn gọn và phim có metadata dài dòng.
+ *   **Tại sao không chọn Deep Learning (Sentence-BERT)?**
+     *   Sentence-BERT (SBERT) là mạng Transformer dùng để hiểu **ngữ nghĩa tự nhiên** của các câu văn tự do (như `overview`). Với dữ liệu từ khóa rời rạc (như genres hay tên diễn viên), SBERT không mang lại lợi ích về ngữ nghĩa mà còn gây ra Overhead tính toán cực lớn (tải model ~400MB, suy luận chậm trên CPU). BM25 là đủ và hiệu quả hơn rất nhiều cho keyword matching.
+ *   **Tại sao không chọn Word2Vec / FastText?**
+     *   Các mô hình Word Embedding tĩnh yêu cầu khối lượng văn bản cực lớn để huấn luyện các mối quan hệ từ vựng, hoặc nếu dùng pre-trained thì thường không tối ưu cho các danh từ riêng (tên đạo diễn, diễn viên) hay thuật ngữ điện ảnh đặc thù.
+ """))
+ 
     nb2_cells.append(nbf.v4.new_code_cell("""import os
+import sys
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import pickle
-
+ 
+# Thêm đường dẫn cha để import recsys_utils
+sys.path.append(os.path.abspath('..'))
+from recsys_utils import BM25
+ 
 # Load phim
 movies_df = pd.read_csv(os.path.join("..", "..", "data", "crawler", "movies_crawled.csv"))
-
+ 
 # Xử lý missing values
 movies_df['genres'] = movies_df['genres'].fillna('')
 movies_df['director'] = movies_df['director'].fillna('')
 movies_df['cast'] = movies_df['cast'].fillna('')
 movies_df['keywords'] = movies_df['keywords'].fillna('')
-
+ 
 # 1. Kết hợp đặc trưng dạng văn bản
 def build_metadata_soup(row):
     genres = row['genres'].replace('|', ' ')
@@ -127,34 +131,45 @@ def build_metadata_soup(row):
     keywords = row['keywords'].replace('|', ' ')
     director = row['director'].replace(' ', '')
     return f"{genres} {director} {cast} {keywords}"
-
+ 
 movies_df['soup'] = movies_df.apply(build_metadata_soup, axis=1)
 display(movies_df[['title', 'soup']].head(3))
-"""))
-
-    nb2_cells.append(nbf.v4.new_code_cell("""# 2. Xây dựng TF-IDF Matrix và lưu trữ Vectorizer
+ """))
+ 
+    nb2_cells.append(nbf.v4.new_code_cell("""# 2. Xây dựng mô hình BM25 và TF-IDF Matrix (TF-IDF dùng cho MMR)
+bm25 = BM25()
+bm25.fit(movies_df['soup'])
+ 
 tfidf = TfidfVectorizer(stop_words='english', max_features=5000, ngram_range=(1, 2))
 tfidf_matrix = tfidf.fit_transform(movies_df['soup'])
-
+ 
+print(f"BM25 fitted on {len(movies_df)} movies.")
 print(f"TF-IDF Matrix shape: {tfidf_matrix.shape}")
-
+ 
 # Lưu trữ ma trận tương đồng và vectorizer
 os.makedirs("models", exist_ok=True)
+with open("models/bm25_model.pkl", "wb") as f:
+    pickle.dump(bm25, f)
+    
 with open("models/tfidf_vectorizer.pkl", "wb") as f:
     pickle.dump(tfidf, f)
-    
+     
 with open("models/tfidf_matrix.pkl", "wb") as f:
     pickle.dump(tfidf_matrix, f)
-"""))
-
-    nb2_cells.append(nbf.v4.new_code_cell("""# 3. Định nghĩa hàm gợi ý Content-Based cho một danh sách phim đã xem
+ """))
+ 
+    nb2_cells.append(nbf.v4.new_code_cell("""# 3. Định nghĩa hàm gợi ý Content-Based dùng BM25 cho một danh sách phim đã xem
 def get_content_based_candidates(liked_movie_ids, top_n=100):
     liked_idx = movies_df[movies_df['movieId'].isin(liked_movie_ids)].index.tolist()
     if not liked_idx:
         return movies_df.sort_values(by='popularity', ascending=False)['movieId'].head(top_n).tolist()
         
-    sim_scores = cosine_similarity(tfidf_matrix[liked_idx], tfidf_matrix).mean(axis=0)
-    sorted_idx = np.argsort(sim_scores)[::-1]
+    # Tạo query bằng cách gộp soup của các phim đã xem
+    liked_soups = movies_df.iloc[liked_idx]['soup'].tolist()
+    query = " ".join(liked_soups)
+    
+    scores = bm25.transform(query)
+    sorted_idx = np.argsort(scores)[::-1]
     
     liked_idx_set = set(liked_idx)
     candidate_indices = [idx for idx in sorted_idx if idx not in liked_idx_set]
@@ -305,12 +320,16 @@ Notebook này xây dựng mô hình chấm điểm chi tiết (Ranking) để ch
 """))
 
     nb4_cells.append(nbf.v4.new_code_cell("""import os
+import sys
 import pandas as pd
 import numpy as np
 import pickle
 import lightgbm as lgb
 from sklearn.model_selection import train_test_split
-from sklearn.metrics.pairwise import cosine_similarity
+
+# Thêm đường dẫn cha để import recsys_utils
+sys.path.append(os.path.abspath('..'))
+from recsys_utils import BM25
 
 # Load dữ liệu đã xử lý
 train_ratings = pd.read_csv("processed_data/train_ratings.csv")
@@ -327,8 +346,8 @@ with open("processed_data/user_interacted_items.pkl", "rb") as f:
 with open("models/als_model.pkl", "rb") as f:
     als_model = pickle.load(f)
     
-with open("models/tfidf_matrix.pkl", "rb") as f:
-    tfidf_matrix = pickle.load(f)
+with open("models/bm25_model.pkl", "rb") as f:
+    bm25 = pickle.load(f)
 """))
 
     nb4_cells.append(nbf.v4.new_code_cell("""# 1. Tạo tập dữ liệu huấn luyện cho Ranker
@@ -360,12 +379,25 @@ print(df_rank['label'].value_counts())
 
     nb4_cells.append(nbf.v4.new_code_cell("""# 2. Xây dựng các đặc trưng (Feature Engineering)
 movies_df['genres'] = movies_df['genres'].fillna('')
+movies_df['director'] = movies_df['director'].fillna('')
+movies_df['cast'] = movies_df['cast'].fillna('')
+movies_df['keywords'] = movies_df['keywords'].fillna('')
+
+def build_metadata_soup(row):
+    genres = row['genres'].replace('|', ' ')
+    cast = ' '.join(row['cast'].split('|')[:5])
+    keywords = row['keywords'].replace('|', ' ')
+    director = row['director'].replace(' ', '')
+    return f"{genres} {director} {cast} {keywords}"
+
+movies_df['soup'] = movies_df.apply(build_metadata_soup, axis=1)
+movies_unindexed = movies_df.set_index('movieId', drop=False)
 movies_df = movies_df.set_index('movieId')
 users_df = users_df.set_index('user_id')
 
 features = []
 current_uid = None
-user_profile_sim = None
+user_bm25_scores = None
 
 als_user_factors = als_model.user_factors
 als_item_factors = als_model.item_factors
@@ -401,13 +433,15 @@ for _, row in df_rank_sorted_by_user.iterrows():
     if uid != current_uid:
         current_uid = uid
         liked_ids = train_ratings[(train_ratings['userId'] == uid) & (train_ratings['rating'] >= 3.5)]['movieId'].tolist()
-        liked_idx = [movie_to_idx[lid] for lid in liked_ids if lid in movie_to_idx]
-        if liked_idx:
-            user_profile_sim = cosine_similarity(tfidf_matrix[liked_idx], tfidf_matrix).mean(axis=0)
+        liked_ids = [lid for lid in liked_ids if lid in movies_unindexed.index]
+        if liked_ids:
+            liked_soups = movies_unindexed.loc[liked_ids, 'soup'].tolist()
+            query = " ".join(liked_soups)
+            user_bm25_scores = bm25.transform(query)
         else:
-            user_profile_sim = None
+            user_bm25_scores = None
             
-    cb_score = user_profile_sim[m_idx] if (user_profile_sim is not None and m_idx is not None) else 0.0
+    cb_score = user_bm25_scores[m_idx] if (user_bm25_scores is not None and m_idx is not None) else 0.0
         
     features.append({
         'popularity': popularity,
@@ -484,12 +518,21 @@ import pandas as pd
 import numpy as np
 import pickle
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-# Load data và TF-IDF matrix để đo độ đa dạng thể loại
+# Load data và tạo TF-IDF matrix MMR rộng để đo độ đa dạng
 movies_df = pd.read_csv(os.path.join("..", "..", "data", "crawler", "movies_crawled.csv"))
+movies_df['genres'] = movies_df['genres'].fillna('')
+movies_df['director'] = movies_df['director'].fillna('')
+movies_df['cast'] = movies_df['cast'].fillna('')
 
-with open("models/tfidf_matrix.pkl", "rb") as f:
-    tfidf_matrix = pickle.load(f)
+# Xây dựng soup đa dạng hóa mở rộng (Genre + Director + Cast)
+movies_df['mmr_soup'] = movies_df.apply(
+    lambda r: f"{r['genres'].replace('|', ' ')} {r['director'].replace(' ', '')} {' '.join(r['cast'].split('|')[:3])}", 
+    axis=1
+)
+mmr_vectorizer = TfidfVectorizer(stop_words='english')
+tfidf_matrix = mmr_vectorizer.fit_transform(movies_df['mmr_soup'])
 """))
 
     nb5_cells.append(nbf.v4.new_code_cell("""# 1. Định nghĩa giải thuật MMR
@@ -584,17 +627,20 @@ import numpy as np
 import pickle
 
 sys.path.append(os.path.abspath('..'))
-from recsys_utils import evaluate_implicit_loo, calculate_beyond_accuracy_metrics
+from recsys_utils import (
+    evaluate_implicit_loo, 
+    calculate_beyond_accuracy_metrics, 
+    BM25, 
+    reciprocal_rank_fusion, 
+    calculate_user_lambda
+)
 
 # Load models
 with open("models/als_model.pkl", "rb") as f:
     als_model = pickle.load(f)
     
-with open("models/tfidf_matrix.pkl", "rb") as f:
-    tfidf_matrix = pickle.load(f)
-    
-with open("models/tfidf_vectorizer.pkl", "rb") as f:
-    tfidf_vectorizer = pickle.load(f)
+with open("models/bm25_model.pkl", "rb") as f:
+    bm25 = pickle.load(f)
     
 with open("models/lgb_ranker.pkl", "rb") as f:
     lgb_ranker = pickle.load(f)
@@ -612,49 +658,78 @@ with open("processed_data/id_mappings.pkl", "rb") as f:
     
 with open("processed_data/user_item_matrix.pkl", "rb") as f:
     user_item_matrix = pickle.load(f)
+
+# Tạo TF-IDF matrix cho MMR mở rộng
+movies_df['genres'] = movies_df['genres'].fillna('')
+movies_df['director'] = movies_df['director'].fillna('')
+movies_df['cast'] = movies_df['cast'].fillna('')
+movies_df['mmr_soup'] = movies_df.apply(
+    lambda r: f"{r['genres'].replace('|', ' ')} {r['director'].replace(' ', '')} {' '.join(r['cast'].split('|')[:3])}", 
+    axis=1
+)
+from sklearn.feature_extraction.text import TfidfVectorizer
+mmr_vectorizer = TfidfVectorizer(stop_words='english')
+tfidf_matrix = mmr_vectorizer.fit_transform(movies_df['mmr_soup'])
 """))
 
     nb6_cells.append(nbf.v4.new_code_cell("""# 1. Định nghĩa End-to-End Pipeline
-movies_df['genres'] = movies_df['genres'].fillna('')
+# Tạo metadata soup cho phim phục vụ tính cb_score của ứng viên
+movies_df['director'] = movies_df['director'].fillna('')
+movies_df['cast'] = movies_df['cast'].fillna('')
+movies_df['keywords'] = movies_df['keywords'].fillna('')
+
+def build_metadata_soup(row):
+    genres = row['genres'].replace('|', ' ')
+    cast = ' '.join(row['cast'].split('|')[:5])
+    keywords = row['keywords'].replace('|', ' ')
+    director = row['director'].replace(' ', '')
+    return f"{genres} {director} {cast} {keywords}"
+
+movies_df['soup'] = movies_df.apply(build_metadata_soup, axis=1)
 movies_indexed_df = movies_df.set_index('movieId')
 users_indexed_df = users_df.set_index('user_id')
 
-def end_to_end_recommend(user_id, top_k=10, lambda_param=0.7):
-    # --- STAGE 1: RETRIEVAL ---
+# Danh sách tất cả các thể loại độc bản để tính entropy
+all_genres = sorted(list(set([g for genres in movies_df['genres'].str.split('|').dropna() for g in genres if g])))
+
+def end_to_end_recommend(user_id, top_k=10, custom_lambda=None):
+    # --- STAGE 1: RETRIEVAL (BM25 + iALS -> RRF) ---
     liked_movies = train_ratings[train_ratings['userId'] == user_id]['movieId'].tolist()
     liked_set = set(liked_movies)
     
-    cb_candidates = []
-    sim_scores = None
-    liked_idx = movies_df[movies_df['movieId'].isin(liked_movies)].index.tolist()
-    if liked_idx:
-        from sklearn.metrics.pairwise import cosine_similarity
-        sim_scores = cosine_similarity(tfidf_matrix[liked_idx], tfidf_matrix).mean(axis=0)
+    # A. BM25 content candidate retrieval
+    bm25_candidates = []
+    user_bm25_all_scores = np.zeros(len(movies_indexed_df))
+    liked_soups = [movies_indexed_df.loc[lid, 'soup'] for lid in liked_movies if lid in movies_indexed_df.index]
+    if liked_soups:
+        query = " ".join(liked_soups)
+        user_bm25_all_scores = bm25.transform(query)
+        sorted_cb_idx = np.argsort(user_bm25_all_scores)[::-1]
         
-        # Lọc bỏ phim đã thích bằng cách giảm similarity score của chúng về tối thiểu (-1.0)
-        for lid in liked_movies:
-            if lid in movie_to_idx:
-                sim_scores[movie_to_idx[lid]] = -1.0
+        # Top 100 ứng viên BM25 (chưa xem)
+        for idx in sorted_cb_idx:
+            mid = movies_df.iloc[idx]['movieId']
+            if mid not in liked_set:
+                bm25_candidates.append(mid)
+            if len(bm25_candidates) >= 100:
+                break
                 
-        # Tối ưu hóa: Trích xuất top 100 chỉ số tương đồng lớn nhất bằng np.argpartition (nhanh hơn np.argsort toàn bộ)
-        top_n_idx = min(100, len(sim_scores))
-        partitioned_idx = np.argpartition(-sim_scores, top_n_idx)[:top_n_idx]
-        sorted_cb_idx = partitioned_idx[np.argsort(-sim_scores[partitioned_idx])]
-        cb_candidates = movies_df.iloc[sorted_cb_idx]['movieId'].tolist()
-        
+    # B. iALS collaborative candidate retrieval
     u_idx = user_to_idx.get(user_id, None)
     als_candidates = []
     if u_idx is not None:
         ids, _ = als_model.recommend(u_idx, user_item_matrix[u_idx], N=100)
-        # Loại bỏ các phim đã thích khỏi danh sách đề xuất của iALS
         als_candidates = [idx_to_movie[i] for i in ids if i in idx_to_movie and idx_to_movie[i] not in liked_set]
         
-    candidates = list(set(cb_candidates + als_candidates))
+    # C. Hợp nhất bằng RRF
+    rrf_list = reciprocal_rank_fusion(als_candidates, bm25_candidates, k=60)
+    candidates = [item[0] for item in rrf_list[:250]]
+    
     if not candidates:
         candidates = movies_df.sort_values(by='popularity', ascending=False)['movieId'].head(100).tolist()
         candidates = [cid for cid in candidates if cid not in liked_set]
         
-    # --- STAGE 2: RANKING ---
+    # --- STAGE 2: RANKING (LightGBM) ---
     features = []
     valid_candidates = []
     
@@ -677,12 +752,11 @@ def end_to_end_recommend(user_id, top_k=10, lambda_param=0.7):
         except:
             release_year = 2010
             
-        # --- Tính đặc trưng Retrieval score ---
         u_idx = user_to_idx.get(user_id, None)
         m_idx = movie_to_idx.get(mid, None)
         
         als_score = als_user_factors[u_idx].dot(als_item_factors[m_idx]) if (u_idx is not None and m_idx is not None) else 0.0
-        cb_score = sim_scores[m_idx] if (sim_scores is not None and m_idx is not None) else 0.0
+        cb_score = user_bm25_all_scores[m_idx] if (m_idx is not None) else 0.0
             
         features.append({
             'popularity': movie['popularity'],
@@ -701,7 +775,19 @@ def end_to_end_recommend(user_id, top_k=10, lambda_param=0.7):
     candidate_scores = list(zip(valid_candidates, scores))
     candidate_scores.sort(key=lambda x: x[1], reverse=True)
     
-    # --- STAGE 3: RE-RANKING (MMR) ---
+    # --- STAGE 3: RE-RANKING (MMR với Lambda động) ---
+    # Tính lambda động nếu không chỉ định cụ thể
+    if custom_lambda is not None:
+        lambda_val = custom_lambda
+    else:
+        # Lấy lịch sử thể loại phim đã xem ở tập train
+        user_history_mids = train_ratings[train_ratings['userId'] == user_id]['movieId'].tolist()
+        user_history_genres = []
+        for hmid in user_history_mids:
+            if hmid in movies_indexed_df.index:
+                user_history_genres.extend(movies_indexed_df.loc[hmid, 'genres'].split('|'))
+        lambda_val = calculate_user_lambda(user_history_genres, all_genres, base_min=0.4, base_max=0.9)
+        
     from sklearn.metrics.pairwise import cosine_similarity
     
     final_recs = []
@@ -722,33 +808,40 @@ def end_to_end_recommend(user_id, top_k=10, lambda_param=0.7):
         unselected_indices.remove(first_choice)
         
         while len(selected_items) < top_k and unselected_indices:
-            best_mmr = -1
-            best_candidate_idx = -1
-            
             selected_matrix_indices = [movie_to_idx[mid] for mid in selected_items if mid in movie_to_idx]
             if not selected_matrix_indices:
                 break
-                
             selected_vectors = tfidf_matrix[selected_matrix_indices]
             
+            valid_unselected = []
+            valid_matrix_indices = []
             for idx in unselected_indices:
-                candidate_id = candidates_ids[idx]
-                candidate_matrix_idx = movie_to_idx.get(candidate_id, None)
-                if candidate_matrix_idx is None:
-                    continue
-                candidate_vector = tfidf_matrix[candidate_matrix_idx]
+                cid = candidates_ids[idx]
+                m_idx = movie_to_idx.get(cid, None)
+                if m_idx is not None:
+                    valid_unselected.append(idx)
+                    valid_matrix_indices.append(m_idx)
+            
+            if not valid_unselected:
+                break
                 
-                sim_with_selected = cosine_similarity(candidate_vector, selected_vectors).max()
-                mmr_val = lambda_param * scores_norm[idx] - (1 - lambda_param) * sim_with_selected
-                
+            unselected_vectors = tfidf_matrix[valid_matrix_indices]
+            sim_matrix = cosine_similarity(unselected_vectors, selected_vectors)
+            max_sim = sim_matrix.max(axis=1)
+            
+            best_mmr = -1e9
+            best_idx_in_unselected = -1
+            
+            for i, idx in enumerate(valid_unselected):
+                mmr_val = lambda_val * scores_norm[idx] - (1 - lambda_val) * max_sim[i]
                 if mmr_val > best_mmr:
                     best_mmr = mmr_val
-                    best_candidate_idx = idx
+                    best_idx_in_unselected = idx
                     
-            if best_candidate_idx == -1:
+            if best_idx_in_unselected == -1:
                 break
-            selected_items.append(candidates_ids[best_candidate_idx])
-            unselected_indices.remove(best_candidate_idx)
+            selected_items.append(candidates_ids[best_idx_in_unselected])
+            unselected_indices.remove(best_idx_in_unselected)
         final_recs = selected_items
         
     return final_recs
@@ -760,13 +853,13 @@ print("Pipeline End-to-End đã xây dựng xong!")
 predictions_dict = {}
 pipeline_recs = {}
 
-print("Bắt đầu đánh giá Pipeline trên 200 users từ tập test LOO...")
+print("Bắt đầu đánh giá Pipeline trên 200 users từ tập test LOO (RRF + BM25 + Dynamic Lambda)...")
 for u, pos_item, neg_items in test_data:
     u = int(u)
     pos_item = int(pos_item)
     neg_items = [int(x) for x in neg_items]
     
-    recs = end_to_end_recommend(u, top_k=10, lambda_param=0.7)
+    recs = end_to_end_recommend(u, top_k=10, custom_lambda=None)
     pipeline_recs[u] = recs
     
     items = [pos_item] + neg_items
@@ -809,7 +902,562 @@ print(f"Coverage@10:           {cov:.4f}")
     with open(os.path.join(output_dir, "06_end_to_end_pipeline.ipynb"), "w", encoding="utf-8") as f:
         nbf.write(nb6, f)
 
-    print("Successfully created 6 notebooks in evaluation/ml_pipeline!")
+    # ==========================================================
+    # NOTEBOOK 7: CatBoost Ranker & Model Comparison
+    # ==========================================================
+    nb7 = nbf.v4.new_notebook()
+    nb7_cells = []
+    
+    nb7_cells.append(nbf.v4.new_markdown_cell("""# 07. CatBoost Ranker & Offline Model Comparison (A/B Test)
+ 
+ Notebook này xây dựng mô hình xếp hạng chi tiết thứ hai dùng giải thuật **CatBoost Ranker (YetiRank)**, tiến hành so sánh trực tiếp hiệu năng ngoại tuyến với **LightGBM LambdaRank** trên cùng tập dữ liệu kiểm thử, đo lường tốc độ suy luận và phân tích độ quan trọng của đặc trưng (Feature Importance).
+ 
+ ---
+ 
+ ### Tại sao YetiRank của CatBoost lại mạnh cho bài toán Ranking?
+ *   **YetiRank** không tối ưu hóa các mẫu nhị phân độc lập mà tối ưu hóa phân phối xếp hạng toàn cục dựa trên các hoán vị (permutations). Nó tránh được hiện tượng chệch gradient (gradient bias) bằng cách ước tính kỳ vọng của sự thay đổi chỉ số NDCG khi hoán đổi vị trí của các cặp vật phẩm.
+ *   **Oblivious Trees**: CatBoost sử dụng cấu trúc cây đối xứng giúp hạn chế overfitting tốt trên các tập dữ liệu nhỏ.
+ """))
+ 
+    nb7_cells.append(nbf.v4.new_code_cell("""import os
+import sys
+import pandas as pd
+import numpy as np
+import pickle
+import time
+import matplotlib.pyplot as plt
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Thêm đường dẫn cha để import recsys_utils
+sys.path.append(os.path.abspath('..'))
+from recsys_utils import evaluate_implicit_loo, calculate_beyond_accuracy_metrics, BM25
+
+# Cài đặt catboost nếu chưa có
+try:
+    from catboost import CatBoostRanker, Pool
+except ImportError:
+    print("Installing catboost...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "catboost"])
+    from catboost import CatBoostRanker, Pool
+
+# Load dữ liệu đã xử lý
+train_ratings = pd.read_csv("processed_data/train_ratings.csv")
+movies_df = pd.read_csv(os.path.join("..", "..", "data", "crawler", "movies_crawled.csv"))
+users_df = pd.read_csv(os.path.join("..", "..", "data", "simulator", "sim_users.csv"))
+
+with open("processed_data/id_mappings.pkl", "rb") as f:
+    user_to_idx, movie_to_idx, idx_to_movie = pickle.load(f)
+    
+with open("processed_data/user_interacted_items.pkl", "rb") as f:
+    user_interacted_items = pickle.load(f)
+
+# Load retrieval models/matrices for feature engineering
+with open("models/als_model.pkl", "rb") as f:
+    als_model = pickle.load(f)
+    
+with open("models/bm25_model.pkl", "rb") as f:
+    bm25 = pickle.load(f)
+"""))
+
+    nb7_cells.append(nbf.v4.new_code_cell("""# 1. Tạo tập dữ liệu huấn luyện cho Ranker (giống LightGBM)
+np.random.seed(42)
+ranking_data = []
+all_movie_ids = list(movie_to_idx.keys())
+
+for _, row in train_ratings.iterrows():
+    u = int(row['userId'])
+    pos_item = int(row['movieId'])
+    rating = row['rating']
+    label = 1 if rating >= 3.5 else 0
+    ranking_data.append({'userId': u, 'movieId': pos_item, 'label': label})
+    
+    interacted = user_interacted_items.get(u, set())
+    for _ in range(4):
+        neg_item = np.random.choice(all_movie_ids)
+        while neg_item in interacted:
+            neg_item = np.random.choice(all_movie_ids)
+        ranking_data.append({'userId': u, 'movieId': neg_item, 'label': 0})
+
+df_rank = pd.DataFrame(ranking_data)
+# Đảm bảo df_rank được sắp xếp theo userId/group để làm ranking
+df_rank_sorted = df_rank.sort_values(by='userId').reset_index(drop=True)
+"""))
+
+    nb7_cells.append(nbf.v4.new_code_cell("""# 2. Xây dựng các đặc trưng (Feature Engineering)
+movies_df['genres'] = movies_df['genres'].fillna('')
+movies_df['director'] = movies_df['director'].fillna('')
+movies_df['cast'] = movies_df['cast'].fillna('')
+movies_df['keywords'] = movies_df['keywords'].fillna('')
+
+def build_metadata_soup(row):
+    genres = row['genres'].replace('|', ' ')
+    cast = ' '.join(row['cast'].split('|')[:5])
+    keywords = row['keywords'].replace('|', ' ')
+    director = row['director'].replace(' ', '')
+    return f"{genres} {director} {cast} {keywords}"
+
+movies_df['soup'] = movies_df.apply(build_metadata_soup, axis=1)
+movies_unindexed = movies_df.set_index('movieId', drop=False)
+movies_df = movies_df.set_index('movieId')
+users_df = users_df.set_index('user_id')
+
+features = []
+current_uid = None
+user_bm25_scores = None
+
+als_user_factors = als_model.user_factors
+als_item_factors = als_model.item_factors
+
+for _, row in df_rank_sorted.iterrows():
+    uid = int(row['userId'])
+    mid = int(row['movieId'])
+    
+    movie = movies_df.loc[mid]
+    popularity = movie['popularity']
+    vote_average = movie['vote_average']
+    
+    user = users_df.loc[uid]
+    favorite_genres = set(user['favorite_genres'].split('|'))
+    movie_genres = set(movie['genres'].split('|'))
+    genre_overlap = len(favorite_genres.intersection(movie_genres))
+    
+    try:
+        release_year = int(str(movie['release_date'])[:4])
+    except:
+        release_year = 2010
+        
+    u_idx = user_to_idx.get(uid, None)
+    m_idx = movie_to_idx.get(mid, None)
+    
+    als_score = als_user_factors[u_idx].dot(als_item_factors[m_idx]) if (u_idx is not None and m_idx is not None) else 0.0
+    
+    if uid != current_uid:
+        current_uid = uid
+        liked_ids = train_ratings[(train_ratings['userId'] == uid) & (train_ratings['rating'] >= 3.5)]['movieId'].tolist()
+        liked_ids = [lid for lid in liked_ids if lid in movies_unindexed.index]
+        if liked_ids:
+            liked_soups = movies_unindexed.loc[liked_ids, 'soup'].tolist()
+            query = " ".join(liked_soups)
+            user_bm25_scores = bm25.transform(query)
+        else:
+            user_bm25_scores = None
+            
+    cb_score = user_bm25_scores[m_idx] if (user_bm25_scores is not None and m_idx is not None) else 0.0
+        
+    features.append({
+        'popularity': popularity,
+        'vote_average': vote_average,
+        'genre_overlap': genre_overlap,
+        'release_year': release_year,
+        'user_activity': user['activity_level'],
+        'user_bias': user['user_bias'],
+        'als_score': als_score,
+        'cb_score': cb_score
+    })
+
+X_train = pd.DataFrame(features)
+y_train = df_rank_sorted['label']
+group_ids = df_rank_sorted['userId'].values # Mảng ID group cho CatBoost
+"""))
+
+    nb7_cells.append(nbf.v4.new_code_cell("""# 3. Huấn luyện CatBoost Ranker (YetiRank)
+train_pool = Pool(data=X_train, label=y_train, group_id=group_ids)
+
+cat_ranker = CatBoostRanker(
+    loss_function='YetiRank',
+    iterations=200,
+    learning_rate=0.05,
+    depth=6,
+    random_seed=42,
+    verbose=50
+)
+
+start_time = time.time()
+cat_ranker.fit(train_pool)
+cat_train_time = time.time() - start_time
+print(f"CatBoost trained in {cat_train_time:.2f} seconds.")
+
+# Lưu mô hình
+with open("models/cat_ranker.pkl", "wb") as f:
+    pickle.dump(cat_ranker, f)
+"""))
+
+    nb7_cells.append(nbf.v4.new_code_cell("""# 4. Trực quan hóa Feature Importance giữa CatBoost và LightGBM
+# Load LightGBM model
+with open("models/lgb_ranker.pkl", "rb") as f:
+    lgb_ranker = pickle.load(f)
+
+# Lấy tầm quan trọng đặc trưng
+lgb_importances = lgb_ranker.feature_importances_
+lgb_importances_norm = lgb_importances / lgb_importances.sum()
+
+cat_importances = cat_ranker.get_feature_importance(train_pool)
+cat_importances_norm = cat_importances / cat_importances.sum()
+
+feature_names = X_train.columns
+
+df_imp = pd.DataFrame({
+    'Feature': feature_names,
+    'LightGBM': lgb_importances_norm,
+    'CatBoost': cat_importances_norm
+}).set_index('Feature')
+
+df_imp.plot(kind='bar', figsize=(10, 5))
+plt.title("So sánh mức độ quan trọng đặc trưng (Normalized Feature Importance)")
+plt.ylabel("Độ quan trọng tương đối")
+plt.xticks(rotation=45)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.tight_layout()
+plt.show()
+"""))
+
+    nb7_cells.append(nbf.v4.new_code_cell("""# 5. Định nghĩa Hàm Gợi ý E2E cho CatBoost
+# Tải lại test_data
+with open("processed_data/test_data.pkl", "rb") as f:
+    test_data = pickle.load(f)
+with open("processed_data/user_item_matrix.pkl", "rb") as f:
+    user_item_matrix = pickle.load(f)
+
+# Phục vụ tính lambda động
+all_genres = sorted(list(set([g for genres in movies_df['genres'].str.split('|').dropna() for g in genres if g])))
+movies_df_indexed = movies_df # index movieId đã có từ cell trước
+
+# Trực quan hóa MMR TF-IDF
+movies_df['mmr_soup'] = movies_df.apply(
+    lambda r: f"{r['genres'].replace('|', ' ')} {r['director'].replace(' ', '')} {' '.join(r['cast'].split('|')[:3])}", 
+    axis=1
+)
+from sklearn.feature_extraction.text import TfidfVectorizer
+mmr_vectorizer = TfidfVectorizer(stop_words='english')
+tfidf_matrix = mmr_vectorizer.fit_transform(movies_df['mmr_soup'])
+
+from recsys_utils import reciprocal_rank_fusion, calculate_user_lambda
+
+def end_to_end_recommend_cat(user_id, top_k=10):
+    liked_movies = train_ratings[train_ratings['userId'] == user_id]['movieId'].tolist()
+    liked_set = set(liked_movies)
+    
+    # Retrieval
+    bm25_candidates = []
+    user_bm25_all_scores = np.zeros(len(movies_df))
+    liked_soups = [movies_df.loc[lid, 'soup'] for lid in liked_movies if lid in movies_df.index]
+    if liked_soups:
+        query = " ".join(liked_soups)
+        user_bm25_all_scores = bm25.transform(query)
+        sorted_cb_idx = np.argsort(user_bm25_all_scores)[::-1]
+        for idx in sorted_cb_idx:
+            mid = movies_df.index[idx]
+            if mid not in liked_set:
+                bm25_candidates.append(mid)
+            if len(bm25_candidates) >= 100:
+                break
+                
+    u_idx = user_to_idx.get(user_id, None)
+    als_candidates = []
+    if u_idx is not None:
+        ids, _ = als_model.recommend(u_idx, user_item_matrix[u_idx], N=100)
+        als_candidates = [idx_to_movie[i] for i in ids if i in idx_to_movie and idx_to_movie[i] not in liked_set]
+        
+    rrf_list = reciprocal_rank_fusion(als_candidates, bm25_candidates, k=60)
+    candidates = [item[0] for item in rrf_list[:250]]
+    
+    if not candidates:
+        candidates = movies_df.sort_values(by='popularity', ascending=False).index.head(100).tolist()
+        candidates = [cid for cid in candidates if cid not in liked_set]
+        
+    # Feature engineering cho candidates
+    features = []
+    valid_candidates = []
+    
+    als_user_factors = als_model.user_factors
+    als_item_factors = als_model.item_factors
+    
+    for mid in candidates:
+        if mid not in movies_df.index:
+            continue
+        valid_candidates.append(mid)
+        movie = movies_df.loc[mid]
+        user = users_df.loc[user_id]
+        
+        favorite_genres = set(user['favorite_genres'].split('|'))
+        movie_genres = set(movie['genres'].split('|'))
+        genre_overlap = len(favorite_genres.intersection(movie_genres))
+        
+        try:
+            release_year = int(str(movie['release_date'])[:4])
+        except:
+            release_year = 2010
+            
+        u_idx = user_to_idx.get(user_id, None)
+        m_idx = movie_to_idx.get(mid, None)
+        
+        als_score = als_user_factors[u_idx].dot(als_item_factors[m_idx]) if (u_idx is not None and m_idx is not None) else 0.0
+        cb_score = user_bm25_all_scores[m_idx] if (m_idx is not None) else 0.0
+            
+        features.append({
+            'popularity': movie['popularity'],
+            'vote_average': movie['vote_average'],
+            'genre_overlap': genre_overlap,
+            'release_year': release_year,
+            'user_activity': user['activity_level'],
+            'user_bias': user['user_bias'],
+            'als_score': als_score,
+            'cb_score': cb_score
+        })
+        
+    X_pred = pd.DataFrame(features)
+    
+    # CatBoost Inference
+    scores = cat_ranker.predict(X_pred)
+    
+    candidate_scores = list(zip(valid_candidates, scores))
+    candidate_scores.sort(key=lambda x: x[1], reverse=True)
+    
+    # MMR với lambda động
+    user_history_genres = []
+    for hmid in liked_movies:
+        if hmid in movies_df.index:
+            user_history_genres.extend(movies_df.loc[hmid, 'genres'].split('|'))
+    lambda_val = calculate_user_lambda(user_history_genres, all_genres, base_min=0.4, base_max=0.9)
+    
+    final_recs = []
+    if candidate_scores:
+        candidates_ids = [item[0] for item in candidate_scores]
+        scores_arr = np.array([item[1] for item in candidate_scores])
+        if scores_arr.max() != scores_arr.min():
+            scores_norm = (scores_arr - scores_arr.min()) / (scores_arr.max() - scores_arr.min())
+        else:
+            scores_norm = np.ones_like(scores_arr)
+            
+        selected_items = []
+        unselected_indices = list(range(len(candidates_ids)))
+        first_choice = np.argmax(scores_norm)
+        selected_items.append(candidates_ids[first_choice])
+        unselected_indices.remove(first_choice)
+        
+        while len(selected_items) < top_k and unselected_indices:
+            selected_matrix_indices = [movie_to_idx[mid] for mid in selected_items if mid in movie_to_idx]
+            if not selected_matrix_indices:
+                break
+            selected_vectors = tfidf_matrix[selected_matrix_indices]
+            
+            valid_unselected = []
+            valid_matrix_indices = []
+            for idx in unselected_indices:
+                cid = candidates_ids[idx]
+                m_idx = movie_to_idx.get(cid, None)
+                if m_idx is not None:
+                    valid_unselected.append(idx)
+                    valid_matrix_indices.append(m_idx)
+            
+            if not valid_unselected:
+                break
+                
+            unselected_vectors = tfidf_matrix[valid_matrix_indices]
+            sim_matrix = cosine_similarity(unselected_vectors, selected_vectors)
+            max_sim = sim_matrix.max(axis=1)
+            
+            best_mmr = -1e9
+            best_idx_in_unselected = -1
+            
+            for i, idx in enumerate(valid_unselected):
+                mmr_val = lambda_val * scores_norm[idx] - (1 - lambda_val) * max_sim[i]
+                if mmr_val > best_mmr:
+                    best_mmr = mmr_val
+                    best_idx_in_unselected = idx
+                    
+            if best_idx_in_unselected == -1:
+                break
+            selected_items.append(candidates_ids[best_idx_in_unselected])
+            unselected_indices.remove(best_idx_in_unselected)
+        final_recs = selected_items
+        
+    return final_recs
+"""))
+
+    nb7_cells.append(nbf.v4.new_code_cell("""# 6. Đánh giá Offline A/B Test So sánh CatBoost vs LightGBM E2E
+# A. Load LightGBM End-to-End Recommender (Notebook 6 E2E logic)
+with open("models/lgb_ranker.pkl", "rb") as f:
+    lgb_ranker = pickle.load(f)
+
+def end_to_end_recommend_lgb(user_id, top_k=10):
+    liked_movies = train_ratings[train_ratings['userId'] == user_id]['movieId'].tolist()
+    liked_set = set(liked_movies)
+    
+    bm25_candidates = []
+    user_bm25_all_scores = np.zeros(len(movies_df))
+    liked_soups = [movies_df.loc[lid, 'soup'] for lid in liked_movies if lid in movies_df.index]
+    if liked_soups:
+        query = " ".join(liked_soups)
+        user_bm25_all_scores = bm25.transform(query)
+        sorted_cb_idx = np.argsort(user_bm25_all_scores)[::-1]
+        for idx in sorted_cb_idx:
+            mid = movies_df.index[idx]
+            if mid not in liked_set:
+                bm25_candidates.append(mid)
+            if len(bm25_candidates) >= 100:
+                break
+                
+    u_idx = user_to_idx.get(user_id, None)
+    als_candidates = []
+    if u_idx is not None:
+        ids, _ = als_model.recommend(u_idx, user_item_matrix[u_idx], N=100)
+        als_candidates = [idx_to_movie[i] for i in ids if i in idx_to_movie and idx_to_movie[i] not in liked_set]
+        
+    rrf_list = reciprocal_rank_fusion(als_candidates, bm25_candidates, k=60)
+    candidates = [item[0] for item in rrf_list[:250]]
+    
+    if not candidates:
+        candidates = movies_df.sort_values(by='popularity', ascending=False).index.head(100).tolist()
+        candidates = [cid for cid in candidates if cid not in liked_set]
+        
+    features = []
+    valid_candidates = []
+    als_user_factors = als_model.user_factors
+    als_item_factors = als_model.item_factors
+    
+    for mid in candidates:
+        if mid not in movies_df.index:
+            continue
+        valid_candidates.append(mid)
+        movie = movies_df.loc[mid]
+        user = users_df.loc[user_id]
+        
+        favorite_genres = set(user['favorite_genres'].split('|'))
+        movie_genres = set(movie['genres'].split('|'))
+        genre_overlap = len(favorite_genres.intersection(movie_genres))
+        
+        try:
+            release_year = int(str(movie['release_date'])[:4])
+        except:
+            release_year = 2010
+            
+        u_idx = user_to_idx.get(user_id, None)
+        m_idx = movie_to_idx.get(mid, None)
+        als_score = als_user_factors[u_idx].dot(als_item_factors[m_idx]) if (u_idx is not None and m_idx is not None) else 0.0
+        cb_score = user_bm25_all_scores[m_idx] if (m_idx is not None) else 0.0
+            
+        features.append({
+            'popularity': movie['popularity'],
+            'vote_average': movie['vote_average'],
+            'genre_overlap': genre_overlap,
+            'release_year': release_year,
+            'user_activity': user['activity_level'],
+            'user_bias': user['user_bias'],
+            'als_score': als_score,
+            'cb_score': cb_score
+        })
+        
+    X_pred = pd.DataFrame(features)
+    scores = lgb_ranker.predict(X_pred)
+    
+    candidate_scores = list(zip(valid_candidates, scores))
+    candidate_scores.sort(key=lambda x: x[1], reverse=True)
+    
+    user_history_genres = []
+    for hmid in liked_movies:
+        if hmid in movies_df.index:
+            user_history_genres.extend(movies_df.loc[hmid, 'genres'].split('|'))
+    lambda_val = calculate_user_lambda(user_history_genres, all_genres, base_min=0.4, base_max=0.9)
+    
+    final_recs = []
+    if candidate_scores:
+        candidates_ids = [item[0] for item in candidate_scores]
+        scores_arr = np.array([item[1] for item in candidate_scores])
+        if scores_arr.max() != scores_arr.min():
+            scores_norm = (scores_arr - scores_arr.min()) / (scores_arr.max() - scores_arr.min())
+        else:
+            scores_norm = np.ones_like(scores_arr)
+            
+        selected_items = []
+        unselected_indices = list(range(len(candidates_ids)))
+        first_choice = np.argmax(scores_norm)
+        selected_items.append(candidates_ids[first_choice])
+        unselected_indices.remove(first_choice)
+        
+        while len(selected_items) < top_k and unselected_indices:
+            selected_matrix_indices = [movie_to_idx[mid] for mid in selected_items if mid in movie_to_idx]
+            if not selected_matrix_indices:
+                break
+            selected_vectors = tfidf_matrix[selected_matrix_indices]
+            
+            valid_unselected = []
+            valid_matrix_indices = []
+            for idx in unselected_indices:
+                cid = candidates_ids[idx]
+                m_idx = movie_to_idx.get(cid, None)
+                if m_idx is not None:
+                    valid_unselected.append(idx)
+                    valid_matrix_indices.append(m_idx)
+            
+            if not valid_unselected:
+                break
+                
+            unselected_vectors = tfidf_matrix[valid_matrix_indices]
+            sim_matrix = cosine_similarity(unselected_vectors, selected_vectors)
+            max_sim = sim_matrix.max(axis=1)
+            
+            best_mmr = -1e9
+            best_idx_in_unselected = -1
+            
+            for i, idx in enumerate(valid_unselected):
+                mmr_val = lambda_val * scores_norm[idx] - (1 - lambda_val) * max_sim[i]
+                if mmr_val > best_mmr:
+                    best_mmr = mmr_val
+                    best_idx_in_unselected = idx
+                    
+            if best_idx_in_unselected == -1:
+                break
+            selected_items.append(candidates_ids[best_idx_in_unselected])
+            unselected_indices.remove(best_idx_in_unselected)
+        final_recs = selected_items
+        
+    return final_recs
+
+# B. Đánh giá song song trên tập test LOO
+from recsys_utils import evaluate_implicit_loo
+
+preds_lgb = {}
+preds_cat = {}
+
+# Đo latency suy luận
+start_lgb = time.time()
+for u, pos_item, neg_items in test_data:
+    u, pos_item, neg_items = int(u), int(pos_item), [int(x) for x in neg_items]
+    recs = end_to_end_recommend_lgb(u, top_k=10)
+    items = [pos_item] + neg_items
+    preds_lgb[u] = [(item, 10 - recs.index(item) if item in recs else 0, item == pos_item) for item in items]
+lgb_inference_time = (time.time() - start_lgb) / len(test_data)
+
+start_cat = time.time()
+for u, pos_item, neg_items in test_data:
+    u, pos_item, neg_items = int(u), int(pos_item), [int(x) for x in neg_items]
+    recs = end_to_end_recommend_cat(u, top_k=10)
+    items = [pos_item] + neg_items
+    preds_cat[u] = [(item, 10 - recs.index(item) if item in recs else 0, item == pos_item) for item in items]
+cat_inference_time = (time.time() - start_cat) / len(test_data)
+
+hr_lgb, ndcg_lgb, mrr_lgb = evaluate_implicit_loo(preds_lgb, k=10)
+hr_cat, ndcg_cat, mrr_cat = evaluate_implicit_loo(preds_cat, k=10)
+
+print()
+print("=== KẾT QUẢ SO SÁNH OFFLINE (A/B COMPARISON) ===")
+print(f"| Chỉ số | LightGBM Ranker | CatBoost Ranker (YetiRank) |")
+print(f"| :--- | :--- | :--- |")
+print(f"| **Hit Ratio@10** | {hr_lgb:.4f} | {hr_cat:.4f} |")
+print(f"| **NDCG@10** | {ndcg_lgb:.4f} | {ndcg_cat:.4f} |")
+print(f"| **MRR** | {mrr_lgb:.4f} | {mrr_cat:.4f} |")
+print(f"| **Train Time (sec)** | 0.10s (ước tính) | {cat_train_time:.2f}s |")
+print(f"| **Inference Time (sec/user)** | {lgb_inference_time:.4f}s | {cat_inference_time:.4f}s |")
+"""))
+
+    nb7['cells'] = nb7_cells
+    with open(os.path.join(output_dir, "07_catboost_vs_lightgbm.ipynb"), "w", encoding="utf-8") as f:
+        nbf.write(nb7, f)
+
+
+    print("Successfully created 7 notebooks in evaluation/ml_pipeline!")
 
 if __name__ == "__main__":
     create_pipeline_notebooks()
