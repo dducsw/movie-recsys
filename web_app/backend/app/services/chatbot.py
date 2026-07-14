@@ -1,7 +1,6 @@
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from typing import Dict, List, Any
-
-from chatbot import build_chatbot_graph, IntentOutput, GraphState
+from app.chatbot import build_chatbot_graph, IntentOutput, GraphState
 
 # ---------------------------------------------------------------------------
 # Session Manager – handles multiple users/sessions

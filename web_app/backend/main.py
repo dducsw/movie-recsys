@@ -2,9 +2,12 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# Load API Key
+from dotenv import load_dotenv
+load_dotenv()
+
 # Import routers from controllers
-from app.controllers.movie import router as movie_router
-from app.controllers.recsys import router as recsys_router
+from app import movie_router, recsys_router, chatbot_router
 
 app = FastAPI(
     title="MovieNex Recommendation System API (MVC)",
@@ -24,6 +27,7 @@ app.add_middleware(
 # Include routers
 app.include_router(movie_router)
 app.include_router(recsys_router)
+app.include_router(chatbot_router)
 
 @app.get("/")
 def read_root():
