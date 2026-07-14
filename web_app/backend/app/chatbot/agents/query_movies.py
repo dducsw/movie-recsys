@@ -6,9 +6,9 @@ def query_movies_node(state: GraphState) -> dict:
     """Retrieve candidate movies from local CSV data."""
     intent = state.get("intent_output").intent
     target = state.get("intent_output").target_title.strip()
-    genres = state.get("intent_output").detected_genres
+    genres = state.get("intent_output").genres
 
-    candidate: List[Dict[str, Any]] = []
+    candidates: List[Dict[str, Any]] = []
     matched: Optional[Dict[str, Any]] = None
 
     if intent == "similar" and target:

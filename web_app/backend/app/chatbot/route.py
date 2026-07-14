@@ -2,7 +2,8 @@ from app.chatbot.state import GraphState
 
 def route_after_intent(state: GraphState) -> str:
     """Determine text node based on intent."""
-    intent = state["output_intent"].intent
+    intent = state["intent_output"].intent
+    
     if intent in ("similar", "genre"):
         return "query_movies"
     else:

@@ -9,7 +9,7 @@ def get_llm(
 ) -> ChatGoogleGenerativeAI:
     google_api_key = os.getenv("GOOGLE_API_KEY")
     if not google_api_key:
-        return "ERROR: GOOGLE_API_KEY environment variable is not configured."
+        raise ValueError("ERROR: GOOGLE_API_KEY environment variable is not configured.")
     
     return ChatGoogleGenerativeAI(
         model=model_name,
@@ -21,7 +21,7 @@ def get_llm(
 def get_tavily() -> TavilyClient:
     tavily_api_key = os.getenv("TAVILY_API_KEY")
     if not tavily_api_key:
-        return "ERROR: TAVILY_API_KEY environment variable is not configured."
+        raise ValueError("ERROR: TAVILY_API_KEY environment variable is not configured.")
 
     return TavilyClient(api_key=tavily_api_key)  
 

@@ -1,5 +1,4 @@
 from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.memory import MemorySaver
 from app.chatbot.state import GraphState
 from app.chatbot.route import route_after_intent, route_after_query
 from app.chatbot.agents import (
@@ -32,14 +31,11 @@ def build_chatbot_graph():
         "query_movies",
         route_after_query,
         {
-            "tavilly_search": "tavily_search",
+            "tavily_search": "tavily_search",
             "generate_answer": "generate_answer"
         }
     )
     workflow.add_edge("tavily_search", "generate_answer")
     workflow.add_edge("generate_answer", END)
 
-    # Use MemorySaver for checkpointing (persists state between invocations)
-    checkpointer = MemorySaver()
-
-    return workflow.compile(checkpointer=checkpointer)
+    return workflow.compile()

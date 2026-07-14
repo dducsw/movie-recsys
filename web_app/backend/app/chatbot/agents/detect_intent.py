@@ -12,7 +12,7 @@ def detect_intent_node(state: GraphState) -> dict:
     )
     chain = prompt | llm
     intent_output = chain.invoke({"history": messages})
-
+    
     return {
-        "intent_outut": intent_output
+        "intent_output": intent_output
     }
