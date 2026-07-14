@@ -219,3 +219,6 @@ __marimo__/
 
 # Environment variables
 .env
+
+# vscode
+.vscode/
