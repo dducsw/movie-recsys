@@ -361,3 +361,70 @@ class MovieModel:
         finally:
             cur.close()
             conn.close()
+    
+    @staticmethod
+    def get_movie_by_genre(genre: str, page: int, limit: int) -> List[Dict[str, Any]]:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        offset = (page - 1) * limit
+
+        try:
+            query = """
+                WITH matched_movies AS (
+                    SELECT DISTINCT m.movieid
+                    FROM movies m
+                    JOIN movie_genres mg ON m.movieid = mg.movie_id
+                    JOIN genres g ON mg.genre_id = g.id
+                    WHERE g.name ILIKE %s
+                    ORDER BY m.popularity DESC
+                    LIMIT %s OFFSET %s
+                )
+                SELECT
+                    m.movieid AS "movieId",
+                    m.title,
+                    m.release_date,
+                    m.popularity,
+                    m.adult,
+                    m.overview,
+                    m.vote_average,
+                    m.vote_count,
+                    m.poster_url,
+                    d.name AS director,
+                    COALESCE(STRING_AGG(DISTINCT g.name, '|'), '') AS genres,
+                    COALESCE(STRING_AGG(DISTINCT a.name, '|'), '') AS cast,
+                    COALESCE(STRING_AGG(DISTINCT t.name, '|'), '') AS keywords
+                FROM matched_movies mm
+                JOIN movies m ON mm.movieid = m.movieid
+                LEFT JOIN directors d ON m.director_id = d.id
+                LEFT JOIN movie_genres mg ON m.movieid = mg.movie_id
+                LEFT JOIN genres g ON mg.genre_id = g.id
+                LEFT JOIN movie_actors ma ON m.movieid = ma.movie_id
+                LEFT JOIN actors a ON ma.actor_id = a.id
+                LEFT JOIN movie_tags mt ON m.movieid = mt.movie_id
+                LEFT JOIN tags t ON mt.tag_id = t.id
+                GROUP BY
+                    m.movieid,
+                    m.title,
+                    m.release_date,
+                    m.popularity,
+                    m.adult,
+                    m.overview,
+                    m.vote_average,
+                    m.vote_count,
+                    m.poster_url,
+                    d.name
+                ORDER BY m.popularity DESC;
+            """
+
+            cur.execute(query, (genre, limit, offset))
+            return cur.fetchall()
+
+        except Exception as e:
+            print(f"[Error] Failed to fetch movies by genre: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to fetch movies by genre."
+            )
+        finally:
+            cur.close()
+            conn.close()
