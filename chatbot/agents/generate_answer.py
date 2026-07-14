@@ -40,7 +40,6 @@ def generate_answer_node(state: GraphState) -> dict:
     response = chain.invoke({
         "history": messages,
         "movie_context": movie_context,
-        "original_query": original_query,
     })
     final_text = response.content.strip()
 

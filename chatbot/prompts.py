@@ -48,7 +48,7 @@ Rules:
 - Keep the response conversational and engaging.
 - End your response with an open-ended question to encourage further conversation.
 - DO NOT return JSON or any structured format. Respond only with natural language.
-- Respond in the same language as the user's original query: {original_query}. Detect the language of {original_query} and generate the entire response in that language.
+- Respond in the same language as the user's history messages.
 """
 
 ANSWER_PROMPT = ChatPromptTemplate.from_messages([

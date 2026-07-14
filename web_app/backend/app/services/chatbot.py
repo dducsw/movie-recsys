@@ -1,92 +1,159 @@
-import random
-from typing import Dict, Any
-from app.models.movie import MovieModel
-from app.services.recsys import RecsysService
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from typing import Dict, List, Any
+
+from chatbot import build_chatbot_graph, IntentOutput, GraphState
+
+# ---------------------------------------------------------------------------
+# Session Manager – handles multiple users/sessions
+# ---------------------------------------------------------------------------
+
+class ConversationMemory:
+    """
+    Manage per-session conversation memory.
+    Uses thread_id to separate different user session.
+    """
+    _graph = None
+    _sessions: Dict[str, List[BaseMessage]] = {}
+    _max_history: int = 20 # Keep last 20 messages per session
+
+    @classmethod
+    def _get_graph(cls):
+        if cls._graph is None:
+            cls._graph = build_chatbot_graph()
+        
+        return cls._graph
+
+    @classmethod
+    def get_session_messages(cls, session_id: str) -> List[BaseMessage]:
+        """
+        Retrieve message history for a session.
+        """
+        return cls._sessions.get(session_id, [])
+    
+    @classmethod
+    def add_message(cls, session_id: str, message: BaseMessage):
+        """
+        Add a message to session history with size limit.
+        """
+        if session_id not in cls._sessions:
+            cls._sessions[session_id] = []
+        
+        cls._sessions[session_id].append(message)
+
+        if len(cls.sessions[session_id] > cls._max_history):
+            cls._sessions[session_id] = cls._sessions[session_id][-cls.max_history:]
+
+    @classmethod
+    def clear_session(cls, session_id: str):
+        """
+        Clear a session's hisotry.
+        """
+        cls._sessions.pop(session_id, None)
+
+    @classmethod
+    def get_session_summary(cls, session_id: str) -> Dict[str, Any]:
+        """
+        Get summary of session for debugging.
+        """
+        messages = cls._session.get(session_id, [])
+        return {
+            "session_id": session_id,
+            "message_count": len(messages),
+            "messages": [{
+                "role": "human" if isinstance(m, HumanMessage) else "ai",
+                "content": m.content[:100] + "..." if len(m.content) > 100 else m.content
+            } for m in messages[-10:]] # Last 10 messages
+        }
+    
+# ---------------------------------------------------------------------------
+# Public service used by the route layer
+# ---------------------------------------------------------------------------
 
 class ChatbotService:
+    """
+    Main service interface for the chatbot.
+    """
     @staticmethod
-    def get_reply(message: str) -> Dict[str, Any]:
-        message_lower = message.lower()
-        
-        # 1. Similar movies keyword detection
-        similar_keywords = ["giống", "like", "tương tự", "similar"]
-        is_similar_query = any(kw in message_lower for kw in similar_keywords)
-        
-        target_title = ""
-        if is_similar_query:
-            cleaned = message_lower
-            for kw in similar_keywords:
-                cleaned = cleaned.replace(kw, "")
-            for filler in ["phim", "gợi ý", "recommend", "show me", "tìm", "find", "như", "những"]:
-                cleaned = cleaned.replace(filler, "")
-            target_title = cleaned.strip()
+    def get_reply(
+        message: str,
+        session_id: str = "default"
+    ) -> Dict[str, Any]:
+        """
+        Get chatbot reply with conversation memory.
 
-        if target_title and len(target_title) > 2:
-            search_results = MovieModel.search(target_title, limit=1)
-            if search_results:
-                matched_movie = search_results[0]
-                similar_movies = RecsysService.get_similar_movies(matched_movie["movieId"], limit=5)
-                # Filter the current movie from the list if present
-                similar_movies = [m for m in similar_movies if m["movieId"] != matched_movie["movieId"]][:5]
-                return {
-                    "text": f"Based on **{matched_movie['title']}** that you liked, here are some similar recommendations:",
-                    "movies": similar_movies
-                }
+        Args:
+            message: User's input message
+            session_id: Unique identifier for the conversation  session
 
-        # 2. Genre detection
-        genre_map = {
-            "hành động": "Action", "action": "Action",
-            "hài": "Comedy", "comedy": "Comedy",
-            "viễn tưởng": "Sci-Fi", "sci-fi": "Sci-Fi", "khoa học viễn tưởng": "Sci-Fi",
-            "kinh dị": "Horror", "horror": "Horror",
-            "tình cảm": "Romance", "lãng mạn": "Romance", "romance": "Romance",
-            "hoạt hình": "Animation", "animation": "Animation",
-            "phiêu lưu": "Adventure", "adventure": "Adventure",
-            "tâm lý": "Drama", "drama": "Drama", "kịch tính": "Drama",
-            "giật gân": "Thriller", "thriller": "Thriller",
-            "bí ẩn": "Mystery", "mystery": "Mystery",
-            "ảo tưởng": "Fantasy", "fantasy": "Fantasy",
-            "gia đình": "Family", "family": "Family"
+        Returns:
+            Dict with "text" (reply) and "movies" (enriched movie list)
+        """
+        # Get existing conversation history for this session
+        history = ConversationMemory.get_session_messages(session_id)
+
+        # Add the new user message
+        user_message = HumanMessage(content=message)
+        history.append(user_message)
+
+        # Build initial state with full history
+        intent_output: IntentOutput = {
+            "intent": "",
+            "target_title": "",
+            "genres": [],
         }
-        
-        detected_genres = []
-        for kw, genre in genre_map.items():
-            if kw in message_lower:
-                if genre not in detected_genres:
-                    detected_genres.append(genre)
-                    
-        if detected_genres:
-            all_movies = MovieModel.get_all_genres_and_popularity()
-            
-            matching_movies = []
-            for movie in all_movies:
-                movie_genres = [g.strip() for g in movie.get("genres", "").split("|") if g.strip()]
-                if any(dg in movie_genres for dg in detected_genres):
-                    matching_movies.append(movie)
-            
-            # Sort by popularity
-            matching_movies.sort(key=lambda x: x.get("popularity", 0.0), reverse=True)
-            recommended = matching_movies[:5]
-            
-            genres_str = ", ".join(detected_genres)
-            if recommended:
-                return {
-                    "text": f"Here are the most popular **{genres_str}** movies I found for you:",
-                    "movies": recommended
-                }
-            else:
-                return {
-                    "text": f"Sorry, I couldn't find any **{genres_str}** movies in the database.",
-                    "movies": []
-                }
 
-        # 3. Fallback / Greeting
-        greeting_replies = [
-            "Hello! I am your AI movie recommendation chatbot. You can ask me to recommend movies by genre (e.g., 'action', 'comedy', 'horror') or find movies similar to one you like (e.g., 'movies like Toy Story').",
-            "Hi there! What kind of movies are you looking for today? Tell me your favorite genres or movie names!",
-            "Hello! How can I help you today? Enter a movie genre or title you'd like to explore (e.g., 'animation' or 'sci-fi')."
-        ]
+        initial_state: GraphState = {
+            "messages": history,
+            "intent_output": intent_output,
+            "candidate_movies": [],
+            "enriched_movies": [],
+            "matched_movie": None,
+            "final_text": ""
+        }
+
+        # Invoke the graph with thread_id for checkpointing
+        graph = ConversationMemory._get_graph()
+        config = {
+            "configurable": {"thread_id": session_id}
+        }
+        result = graph.invoke(initial_state, config=config)
+
+        # Update session memory with the AI response
+        ai_message = AIMessage(content=result["final_text"])
+        ConversationMemory.add_message(session_id, ai_message)
+
         return {
-            "text": random.choice(greeting_replies),
-            "movies": []
+            "text": result["final_text"],
+            "movies": result.get("enriched_movies", []),
+            "session_id": session_id,
+            "message_count": len(ConversationMemory.get_session_messages[session_id])
         }
+    
+    @staticmethod
+    def get_history(session_id: str = "default") -> List[Dict[str, str]]:
+        """
+        Get conversation history for a session.
+        
+        Returns:
+            List of {"role": "human"|"ai", "content": "..."}
+        """
+        messages = ConversationMemory.get_session_messages(session_id)
+        return [
+            {
+                "role": "human" if isinstance(m, HumanMessage) else "ai",
+                "content": m.content
+            }
+            for m in messages
+        ]
+
+    @staticmethod
+    def clear_history(session_id: str = "default") -> Dict[str, str]:
+        """Clear conversation history for a session."""
+        ConversationMemory.clear_session(session_id)
+        return {"status": "cleared", "session_id": session_id}
+
+    @staticmethod
+    def get_session_info(session_id: str = "default") -> Dict[str, Any]:
+        """Get debugging info about a session."""
+        return ConversationMemory.get_session_summary(session_id)
+
