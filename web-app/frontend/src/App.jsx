@@ -828,14 +828,49 @@ function App() {
                         </div>
                       </div>
 
-                      {/* Play Trailer Button */}
-                      <div className="play-trailer-container" style={{ margin: '15px 0 25px 0' }}>
+                      {/* Play Trailer & Watch Movie Buttons */}
+                      <div className="play-buttons-row" style={{ display: 'flex', gap: '12px', margin: '15px 0 25px 0' }}>
                         <button
                           className="watch-now-btn"
                           onClick={() => setShowTrailer(true)}
+                          style={{
+                            background: 'linear-gradient(135deg, #ff007f, #7f00ff)',
+                            boxShadow: '0 4px 15px rgba(255, 0, 127, 0.4)'
+                          }}
                         >
                           <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '16px', height: '16px', marginRight: '6px' }}>
                             <path d="M8 5v14l11-7z"/>
+                          </svg>
+                          Watch Movie
+                        </button>
+
+                        <button
+                          className="watch-trailer-btn"
+                          onClick={() => setShowTrailer(true)}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid rgba(255, 255, 255, 0.3)',
+                            color: 'white',
+                            padding: '10px 18px',
+                            borderRadius: '20px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontWeight: '600',
+                            transition: 'all 0.2s',
+                            fontSize: '14px'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = 'white';
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                            e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px', marginRight: '6px' }}>
+                            <polygon points="5 3 19 12 5 21 5 3"/>
                           </svg>
                           Play Trailer
                         </button>

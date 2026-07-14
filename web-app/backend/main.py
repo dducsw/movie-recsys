@@ -1,4 +1,10 @@
+import os
 import uvicorn
+from dotenv import load_dotenv, find_dotenv
+
+# Load environment variables from .env file
+load_dotenv(find_dotenv())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

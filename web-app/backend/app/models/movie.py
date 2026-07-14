@@ -220,7 +220,7 @@ class MovieModel:
             trailer_url = movie.get("trailer_url")
             if not trailer_url:
                 try:
-                    api_key = os.getenv("TMDB_API_KEY", "c940e05db8ecfd1550d73d103a871de3")
+                    api_key = os.getenv("TMDB_API_KEY")
                     url = f"https://api.themoviedb.org/3/movie/{movie_id}/videos"
                     res = requests.get(url, params={"api_key": api_key}, timeout=2.0)
                     
