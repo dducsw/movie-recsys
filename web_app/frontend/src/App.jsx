@@ -65,14 +65,19 @@ function App() {
 
   // AI Chatbot States
   const [chatMessages, setChatMessages] = useState([
-    {
-      sender: 'bot',
-      text: 'Hello! I am your AI movie recommendation chatbot. You can ask me to recommend movies by genre (e.g., "action movies", "animation") or find movies similar to one you like (e.g., "movies like Toy Story").'
-    }
+  {
+    sender: 'bot',
+    text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. I can remember our conversation and provide context-aware recommendations!\n\nTry asking me:\n• "Recommend sci-fi movies"\n• "Movies like Inception"\n• "Tell me more about the second one" (after I recommend movies)'
+  }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef(null);
+
+  const [chatSessionId, setChatSessionId] = useState(() => {
+    return localStorage.getItem('movienex_chat_session_id') || null;
+  });
+  const [chatMessageCount, setChatMessageCount] = useState(0);
 
   // Loading States
   const [loadingTrending, setLoadingTrending] = useState(false);
@@ -173,21 +178,41 @@ function App() {
       setChatInput('');
     }
 
+    // Add user message to local state immediately
     setChatMessages((prev) => [...prev, { sender: 'user', text }]);
     setIsTyping(true);
 
     try {
+      // Use existing session or create new one
+      const currentSessionId = chatSessionId || generateSessionId();
+      
       const response = await fetch(`${API_BASE_URL}/chatbot/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ 
+          message: text,
+          session_id: currentSessionId
+        })
       });
       const data = await response.json();
+      
+      // Save session ID if it's new
+      if (!chatSessionId) {
+        setChatSessionId(data.session_id);
+        localStorage.setItem('movienex_chat_session_id', data.session_id);
+      }
+      
+      // Update message count
+      setChatMessageCount(data.message_count || 0);
       
       setTimeout(() => {
         setChatMessages((prev) => [
           ...prev,
-          { sender: 'bot', text: data.text, movies: data.movies || [] }
+          { 
+            sender: 'bot', 
+            text: data.text, 
+            movies: data.movies || [] 
+          }
         ]);
         setIsTyping(false);
       }, 600);
@@ -200,6 +225,53 @@ function App() {
       ]);
     }
   };
+
+  useEffect(() => {
+  if (chatEndRef.current) {
+    chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }
+  }, [chatMessages, isTyping]);
+
+  useEffect(() => {
+    if (view === 'chatbot' && chatSessionId) {
+      loadChatHistory();
+    }
+  }, [view, chatSessionId]);
+
+  const loadChatHistory = async () => {
+  if (!chatSessionId) return;
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.messages && data.messages.length > 0) {
+        setChatMessages(
+          data.messages.map(msg => ({
+            sender: msg.role === 'human' ? 'user' : 'bot',
+            text: msg.content
+          }))
+        );
+        setChatMessageCount(data.messages.length);
+      } else {
+        // Session exists but no messages, show welcome
+        setChatMessages([
+          {
+            sender: 'bot',
+            text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. How can I help you today?'
+          }
+        ]);
+      }
+    }
+  } catch (error) {
+    console.error('Error loading chat history:', error);
+    }
+  };  
+
+  const generateSessionId = () => {
+    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  };
+
 
   // Fetch personalized recommendations for homepage
   const fetchRecommendations = async () => {
@@ -276,6 +348,47 @@ function App() {
     } finally {
       setLoadingTrending(false);
     }
+  };
+
+  const handleClearChatHistory = async () => {
+    if (!chatSessionId) return;
+    
+    const confirmClear = window.confirm('Clear all conversation history?');
+    if (!confirmClear) return;
+
+    try {
+      await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`, { 
+        method: 'DELETE' 
+      });
+    } catch (error) {
+      console.error('Error clearing history:', error);
+    }
+
+    // Reset local state
+    setChatMessages([
+      {
+        sender: 'bot',
+        text: 'Conversation cleared! 🧹 How can I help you with movie recommendations?'
+      }
+    ]);
+    setChatMessageCount(0);
+  };
+
+  const handleNewChatSession = () => {
+    // Generate new session ID
+    const newSessionId = generateSessionId();
+    setChatSessionId(newSessionId);
+    localStorage.setItem('movienex_chat_session_id', newSessionId);
+    
+    // Reset messages
+    setChatMessages([
+      {
+        sender: 'bot',
+        text: 'New conversation started! ✨ I\'m ready to help you find great movies. What would you like to watch?'
+      }
+    ]);
+    setChatMessageCount(0);
+    setChatInput('');
   };
 
   // Clear Search Results
@@ -925,6 +1038,11 @@ function App() {
           chatEndRef={chatEndRef}
           handleSendChatMessage={handleSendChatMessage}
           handleMovieClick={handleMovieClick}
+          // NEW props for session management
+          sessionId={chatSessionId}
+          handleClearHistory={handleClearChatHistory}
+          handleNewSession={handleNewChatSession}
+          messageCount={chatMessageCount}
         />
       ) : view === 'auth' ? (
         /* ================= AUTH VIEW ================= */
