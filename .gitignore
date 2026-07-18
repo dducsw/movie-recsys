@@ -224,8 +224,9 @@ __marimo__/
 evaluation/ml_pipeline/models/
 evaluation/ml_pipeline/processed_data/
 evaluation/ml_pipeline/catboost_info/
+catboost_info/
 *.pkl
 *.h5
-
+*.csv
 # vscode
 .vscode/

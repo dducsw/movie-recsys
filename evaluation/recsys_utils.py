@@ -285,6 +285,63 @@ class BM25:
         scores = (tf_q * (self.k1 + 1.0) / denom) * idf_q
         return scores.sum(axis=1)
 
+    def score(self, query_str, doc_idx):
+        """
+        Trả về điểm số BM25 của 1 tài liệu doc_idx cụ thể đối với query_str
+        """
+        q_vec = self.vectorizer.transform([query_str]).toarray()[0]
+        q_indices = np.where(q_vec > 0)[0]
+        if len(q_indices) == 0:
+            return 0.0
+            
+        tf_q = self.tf[doc_idx, q_indices].toarray()[0]
+        idf_q = self.idf[q_indices]
+        
+        doc_len = self.doc_len[doc_idx]
+        denom = tf_q + self.k1 * (1.0 - self.b + self.b * doc_len / self.avg_doc_len)
+        scores = (tf_q * (self.k1 + 1.0) / denom) * idf_q
+        return scores.sum()
+
+    def transform_from_bow(self, query_bow):
+        """
+        Tính BM25 cho toàn bộ corpus từ query dạng Bag-of-Words (sparse vector)
+        """
+        import scipy.sparse as sp
+        if sp.issparse(query_bow):
+            q_indices = query_bow.nonzero()[1]
+        else:
+            q_indices = np.where(query_bow > 0)[0]
+            
+        if len(q_indices) == 0:
+            return np.zeros(self.tf.shape[0])
+            
+        tf_q = self.tf[:, q_indices].toarray()
+        idf_q = self.idf[q_indices]
+        denom = tf_q + self.k1 * (1.0 - self.b + self.b * self.doc_len[:, np.newaxis] / self.avg_doc_len)
+        scores = (tf_q * (self.k1 + 1.0) / denom) * idf_q
+        return scores.sum(axis=1)
+
+    def score_from_bow(self, query_bow, doc_idx):
+        """
+        Tính BM25 cho 1 tài liệu cụ thể từ query dạng Bag-of-Words (sparse vector)
+        """
+        import scipy.sparse as sp
+        if sp.issparse(query_bow):
+            q_indices = query_bow.nonzero()[1]
+        else:
+            q_indices = np.where(query_bow > 0)[0]
+            
+        if len(q_indices) == 0:
+            return 0.0
+            
+        tf_q = self.tf[doc_idx, q_indices].toarray()[0]
+        idf_q = self.idf[q_indices]
+        
+        doc_len = self.doc_len[doc_idx]
+        denom = tf_q + self.k1 * (1.0 - self.b + self.b * doc_len / self.avg_doc_len)
+        scores = (tf_q * (self.k1 + 1.0) / denom) * idf_q
+        return scores.sum()
+
 
 def reciprocal_rank_fusion(als_candidates, bm25_candidates, k=60):
     """
@@ -340,3 +397,101 @@ def calculate_user_lambda(user_liked_genres, all_genres, base_min=0.4, base_max=
     # Entropy càng thấp (sở thích chuyên biệt) -> lambda càng cao (đa dạng hóa ít hơn)
     dynamic_lambda = base_max - (base_max - base_min) * norm_entropy
     return dynamic_lambda
+
+
+def extract_user_features(user_id, movie_ids, train_ratings, movies_df, users_df, user_to_idx, movie_to_idx, als_model, bm25, is_train=False, target_mid=None):
+    """
+    Trích xuất đặc trưng thống nhất cho danh sách movie_ids của user_id (Inference / Eval mode).
+    Đảm bảo loại bỏ target_mid khỏi liked_ids khi is_train=True để tránh leakage.
+    """
+    import pandas as pd
+    import numpy as np
+    
+    if not movie_ids:
+        return pd.DataFrame()
+        
+    # Đảm bảo index của movies_df và users_df đã được set
+    if movies_df.index.name != 'movieId':
+        movies_df_idx = movies_df.set_index('movieId')
+    else:
+        movies_df_idx = movies_df
+        
+    if users_df.index.name != 'user_id':
+        users_df_idx = users_df.set_index('user_id')
+    else:
+        users_df_idx = users_df
+        
+    user = users_df_idx.loc[user_id]
+    
+    # 1. Lịch sử xem (liked_ids)
+    train_pos = train_ratings[(train_ratings['userId'] == user_id) & (train_ratings['rating'] >= 3.5)]
+    liked_ids = train_pos['movieId'].tolist()
+    
+    # 2. Thể loại yêu thích (lấy từ lịch sử xem thực tế, tránh tĩnh)
+    user_fav_genres = set()
+    for lmid in liked_ids:
+        if lmid in movies_df_idx.index:
+            g_str = movies_df_idx.loc[lmid, "genres"]
+            if pd.notna(g_str):
+                user_fav_genres.update(str(g_str).split("|"))
+                
+    # Fallback nếu lịch sử trống
+    if not user_fav_genres:
+        fav_m_str = str(user.get("favorite_movies", ""))
+        fav_m_list = [int(m) for m in fav_m_str.split("|") if str(m).isdigit()]
+        for fid in fav_m_list:
+            if fid in movies_df_idx.index:
+                g_str = movies_df_idx.loc[fid, "genres"]
+                if pd.notna(g_str):
+                    user_fav_genres.update(str(g_str).split("|"))
+    
+    if is_train and target_mid is not None and target_mid in liked_ids:
+        liked_ids = [lid for lid in liked_ids if lid != target_mid]
+        
+    # Giới hạn 20 phim gần nhất
+    liked_ids = liked_ids[-20:]
+    
+    # 3. Tính cb_score (dùng liked_ids hoặc fallback về favorite_movies nếu cold start)
+    user_bm25_scores = None
+    query_mids = liked_ids if liked_ids else [int(m) for m in str(user.get("favorite_movies", "")).split("|") if str(m).isdigit()]
+    if query_mids:
+        liked_soups = [movies_df_idx.loc[lid, 'soup'] for lid in query_mids if lid in movies_df_idx.index and 'soup' in movies_df_idx.columns]
+        if liked_soups:
+            query = " ".join(liked_soups)
+            user_bm25_scores = bm25.transform(query)
+            
+    # 4. Tạo features list
+    features = []
+    als_user_factors = als_model.user_factors
+    als_item_factors = als_model.item_factors
+    u_idx = user_to_idx.get(user_id, None)
+    
+    for mid in movie_ids:
+        if mid not in movies_df_idx.index:
+            continue
+        movie = movies_df_idx.loc[mid]
+        
+        movie_genres = set(str(movie['genres']).split('|'))
+        genre_overlap = len(user_fav_genres.intersection(movie_genres))
+        
+        try:
+            release_year = int(str(movie['release_date'])[:4])
+        except:
+            release_year = 2010
+            
+        m_idx = movie_to_idx.get(mid, None)
+        als_score = als_user_factors[u_idx].dot(als_item_factors[m_idx]) if (u_idx is not None and m_idx is not None) else 0.0
+        cb_score = user_bm25_scores[m_idx] if (user_bm25_scores is not None and m_idx is not None) else 0.0
+        
+        features.append({
+            'popularity': movie['popularity'],
+            'vote_average': movie['vote_average'],
+            'genre_overlap': genre_overlap,
+            'release_year': release_year,
+            'user_activity': user['activity_level'],
+            'user_bias': user['user_bias'],
+            'als_score': als_score,
+            'cb_score': cb_score
+        })
+        
+    return pd.DataFrame(features)
