@@ -25,11 +25,11 @@ def split_data_explicit(ratings_df, test_size=0.2, random_state=42):
 def split_data_implicit_leave_one_out(ratings_df, user_col='userId', item_col='movieId', timestamp_col='timestamp', seed=42):
     """
     Chia tập dữ liệu theo phương pháp Leave-One-Out (tương tác cuối cùng của mỗi user làm Test).
-    Với mỗi tương tác dương ở tập Test, trộn thêm 99 bộ phim ngẫu nhiên mà user chưa từng xem.
-    
+    Dùng TOÀN BỘ catalog chưa xem làm negative pool (full-catalog evaluation) để tránh sampling bias.
+
     Trả về:
         train_ratings: DataFrame chứa tập train
-        test_data: list of tuples (user_id, positive_item_id, list of 99 negative_item_ids)
+        test_data: list of tuples (user_id, positive_item_id, list of all negative_item_ids)
         user_interacted_items: dict {user_id: set of interacted item_ids}
     """
     set_seed(seed)
@@ -56,12 +56,8 @@ def split_data_implicit_leave_one_out(ratings_df, user_col='userId', item_col='m
         pos_item = row[item_col]
         interacted = user_interacted_items.get(user, set())
         
-        # Danh sách phim user chưa xem
-        non_interacted = list(all_items_set - interacted)
-        
-        # Lấy mẫu ngẫu nhiên 99 phim âm
-        k_neg = min(99, len(non_interacted))
-        neg_items = random.sample(non_interacted, k_neg)
+        # Full-catalog: lấy TẤT CẢ phim user chưa tương tác làm negatives
+        neg_items = list(all_items_set - interacted)
         
         test_data.append((user, pos_item, neg_items))
         
@@ -313,18 +309,19 @@ class BM25:
         """
         import scipy.sparse as sp
         if sp.issparse(query_bow):
-            q_indices = query_bow.nonzero()[1]
+            q_indices = query_bow.nonzero()[1] if query_bow.ndim > 1 else query_bow.nonzero()[0]
         else:
-            q_indices = np.where(query_bow > 0)[0]
+            q_indices = np.where(np.asarray(query_bow).ravel() > 0)[0]
             
         if len(q_indices) == 0:
             return np.zeros(self.tf.shape[0])
             
         tf_q = self.tf[:, q_indices].toarray()
         idf_q = self.idf[q_indices]
+        
         denom = tf_q + self.k1 * (1.0 - self.b + self.b * self.doc_len[:, np.newaxis] / self.avg_doc_len)
         scores = (tf_q * (self.k1 + 1.0) / denom) * idf_q
-        return scores.sum(axis=1)
+        return np.asarray(scores.sum(axis=1)).ravel()
 
     def score_from_bow(self, query_bow, doc_idx):
         """
@@ -339,7 +336,7 @@ class BM25:
         if len(q_indices) == 0:
             return 0.0
             
-        tf_q = self.tf[doc_idx, q_indices].toarray()[0]
+        tf_q = self.tf[doc_idx, q_indices].toarray().ravel()
         idf_q = self.idf[q_indices]
         
         doc_len = self.doc_len[doc_idx]

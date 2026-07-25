@@ -657,33 +657,17 @@ for uid, liked_movies in user_liked_movies_dict.items():
         if liked_idxs:
             user_query_bow_dict[uid] = bm25.tf[liked_idxs].sum(axis=0)
 
-cb_scores = []
-current_uid = None
-user_bm25_scores_all = None
-user_bow = None
-liked_ids = []
+# Precompute BM25 scores vector for all users instantly
+user_bm25_all_dict = {}
+for uid, u_bow in user_query_bow_dict.items():
+    if u_bow is not None:
+        user_bm25_all_dict[uid] = bm25.transform_from_bow(u_bow)
 
+cb_scores = []
 for uid, mid in zip(uids, mids):
     m_idx = movie_to_idx.get(mid, None)
-    if uid != current_uid:
-        current_uid = uid
-        user_bow = user_query_bow_dict.get(uid, None)
-        if user_bow is not None:
-            user_bm25_scores_all = bm25.transform_from_bow(user_bow)
-        else:
-            user_bm25_scores_all = None
-        liked_ids = user_liked_movies_dict.get(uid, [])
-        liked_ids = [lid for lid in liked_ids if lid in movies_soup_dict][-20:]
-            
-    # Lọc bỏ chính phim đang chấm điểm để tránh Leakage nếu nó nằm trong danh sách đã thích
-    is_positive_leak = (liked_ids and mid in liked_ids)
-    if is_positive_leak and m_idx is not None and user_bow is not None:
-        movie_bow = bm25.tf[m_idx]
-        clean_bow = user_bow - movie_bow
-        cb_score = bm25.score_from_bow(clean_bow, m_idx)
-    else:
-        cb_score = user_bm25_scores_all[m_idx] if (user_bm25_scores_all is not None and m_idx is not None) else 0.0
-        
+    u_scores = user_bm25_all_dict.get(uid, None)
+    cb_score = u_scores[m_idx] if (u_scores is not None and m_idx is not None) else 0.0
     cb_scores.append(cb_score)
 
 # Instantly build features DataFrame
@@ -1013,15 +997,14 @@ def end_to_end_recommend(user_id, top_k=10, custom_lambda=None, eval_mode=False,
 
     # --- EVAL MODE: Dự đoán trực tiếp trên danh sách candidates được chỉ định ---
     if eval_mode and eval_candidates is not None:
-        X_pred = extract_user_features(
+        X_pred, valid_mids = extract_user_features(
             user_id, eval_candidates, train_ratings, movies_df, users_df, 
             user_to_idx, movie_to_idx, als_model, bm25, is_train=False
         )
         if X_pred.empty:
             return [(mid, 0.0) for mid in eval_candidates]
         scores = lgb_ranker.predict(X_pred)
-        # Khôi phục đúng ID phim (bỏ qua những phim bị khuyết không tìm thấy)
-        valid_mids = [mid for mid in eval_candidates if mid in movies_indexed_df.index]
+        # valid_mids đã được extract_user_features trả về đúng thứ tự với scores
         return list(zip(valid_mids, scores))
 
     # --- STAGE 1: RETRIEVAL (BM25 + iALS -> RRF) ---
@@ -1066,14 +1049,13 @@ def end_to_end_recommend(user_id, top_k=10, custom_lambda=None, eval_mode=False,
         candidates = [cid for cid in candidates if cid not in liked_set]
         
     # --- STAGE 2: RANKING (LightGBM) ---
-    X_pred = extract_user_features(
+    X_pred, valid_candidates = extract_user_features(
         user_id, candidates, train_ratings, movies_df, users_df, 
         user_to_idx, movie_to_idx, als_model, bm25, is_train=False
     )
     if X_pred.empty:
         return []
     
-    valid_candidates = [mid for mid in candidates if mid in movies_indexed_df.index]
     scores = lgb_ranker.predict(X_pred)
     
     candidate_scores = list(zip(valid_candidates, scores))
@@ -1745,14 +1727,13 @@ def end_to_end_recommend_lgb(user_id, top_k=10, eval_mode=False, eval_candidates
         candidates = [cid for cid in candidates if cid not in liked_set]
         
     # --- STAGE 2: RANKING (LightGBM) ---
-    X_pred = extract_user_features(
+    X_pred, valid_candidates = extract_user_features(
         user_id, candidates, train_ratings, movies_df, users_df, 
         user_to_idx, movie_to_idx, als_model, bm25, is_train=False
     )
     if X_pred.empty:
         return []
     
-    valid_candidates = [mid for mid in candidates if mid in movies_df.index]
     scores = lgb_ranker.predict(X_pred)
     
     candidate_scores = list(zip(valid_candidates, scores))

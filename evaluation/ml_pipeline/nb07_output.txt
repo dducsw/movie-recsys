@@ -1,0 +1,11 @@
+﻿--- Cell 12 ---
+
+=== Kß║╛T QUß║ó SO S├üNH OFFLINE (A/B COMPARISON) ===
+| Chß╗ë sß╗æ | LightGBM Ranker | CatBoost Ranker (YetiRank) |
+| :--- | :--- | :--- |
+| **Hit Ratio@10** | 0.9800 | 0.7250 |
+| **NDCG@10** | 0.7333 | 0.3401 |
+| **MRR** | 0.6546 | 0.2334 |
+| **Train Time (sec)** | 0.10s (╞░ß╗¢c t├¡nh) | 28.73s |
+| **Inference Time (sec/user)** | 0.0347s | 0.0157s |
+
