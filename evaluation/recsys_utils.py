@@ -137,7 +137,10 @@ def evaluate_implicit_loo(predictions_dict, k=10):
         # Trích xuất danh sách item sau khi sắp xếp
         ranked_items = [item[0] for item in items]
         # Tìm item dương thực tế
-        pos_item = [item[0] for item in items if item[2]][0]
+        pos_items = [item[0] for item in items if item[2]]
+        if not pos_items:
+            continue
+        pos_item = pos_items[0]
         # Vị trí của phim dương trong danh sách gợi ý (1-indexed)
         rank = ranked_items.index(pos_item) + 1
         
@@ -152,6 +155,8 @@ def evaluate_implicit_loo(predictions_dict, k=10):
         # MRR
         mrrs.append(1.0 / rank)
         
+    if not hits:
+        return 0.0, 0.0, 0.0
     return np.mean(hits), np.mean(ndcgs), np.mean(mrrs)
 
 # ==========================================
@@ -466,10 +471,12 @@ def extract_user_features(user_id, movie_ids, train_ratings, movies_df, users_df
     als_item_factors = als_model.item_factors
     u_idx = user_to_idx.get(user_id, None)
     
+    valid_mids = []
     for mid in movie_ids:
         if mid not in movies_df_idx.index:
             continue
         movie = movies_df_idx.loc[mid]
+        valid_mids.append(mid)
         
         movie_genres = set(str(movie['genres']).split('|'))
         genre_overlap = len(user_fav_genres.intersection(movie_genres))
@@ -494,4 +501,7 @@ def extract_user_features(user_id, movie_ids, train_ratings, movies_df, users_df
             'cb_score': cb_score
         })
         
-    return pd.DataFrame(features)
+    df_res = pd.DataFrame(features)
+    if is_train:
+        return df_res
+    return df_res, valid_mids

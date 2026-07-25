@@ -2,7 +2,7 @@ import os
 import nbformat as nbf
 
 def create_pipeline_notebooks():
-    output_dir = os.path.join("evaluation", "ml_pipeline")
+    output_dir = "." if os.path.exists("generate_pipeline_notebooks.py") else os.path.join("evaluation", "ml_pipeline")
     os.makedirs(output_dir, exist_ok=True)
 
     # ==========================================================
@@ -732,10 +732,12 @@ Tế bào này khởi tạo mô hình `LGBMRanker` với mục tiêu `objective=
 ranker = lgb.LGBMRanker(
     objective='lambdarank',
     metric='ndcg',
-    n_estimators=100,
+    eval_at=[10],
+    n_estimators=200,
     learning_rate=0.05,
-    num_leaves=15,
-    random_state=42
+    num_leaves=31,
+    random_state=42,
+    verbose=-1
 )
 
 ranker.fit(
@@ -1552,14 +1554,13 @@ def end_to_end_recommend_cat(user_id, top_k=10, eval_mode=False, eval_candidates
 
     # --- EVAL MODE ---
     if eval_mode and eval_candidates is not None:
-        X_pred = extract_user_features(
+        X_pred, valid_mids = extract_user_features(
             user_id, eval_candidates, train_ratings, movies_df, users_df, 
             user_to_idx, movie_to_idx, als_model, bm25, is_train=False
         )
         if X_pred.empty:
             return [(mid, 0.0) for mid in eval_candidates]
         scores = cat_ranker.predict(X_pred)
-        valid_mids = [mid for mid in eval_candidates if mid in movies_df.index]
         return list(zip(valid_mids, scores))
 
     # --- STAGE 1: RETRIEVAL (BM25 + iALS -> RRF) ---
@@ -1605,14 +1606,13 @@ def end_to_end_recommend_cat(user_id, top_k=10, eval_mode=False, eval_candidates
         candidates = [cid for cid in candidates if cid not in liked_set]
         
     # --- STAGE 2: RANKING (CatBoost) ---
-    X_pred = extract_user_features(
+    X_pred, valid_candidates = extract_user_features(
         user_id, candidates, train_ratings, movies_df, users_df, 
         user_to_idx, movie_to_idx, als_model, bm25, is_train=False
     )
     if X_pred.empty:
         return []
     
-    valid_candidates = [mid for mid in candidates if mid in movies_df.index]
     scores = cat_ranker.predict(X_pred)
     
     candidate_scores = list(zip(valid_candidates, scores))
@@ -1694,14 +1694,13 @@ def end_to_end_recommend_lgb(user_id, top_k=10, eval_mode=False, eval_candidates
 
     # --- EVAL MODE ---
     if eval_mode and eval_candidates is not None:
-        X_pred = extract_user_features(
+        X_pred, valid_mids = extract_user_features(
             user_id, eval_candidates, train_ratings, movies_df, users_df, 
             user_to_idx, movie_to_idx, als_model, bm25, is_train=False
         )
         if X_pred.empty:
             return [(mid, 0.0) for mid in eval_candidates]
         scores = lgb_ranker.predict(X_pred)
-        valid_mids = [mid for mid in eval_candidates if mid in movies_df.index]
         return list(zip(valid_mids, scores))
 
     # --- STAGE 1: RETRIEVAL (BM25 + iALS -> RRF) ---
@@ -1830,8 +1829,17 @@ from recsys_utils import evaluate_implicit_loo
 preds_lgb = {}
 preds_cat = {}
 
-# Đo latency suy luận trên 200 users để so sánh tốc độ và đánh giá
-test_data_sample = test_data[:200]
+# 1. Warm-up Phase (loại bỏ hiệu ứng cold cache)
+print("Đang chạy warm-up phase cho CPU cache...")
+warmup_sample = test_data[:20]
+for u, pos_item, neg_items in warmup_sample:
+    u, pos_item, neg_items = int(u), int(pos_item), [int(x) for x in neg_items]
+    items = [pos_item] + neg_items
+    _ = end_to_end_recommend_lgb(u, eval_mode=True, eval_candidates=items)
+    _ = end_to_end_recommend_cat(u, eval_mode=True, eval_candidates=items)
+
+# 2. Benchmark Phase chính thức
+test_data_sample = test_data[20:220]
 
 start_lgb = time.time()
 for u, pos_item, neg_items in test_data_sample:
