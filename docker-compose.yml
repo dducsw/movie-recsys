@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # 1. Relational Database & Offline Feature Store
   postgres:
     image: postgres:15-alpine
     container_name: movie-recsys-db
@@ -13,7 +14,175 @@ services:
       - "5435:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d movie_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. In-Memory Cache & Online Feature Store (Feast / Fast Retrieval Cache)
+  redis:
+    image: redis:7-alpine
+    container_name: movie-recsys-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 3. Vector Database (Candidate Retrieval / Embedding Search)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: movie-recsys-qdrant
+    restart: always
+    ports:
+      - "6333:6333" # HTTP API & Web UI
+      - "6334:6334" # gRPC API
+    volumes:
+      - qdrantdata:/qdrant/storage
+      - ./infra/qdrant/config.yaml:/qdrant/config/production.yaml
+
+  # 4. Message Broker (Real-time Event Ingestion with KRaft Mode)
+  kafka:
+    image: confluentinc/cp-kafka:7.7.0
+    container_name: movie-recsys-kafka
+    restart: always
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_KEY_CONVERTER: 'org.apache.kafka.connect.storage.StringConverter'
+      KAFKA_VALUE_CONVERTER: 'org.apache.kafka.connect.storage.StringConverter'
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    volumes:
+      - kafkadata:/tmp/kraft-combined-logs
+
+  # 5. Object Storage (SeaweedFS S3-compatible for Models & Large Data Artifacts)
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: movie-recsys-seaweedfs
+    restart: always
+    command: "server -s3 -s3.port=8333"
+    ports:
+      - "8333:8333" # S3 API Port
+      - "9333:9333" # Master Port
+      - "8888:8888" # Filer Port
+    volumes:
+      - seaweeddata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8333/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  seaweedfs-init:
+    image: amazon/aws-cli:latest
+    container_name: movie-recsys-seaweedfs-init
+    restart: "no"
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      - AWS_ACCESS_KEY_ID=seaweedfskey
+      - AWS_SECRET_ACCESS_KEY=seaweedfssecret
+      - AWS_EC2_METADATA_DISABLED=true
+    entrypoint: >
+      /bin/sh -c "
+      aws --endpoint-url http://seaweedfs:8333 s3 mb s3://mlflow --region us-east-1 || true;
+      aws --endpoint-url http://seaweedfs:8333 s3 mb s3://recsys-data --region us-east-1 || true;
+      aws --endpoint-url http://seaweedfs:8333 s3 mb s3://feature-store --region us-east-1 || true;
+      exit 0;
+      "
+
+  # 6. ML Experiment Tracking & Model Registry
+  mlflow:
+    build:
+      context: .
+      dockerfile: ./infra/mlflow/Dockerfile
+    container_name: movie-recsys-mlflow
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs-init:
+        condition: service_completed_successfully
+    ports:
+      - "5000:5000"
+    environment:
+      - AWS_ACCESS_KEY_ID=seaweedfskey
+      - AWS_SECRET_ACCESS_KEY=seaweedfssecret
+      - MLFLOW_S3_ENDPOINT_URL=http://seaweedfs:8333
+      - MLFLOW_S3_IGNORE_TLS=true
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://postgres:mysecretpassword@postgres:5432/movie_db
+      --default-artifact-root s3://mlflow/
+      --host 0.0.0.0
+      --port 5000
+
+  # 7. Big Data Processing (Apache Spark 3.5.6)
+  spark-master:
+    build:
+      context: .
+      dockerfile: ./infra/spark/Dockerfile
+    container_name: movie-recsys-spark-master
+    restart: always
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "7077:7077" # Spark Master Port
+      - "8080:8080" # Spark Master Web UI
+    volumes:
+      - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+    command: /opt/spark/sbin/start-master.sh
+
+  spark-worker:
+    build:
+      context: .
+      dockerfile: ./infra/spark/Dockerfile
+    container_name: movie-recsys-spark-worker
+    restart: always
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+    ports:
+      - "8081:8081" # Spark Worker Web UI
+    volumes:
+      - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+    command: /opt/spark/sbin/start-worker.sh spark://spark-master:7077
 
 volumes:
   pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  qdrantdata:
+    driver: local
+  seaweeddata:
+    driver: local
+  kafkadata:
     driver: local

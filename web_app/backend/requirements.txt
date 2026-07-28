@@ -3,9 +3,12 @@ uvicorn>=0.22.0
 psycopg2-binary>=2.9.6
 pandas>=1.5.0
 python-dotenv>=1.0.0
+kafka-python>=2.0.0      # Kafka event producer
 
 # Chatbot
 langchain-core==1.4.6
 langchain-google-genai==4.2.1
 langgraph>=1.2.2
 tavily-python>=0.7.26
+redis>=4.5.0
+qdrant-client>=1.7.0

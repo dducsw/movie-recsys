@@ -79,7 +79,7 @@ function ChatbotView({
                       <div 
                         key={movie.movieId || movie.id || movieIndex} 
                         className="chat-movie-card"
-                        onClick={() => handleMovieClick(movie.movieId || movie.id)}
+                        onClick={() => handleMovieClick(movie.movieId || movie.id, 'chatbot')}
                         title={`View details of ${movie.title}`}
                       >
                         <div className="chat-movie-poster-wrapper">

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers from controllers
-from app import movie_router, recsys_router, chatbot_router
+from app import movie_router, recsys_router, chatbot_router, events_router
 
 app = FastAPI(
     title="MovieNex Recommendation System API (MVC)",
@@ -34,6 +34,7 @@ app.add_middleware(
 app.include_router(movie_router)
 app.include_router(recsys_router)
 app.include_router(chatbot_router)
+app.include_router(events_router)
 
 @app.get("/")
 def read_root():
