@@ -2,6 +2,8 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from app.services.chatbot import ChatbotService
+from app.services.event_producer import emit, EventType
+from app.services.session import get_session_id
 
 router = APIRouter(prefix="/api/chatbot", tags=["Chatbot"])
 
@@ -31,6 +33,15 @@ async def chat(request: ChatRequest):
         result = ChatbotService.get_reply(
             message=request.message,
             session_id=request.session_id
+        )
+        emit(
+            EventType.CHATBOT_MESSAGE,
+            user_id=request.session_id or "anonymous",
+            extra={
+                "message_len": len(request.message),
+                "result_movie_count": len(result.get("movies", [])),
+                "message_count": result.get("message_count", 0),
+            },
         )
         return ChatResponse(**result)
     except Exception as e:

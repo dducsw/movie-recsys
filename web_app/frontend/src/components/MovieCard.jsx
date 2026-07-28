@@ -61,7 +61,7 @@ function MovieCard({ movie, onClick }) {
   };
 
   return (
-    <div className="movie-card" onClick={() => onClick(movie.movieId)}>
+    <div className="movie-card" onClick={onClick}>
       <div className="poster-container">
         <img
           className="movie-poster"

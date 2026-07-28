@@ -195,7 +195,7 @@ class MovieModel:
                     m.vote_average, 
                     m.vote_count, 
                     m.poster_url,
-                    m.trailer_url,
+                    NULL AS trailer_url,
                     d.name AS director,
                     COALESCE(STRING_AGG(DISTINCT g.name, '|'), '') AS genres,
                     COALESCE(STRING_AGG(DISTINCT a.name, '|'), '') AS cast,

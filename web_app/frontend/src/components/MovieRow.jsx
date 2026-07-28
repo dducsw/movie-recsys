@@ -10,7 +10,8 @@ function MovieRow({
   onMovieClick, 
   headerExtra, 
   onSeeAll,
-  fallbackMessage 
+  fallbackMessage,
+  source = 'unknown',   // listing nguồn: 'trending', 'latest', 'recommendations', 'similar', 'search'
 }) {
   return (
     <div className="section-wrapper">
@@ -35,11 +36,11 @@ function MovieRow({
           <button className="scroll-arrow-btn left" onClick={() => onScroll('left')}>‹</button>
           
           <div className="horizontal-scroll" ref={scrollRef}>
-            {movies.map((movie) => (
+            {movies.map((movie, idx) => (
               <MovieCard 
                 key={movie.movieId} 
                 movie={movie} 
-                onClick={onMovieClick} 
+                onClick={() => onMovieClick(movie.movieId, source, idx)} 
               />
             ))}
           </div>

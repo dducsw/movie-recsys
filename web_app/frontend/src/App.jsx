@@ -9,6 +9,31 @@ import WatchView from './components/WatchView';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
+// ── Session tracking ──────────────────────────────────────────────────────────
+// Tạo session ID lần đầu, lưu localStorage 30 ngày
+const getOrCreateSessionId = () => {
+  const KEY = 'movienex_sid';
+  let sid = localStorage.getItem(KEY);
+  if (!sid) {
+    sid = crypto.randomUUID();
+    localStorage.setItem(KEY, sid);
+  }
+  return sid;
+};
+
+// Gửi click event lên backend (fire-and-forget, không block UI)
+const trackClick = (movieId, source, position = null) => {
+  fetch(`${API_BASE_URL}/events/click`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Session-Id': getOrCreateSessionId(),
+    },
+    credentials: 'include',   // gửi cookie movienex_sid
+    body: JSON.stringify({ movie_id: movieId, source, position }),
+  }).catch(() => {});          // bỏ qua lỗi, không ảnh hưởng UX
+};
+
 function App() {
   // Navigation & View State
   const [view, setView] = useState('home'); // 'home', 'detail', 'all', 'auth', 'watch'
@@ -400,13 +425,19 @@ function App() {
   };
 
   // Handle click on Movie Card -> Go to Details view
-  const handleMovieClick = async (movieId) => {
+  // source: listing nơi user click ('trending'|'latest'|'search'|'recommendations'|'similar'|'chatbot')
+  const handleMovieClick = async (movieId, source = 'unknown', position = null) => {
+    // Emit click event trước khi navigate (fire-and-forget)
+    trackClick(movieId, source, position);
+
     setView('detail');
     setSelectedMovieId(movieId);
     setLoadingDetail(true);
     try {
       // Fetch movie detail
-      const resDetail = await fetch(`${API_BASE_URL}/movies/${movieId}`);
+      const resDetail = await fetch(`${API_BASE_URL}/movies/${movieId}`, {
+        credentials: 'include',
+      });
       if (resDetail.ok) {
         const movieData = await resDetail.json();
         setSelectedMovie(movieData);
@@ -415,7 +446,9 @@ function App() {
       }
 
       // Fetch similar movie recommendations
-      const resSimilar = await fetch(`${API_BASE_URL}/movies/${movieId}/recommendations?limit=12`);
+      const resSimilar = await fetch(`${API_BASE_URL}/movies/${movieId}/recommendations?limit=12`, {
+        credentials: 'include',
+      });
       if (resSimilar.ok) {
         const similarData = await resSimilar.json();
         setSimilarMovies(similarData.results || []);
@@ -726,11 +759,11 @@ function App() {
                   <div className="no-results">No movies found matching your query.</div>
                 ) : (
                   <div className="search-grid">
-                    {searchResults.map((movie) => (
+                    {searchResults.map((movie, idx) => (
                       <MovieCard 
                         key={movie.movieId} 
                         movie={movie} 
-                        onClick={handleMovieClick} 
+                        onClick={() => handleMovieClick(movie.movieId, 'search', idx)} 
                       />
                     ))}
                   </div>
@@ -763,6 +796,7 @@ function App() {
                   onScroll={(dir) => scrollRow(recsScrollRef, dir)}
                   onMovieClick={handleMovieClick}
                   onSeeAll={() => handleSeeAll('recs')}
+                  source="recommendations"
                   fallbackMessage="Like some movies in the Trending section below to start building your personalized recommendation profile!"
                   headerExtra={
                     <span style={{ fontSize: '11px', background: 'rgba(1, 180, 228, 0.1)', color: 'var(--tmdbLightBlue)', border: '1px solid rgba(1, 180, 228, 0.2)', padding: '2px 10px', borderRadius: '12px', fontWeight: 700, marginRight: '10px' }}>
@@ -780,6 +814,7 @@ function App() {
                   onScroll={(dir) => scrollRow(trendingScrollRef, dir)}
                   onMovieClick={handleMovieClick}
                   onSeeAll={() => handleSeeAll('trending')}
+                  source="trending"
                   headerExtra={
                     <div className="selector-tabs">
                       <div
@@ -807,6 +842,7 @@ function App() {
                   onScroll={(dir) => scrollRow(latestScrollRef, dir)}
                   onMovieClick={handleMovieClick}
                   onSeeAll={() => handleSeeAll('latest')}
+                  source="latest"
                 />
 
                 {/* Row 4: Liked Movies (Interactive History) */}
@@ -818,6 +854,7 @@ function App() {
                       scrollRef={favoritesScrollRef}
                       onScroll={(dir) => scrollRow(favoritesScrollRef, dir)}
                       onMovieClick={handleMovieClick}
+                      source="favorites"
                       headerExtra={
                         <button 
                           onClick={() => { if(confirm("Reset all liked history?")) setLikedMovies([]); }}
@@ -1052,6 +1089,7 @@ function App() {
                   scrollRef={similarScrollRef}
                   onScroll={(dir) => scrollRow(similarScrollRef, dir)}
                   onMovieClick={handleMovieClick}
+                  source="similar"
                   fallbackMessage="No similar movies found."
                   headerExtra={
                     <div style={{ color: 'var(--textSecondary)', fontSize: '13.5px', margin: '4px 0 16px 0', fontWeight: 500 }}>
@@ -1112,11 +1150,11 @@ function App() {
               ) : (
                 <div>
                   <div className="search-grid">
-                    {allMovies.map((movie) => (
+                    {allMovies.map((movie, idx) => (
                       <MovieCard 
                         key={movie.movieId} 
                         movie={movie} 
-                        onClick={handleMovieClick} 
+                        onClick={() => handleMovieClick(movie.movieId, allType, idx)} 
                       />
                     ))}
                   </div>
