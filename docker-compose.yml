@@ -175,6 +175,17 @@ services:
       - ./infra/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
     command: /opt/spark/sbin/start-worker.sh spark://spark-master:7077
 
+  # 8. Open Data Lakehouse Catalog (Apache Polaris REST Catalog)
+  polaris:
+    image: apache/polaris:latest
+    container_name: movie-recsys-polaris
+    restart: always
+    ports:
+      - "8181:8181" # REST Catalog API Port
+    environment:
+      - POLARIS_REALM=recsys
+      - POLARIS_BOOTSTRAP=true
+
 volumes:
   pgdata:
     driver: local
@@ -186,3 +197,4 @@ volumes:
     driver: local
   kafkadata:
     driver: local
+
