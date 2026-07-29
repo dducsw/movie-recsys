@@ -8,17 +8,21 @@ load_dotenv(find_dotenv())
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Load API Key
-from dotenv import load_dotenv
-load_dotenv()
-
-# Import routers from controllers
-from app import movie_router, recsys_router, chatbot_router, events_router
+# Import routers and DB initializer
+from app import (
+    movie_router,
+    recsys_router,
+    chatbot_router,
+    events_router,
+    auth_router,
+    onboarding_router,
+    init_db_tables
+)
 
 app = FastAPI(
     title="MovieNex Recommendation System API (MVC)",
     description="Backend API for MovieNex Recsys Demo structured in MVC architecture",
-    version="1.1.0"
+    version="1.2.0"
 )
 
 # Enable CORS so the React Frontend can communicate with the backend
@@ -30,11 +34,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+def on_startup():
+    """Tự động kiểm tra và khởi tạo các bảng DB người dùng khi khởi chạy API."""
+    init_db_tables()
+
 # Include routers
 app.include_router(movie_router)
 app.include_router(recsys_router)
 app.include_router(chatbot_router)
 app.include_router(events_router)
+app.include_router(auth_router)
+app.include_router(onboarding_router)
 
 @app.get("/")
 def read_root():

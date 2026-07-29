@@ -6,6 +6,8 @@ import ChatbotView from './components/ChatbotView';
 import Footer from './components/Footer';
 import AuthView from './components/AuthView';
 import WatchView from './components/WatchView';
+import AuthModal from './components/AuthModal';
+import OnboardingModal from './components/OnboardingModal';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
@@ -41,20 +43,45 @@ function App() {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [showTrailer, setShowTrailer] = useState(false);
 
-  // Active User session state
+  // Active User & Auth Modals state
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
   useEffect(() => {
-    const activeUser = localStorage.getItem('movienex_active_user');
-    if (activeUser) {
-      setUser(JSON.parse(activeUser).username);
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      fetch(`${API_BASE_URL}/auth/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.user) {
+            setUser(data.user);
+            setUserProfile(data);
+          } else {
+            localStorage.removeItem('auth_token');
+            setUser(null);
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('movienex_active_user');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_info');
     setUser(null);
+    setUserProfile(null);
     setView('home');
+  };
+
+  const handleAuthSuccess = (userData, isNewUser) => {
+    setUser(userData);
+    if (isNewUser) {
+      setIsOnboardingOpen(true);
+    }
   };
 
   // Lists of Movies (Homepage)
@@ -141,6 +168,50 @@ function App() {
   useEffect(() => {
     localStorage.setItem('tmdb_recsys_ratings', JSON.stringify(movieRatings));
   }, [movieRatings]);
+
+  // Automatic Impression Tracking Hook using IntersectionObserver
+  useEffect(() => {
+    const seenIds = new Set();
+    const observer = new IntersectionObserver((entries) => {
+      const impressions = [];
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          const movieId = parseInt(el.getAttribute('data-movie-id'), 10);
+          const source = el.getAttribute('data-source') || 'listing';
+          const posStr = el.getAttribute('data-position');
+          const position = posStr !== null ? parseInt(posStr, 10) : null;
+
+          if (movieId && !seenIds.has(movieId)) {
+            seenIds.add(movieId);
+            impressions.push({ movie_id: movieId, source, position });
+          }
+        }
+      });
+
+      if (impressions.length > 0) {
+        const token = localStorage.getItem('auth_token');
+        fetch(`${API_BASE_URL}/events/impression`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ impressions })
+        }).catch(() => {});
+      }
+    }, { threshold: 0.5 });
+
+    const timer = setTimeout(() => {
+      const cards = document.querySelectorAll('.movie-card[data-movie-id]');
+      cards.forEach((c) => observer.observe(c));
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [view, trendingMovies, recommendations, searchResults, allMovies]);
 
   // Sync Guide Dismiss State to LocalStorage
   const handleDismissGuide = () => {
@@ -719,6 +790,7 @@ function App() {
         isSearching={isSearching}
         user={user}
         onLogout={handleLogout}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
       />
 
       {view === 'home' ? (
@@ -1173,6 +1245,19 @@ function App() {
           onClose={() => setShowTrailer(false)} 
         />
       )}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
+      <OnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onComplete={() => {
+          setIsOnboardingOpen(false);
+          window.location.reload();
+        }}
+      />
       <Footer />
     </div>
   );

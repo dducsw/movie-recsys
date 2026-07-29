@@ -12,3 +12,6 @@ langgraph>=1.2.2
 tavily-python>=0.7.26
 redis>=4.5.0
 qdrant-client>=1.7.0
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6

@@ -131,3 +131,6 @@ class EventType:
     RECOMMENDATION_REQUEST  = "recommendation_request"
     SIMILAR_MOVIE_REQUEST   = "similar_movie_request"
     CHATBOT_MESSAGE         = "chatbot_message"
+    IMPRESSION              = "impression"
+    RATING                  = "rating"
+    WATCHLIST               = "watchlist"
