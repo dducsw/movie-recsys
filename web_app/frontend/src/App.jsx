@@ -90,15 +90,17 @@ function App() {
   const [activeTab, setActiveTab] = useState('today'); // 'today' or 'week'
 
   // AI Chatbot States
+    // AI Chatbot States
   const [chatMessages, setChatMessages] = useState([
-  {
-    sender: 'bot',
-    text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. I can remember our conversation and provide context-aware recommendations!\n\nTry asking me:\n• "Recommend sci-fi movies"\n• "Movies like Inception"\n• "Tell me more about the second one" (after I recommend movies)'
-  }
+    {
+      sender: 'bot',
+      text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. I can remember our conversation and provide context-aware recommendations!\n\nTry asking me:\n• "Recommend sci-fi movies"\n• "Movies like Inception"\n• "Tell me more about the second one" (after I recommend movies)'
+    }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef(null);
+  const isInitialChatLoad = useRef(true); // <-- ADD THIS LINE
 
   const [chatSessionId, setChatSessionId] = useState(() => {
     return localStorage.getItem('movienex_chat_session_id') || null;
@@ -189,11 +191,6 @@ function App() {
   };
 
   // Auto-scroll chat messages
-  useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages, isTyping]);
 
   // Handle sending chat messages
   const handleSendChatMessage = async (textToSend) => {
@@ -252,10 +249,20 @@ function App() {
     }
   };
 
+    // Auto-scroll chat messages
   useEffect(() => {
-  if (chatEndRef.current) {
-    chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-  }
+    if (chatEndRef.current) {
+      // Use 'auto' on initial load to prevent the "slide down" effect.
+      // Use 'smooth' for subsequent new messages.
+      chatEndRef.current.scrollIntoView({
+        behavior: isInitialChatLoad.current ? 'auto' : 'smooth',
+        block: 'end',
+      });
+
+      if (isInitialChatLoad.current) {
+        isInitialChatLoad.current = false;
+      }
+    }
   }, [chatMessages, isTyping]);
 
   useEffect(() => {
@@ -264,35 +271,35 @@ function App() {
     }
   }, [view, chatSessionId]);
 
-  const loadChatHistory = async () => {
-  if (!chatSessionId) return;
-  
-  try {
-    const response = await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data.messages && data.messages.length > 0) {
-        setChatMessages(
-          data.messages.map(msg => ({
-            sender: msg.role === 'human' ? 'user' : 'bot',
-            text: msg.content
-          }))
-        );
-        setChatMessageCount(data.messages.length);
-      } else {
-        // Session exists but no messages, show welcome
-        setChatMessages([
-          {
-            sender: 'bot',
-            text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. How can I help you today?'
-          }
-        ]);
+    const loadChatHistory = async () => {
+    if (!chatSessionId) return;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.messages && data.messages.length > 0) {
+          isInitialChatLoad.current = true; // <-- ADD THIS: Force instant scroll when history loads
+          setChatMessages(
+            data.messages.map(msg => ({
+              sender: msg.role === 'human' ? 'user' : 'bot',
+              text: msg.content
+            }))
+          );
+          setChatMessageCount(data.messages.length);
+        } else {
+          setChatMessages([
+            {
+              sender: 'bot',
+              text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. How can I help you today?'
+            }
+          ]);
+        }
       }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
     }
-  } catch (error) {
-    console.error('Error loading chat history:', error);
-    }
-  };  
+  };
 
   const generateSessionId = () => {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -376,7 +383,7 @@ function App() {
     }
   };
 
-  const handleClearChatHistory = async () => {
+    const handleClearChatHistory = async () => {
     if (!chatSessionId) return;
     
     const confirmClear = window.confirm('Clear all conversation history?');
@@ -390,7 +397,7 @@ function App() {
       console.error('Error clearing history:', error);
     }
 
-    // Reset local state
+    isInitialChatLoad.current = true; // <-- ADD THIS
     setChatMessages([
       {
         sender: 'bot',
@@ -401,12 +408,11 @@ function App() {
   };
 
   const handleNewChatSession = () => {
-    // Generate new session ID
     const newSessionId = generateSessionId();
     setChatSessionId(newSessionId);
     localStorage.setItem('movienex_chat_session_id', newSessionId);
     
-    // Reset messages
+    isInitialChatLoad.current = true; // <-- ADD THIS
     setChatMessages([
       {
         sender: 'bot',
