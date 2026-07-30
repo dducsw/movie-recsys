@@ -370,15 +370,6 @@ class MovieModel:
 
         try:
             query = """
-                WITH matched_movies AS (
-                    SELECT DISTINCT m.movieid
-                    FROM movies m
-                    JOIN movie_genres mg ON m.movieid = mg.movie_id
-                    JOIN genres g ON mg.genre_id = g.id
-                    WHERE g.name ILIKE %s
-                    ORDER BY m.popularity DESC
-                    LIMIT %s OFFSET %s
-                )
                 SELECT
                     m.movieid AS "movieId",
                     m.title,
@@ -390,18 +381,36 @@ class MovieModel:
                     m.vote_count,
                     m.poster_url,
                     d.name AS director,
-                    COALESCE(STRING_AGG(DISTINCT g.name, '|'), '') AS genres,
+                    COALESCE(STRING_AGG(DISTINCT g2.name, '|'), '') AS genres,
                     COALESCE(STRING_AGG(DISTINCT a.name, '|'), '') AS cast,
                     COALESCE(STRING_AGG(DISTINCT t.name, '|'), '') AS keywords
-                FROM matched_movies mm
-                JOIN movies m ON mm.movieid = m.movieid
-                LEFT JOIN directors d ON m.director_id = d.id
-                LEFT JOIN movie_genres mg ON m.movieid = mg.movie_id
-                LEFT JOIN genres g ON mg.genre_id = g.id
-                LEFT JOIN movie_actors ma ON m.movieid = ma.movie_id
-                LEFT JOIN actors a ON ma.actor_id = a.id
-                LEFT JOIN movie_tags mt ON m.movieid = mt.movie_id
-                LEFT JOIN tags t ON mt.tag_id = t.id
+                FROM movies m
+
+                JOIN movie_genres mg_filter
+                    ON m.movieid = mg_filter.movie_id
+                JOIN genres g_filter
+                    ON mg_filter.genre_id = g_filter.id
+
+                LEFT JOIN directors d
+                    ON m.director_id = d.id
+
+                LEFT JOIN movie_genres mg
+                    ON m.movieid = mg.movie_id
+                LEFT JOIN genres g2
+                    ON mg.genre_id = g2.id
+
+                LEFT JOIN movie_actors ma
+                    ON ma.movie_id = m.movieid
+                LEFT JOIN actors a
+                    ON a.id = ma.actor_id
+
+                LEFT JOIN movie_tags mt
+                    ON mt.movie_id = m.movieid
+                LEFT JOIN tags t
+                    ON t.id = mt.tag_id
+
+                WHERE g_filter.name ILIKE %s
+
                 GROUP BY
                     m.movieid,
                     m.title,
@@ -413,9 +422,11 @@ class MovieModel:
                     m.vote_count,
                     m.poster_url,
                     d.name
-                ORDER BY m.popularity DESC;
-            """
 
+                ORDER BY m.popularity DESC
+
+                LIMIT %s OFFSET %s;
+                """
             cur.execute(query, (f"%{genre}%", limit, offset))
             return cur.fetchall()
 
