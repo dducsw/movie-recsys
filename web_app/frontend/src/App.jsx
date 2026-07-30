@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import Navbar from './components/Navbar';
-import MovieRow from './components/MovieRow';
-import MovieCard from './components/MovieCard';
-import ChatbotView from './components/ChatbotView';
-import Footer from './components/Footer';
-import AuthView from './components/AuthView';
-import WatchView from './components/WatchView';
+import Navbar from './components/Navbar/Navbar';
+import MovieRow from './components/MovieRow/MovieRow';
+import MovieCard from './components/MovieCard/MovieCard';
+import ChatbotView from './components/ChatbotView/ChatbotView';
+import Footer from './components/Footer/Footer';
+import AuthView from './components/AuthView/AuthView';
+import WatchView from './components/WatchView/WatchView';
+
 
 const API_BASE_URL = 'http://localhost:8000/api';
 

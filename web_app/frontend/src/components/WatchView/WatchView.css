@@ -1,0 +1,171 @@
+/* ============================================
+   WATCH VIEW (TRAILER MODAL) STYLES
+   ============================================ */
+
+.watch-view-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.watch-view-modal {
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 900px;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.watch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #032541, #064a85);
+  color: white;
+}
+
+.watch-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.watch-close-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: white;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.watch-close-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: rotate(90deg);
+}
+
+.watch-video-screen {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: #000;
+  position: relative;
+}
+
+.watch-video-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.watch-video-screen-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-size: cover;
+  background-position: center;
+  text-align: center;
+  padding: 20px;
+}
+
+.watch-overlay-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.watch-fallback-desc {
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 8px;
+  max-width: 450px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.watch-youtube-btn {
+  margin-top: 20px;
+  display: inline-flex;
+  padding: 12px 28px;
+  font-size: 14px;
+  text-decoration: none;
+  background: #e50914;
+  color: white;
+  border-radius: 4px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.watch-youtube-btn:hover {
+  background: #f40612;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(229, 9, 20, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .watch-view-overlay {
+    padding: 10px;
+  }
+
+  .watch-view-modal {
+    border-radius: 12px;
+  }
+
+  .watch-header {
+    padding: 12px 16px;
+  }
+
+  .watch-header h3 {
+    font-size: 16px;
+  }
+
+  .watch-close-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .watch-overlay-text {
+    font-size: 16px;
+  }
+
+  .watch-fallback-desc {
+    font-size: 13px;
+  }
+}

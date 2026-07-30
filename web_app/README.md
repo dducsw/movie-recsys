@@ -220,7 +220,7 @@ Trong thư mục `webapp/`, chạy lệnh khởi tạo:
 npm create vite@latest frontend -- --template react
 cd frontend
 npm install
-npm install -D tailwindcss postcss autoprefixer
+npm install -D tailwindcss postcss autoprefixer react-markdown
 npx tailwindcss init -p
 ```
 
