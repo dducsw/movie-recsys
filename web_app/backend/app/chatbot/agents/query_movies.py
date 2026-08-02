@@ -1,51 +1,48 @@
 from typing import List, Dict, Any, Optional
 from app.chatbot.state import GraphState
-from app import MovieModel, RecsysService
+from app.models.movie import MovieModel
+from app.services.recsys import RecsysService
+
 
 def query_movies_node(state: GraphState) -> dict:
-    """Retrieve candidate movies from local CSV data."""
-    intent = state.get("intent_output").intent
-    target = state.get("intent_output").target_title.strip()
-    genres = state.get("intent_output").genres
+    """Retrieve candidate movies from the database via MovieModel."""
+    intent = state["intent_output"].intent
+    target = state.get("intent_output").target_title.strip() if state.get("intent_output").target_title else ""
+    genres = state.get("intent_output").genres or []
 
     candidates: List[Dict[str, Any]] = []
     matched: Optional[Dict[str, Any]] = None
 
     if intent == "similar" and target:
-        # Fuzzy search for the refernced title
+        # Fuzzy search for the referenced title
         results = MovieModel.search(target, limit=5)
         if results:
             matched = results[0]
-            movie_id = matched.get("movieid")
+            movie_id = matched.get("movieId") or matched.get("movieid")
             if movie_id:
                 similar_ids = RecsysService.get_similar_movies(int(movie_id), top_n=15)
-                candidates = MovieModel.get_by_id(similar_ids)
+                if similar_ids:
+                    candidates = MovieModel.get_by_ids(similar_ids)
 
     elif intent == "genre" and genres:
-        genre_pop = MovieModel.get_all_genres_and_popularity()
-        print(genre_pop)
+        # Fetch movies for each requested genre, page 1, up to 5 per genre
+        seen_ids: set = set()
         for g in genres:
-            g_lower = g.lower()
-            if g_lower in genre_pop:
-                candidates.extent(MovieModel.get_movie_by_genre(g_lower, limit=5))
-        # Deduplitcate by movieId
-        seen = set()
-        unique = []
-        for m in candidates:
-            mid = m.get("movieid")
-            if mid and mid not in seen:
-                seen.add(mid)
-                unique.append(m)
-
-        candidates = unique[:15]
+            g_lower = g.strip().lower()
+            if not g_lower:
+                continue
+            results = MovieModel.get_movie_by_genre(g_lower, page=1, limit=5)
+            for m in results:
+                mid = m.get("movieId") or m.get("movieid")
+                if mid and mid not in seen_ids:
+                    seen_ids.add(mid)
+                    candidates.append(m)
+        # Sort by popularity descending and cap at 15
+        candidates.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
+        candidates = candidates[:15]
 
     elif intent == "followup":
-        # Look at enriched_movies from previous turns if available
-        # For followup, we'll pass through to generate_answer with exisiting context
+        # Pass through — generate_answer will use enriched_movies from prior turns
         pass
 
-    return {
-        "matched_movie": matched,
-        "candidate_movies": candidates
-    }
-
+    return {"matched_movie": matched, "candidate_movies": candidates}

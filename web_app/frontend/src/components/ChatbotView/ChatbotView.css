@@ -1,0 +1,431 @@
+/* ============================================
+   MODERN CENTERED CHAT UI
+   ============================================ */
+
+.modern-chat-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background-color: #f9f9f9; /* Light, clean background */
+  color: #1a1a1a;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ===== HEADER ===== */
+.modern-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 32px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e5e5;
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.modern-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: #111;
+}
+
+.modern-header-right {
+  display: flex;
+  gap: 12px;
+}
+
+.modern-ghost-btn {
+  background: transparent;
+  border: 1px solid #ddd;
+  color: #555;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modern-ghost-btn:hover {
+  background: #f0f0f0;
+  border-color: #ccc;
+}
+
+.modern-primary-btn {
+  background: #111;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modern-primary-btn:hover {
+  background: #333;
+  transform: translateY(-1px);
+}
+
+/* ===== CHAT BODY ===== */
+.modern-chat-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Centered container for messages */
+.modern-messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px 24px 200px 24px; /* Bottom padding for input zone */
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto; /* Centers the content in the middle */
+}
+
+/* ===== MESSAGE ROWS ===== */
+.modern-msg-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  max-width: 100%;
+}
+
+/* User messages pushed to the right */
+.modern-msg-row.user {
+  flex-direction: row-reverse;
+  align-self: flex-end;
+  max-width: 85%;
+}
+
+/* Bot messages take up space on the left/middle */
+.modern-msg-row.bot {
+  align-self: flex-start;
+  max-width: 85%;
+}
+
+/* Avatars */
+.modern-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.bot-avatar {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+}
+
+.user-avatar {
+  background: #f1f1f1;
+  border: 1px solid #ddd;
+}
+
+/* Bubbles */
+.modern-bubble {
+  padding: 16px 20px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.6;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.modern-bubble.bot {
+  background-color: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-top-left-radius: 4px; /* Flat corner near avatar */
+  color: #1a1a1a;
+}
+
+.modern-bubble.user {
+  background-color: #111111;
+  color: #ffffff;
+  border-top-right-radius: 4px; /* Flat corner near avatar */
+}
+
+.modern-user-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* Markdown Styles */
+.modern-markdown p {
+  margin: 0 0 12px 0;
+}
+.modern-markdown p:last-child {
+  margin-bottom: 0;
+}
+.modern-markdown strong {
+  font-weight: 700;
+  color: #000;
+}
+.modern-markdown ul, .modern-markdown ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+/* ===== MOVIE CAROUSEL ===== */
+.modern-movie-carousel {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+
+.modern-carousel-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.modern-movie-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x mandatory;
+}
+
+.modern-movie-track::-webkit-scrollbar {
+  height: 6px;
+}
+.modern-movie-track::-webkit-scrollbar-thumb {
+  background: #ddd;
+  border-radius: 3px;
+}
+
+.modern-movie-card {
+  flex-shrink: 0;
+  width: 140px;
+  background: #fafafa;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  scroll-snap-align: start;
+  border: 1px solid #eee;
+}
+
+.modern-movie-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+  border-color: #ddd;
+}
+
+.modern-movie-poster {
+  width: 100%;
+  height: 210px;
+  object-fit: cover;
+  display: block;
+}
+
+.modern-movie-info {
+  padding: 10px 12px;
+}
+
+.modern-movie-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.modern-movie-year {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.modern-movie-desc {
+  font-size: 11px;
+  color: #555;
+  margin-bottom: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.modern-movie-genres {
+  font-size: 10px;
+  color: #6366f1;
+  font-weight: 600;
+}
+
+/* ===== TYPING INDICATOR ===== */
+.modern-typing {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.modern-typing span {
+  width: 8px;
+  height: 8px;
+  background-color: #aaa;
+  border-radius: 50%;
+  animation: modern-bounce 1.4s infinite ease-in-out both;
+}
+
+.modern-typing span:nth-child(1) { animation-delay: -0.32s; }
+.modern-typing span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes modern-bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1.0); }
+}
+
+/* ===== INPUT AREA ===== */
+.modern-input-zone {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to bottom, transparent, #f9f9f9 40%);
+  padding: 20px 24px 16px;
+}
+
+.modern-suggestions {
+  max-width: 800px;
+  margin: 0 auto 12px;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.modern-suggestions span {
+  background: #fff;
+  border: 1px solid #ddd;
+  color: #444;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modern-suggestions span:hover {
+  background: #f0f0f0;
+  border-color: #ccc;
+}
+
+.modern-input-box {
+  max-width: 800px;
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 8px 8px 8px 20px;
+  display: flex;
+  align-items: center;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.modern-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #111;
+  font-size: 15px;
+  padding: 8px 0;
+  font-family: inherit;
+}
+
+.modern-input::placeholder {
+  color: #999;
+}
+
+.modern-send-btn {
+  background: #111;
+  color: #fff;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.modern-send-btn:disabled {
+  background: #ddd;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.modern-send-btn:not(:disabled):hover {
+  opacity: 0.8;
+}
+
+/* Footer Info */
+.modern-footer-info {
+  max-width: 800px;
+  margin: 8px auto 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: #888;
+}
+
+.modern-session-id {
+  font-family: monospace;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .modern-header {
+    padding: 12px 16px;
+  }
+  .modern-title {
+    font-size: 16px;
+  }
+  .modern-messages-container {
+    padding: 24px 12px 200px 12px;
+    gap: 24px;
+  }
+  .modern-msg-row.user, .modern-msg-row.bot {
+    max-width: 95%;
+  }
+  .modern-movie-card {
+    width: 120px;
+  }
+  .modern-movie-poster {
+    height: 180px;
+  }
+  .modern-suggestions {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    padding-bottom: 8px;
+  }
+  .modern-suggestions span {
+    flex-shrink: 0;
+  }
+}

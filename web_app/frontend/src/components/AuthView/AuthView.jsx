@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import './AuthView.css';
 
 function AuthView({ setView, onLoginSuccess }) {
   const [isRegister, setIsRegister] = useState(false);
