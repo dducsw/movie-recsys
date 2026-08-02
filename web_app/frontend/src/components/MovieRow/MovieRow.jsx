@@ -1,5 +1,6 @@
 import React from 'react';
-import MovieCard from './MovieCard';
+import MovieCard from '../MovieCard/MovieCard';
+import './MovieRow.css';
 
 function MovieRow({ 
   title, 

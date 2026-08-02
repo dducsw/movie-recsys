@@ -1,4 +1,5 @@
 import React from 'react';
+import './WatchView.css';
 
 function WatchView({ movie, onClose }) {
   // Prevent clicks inside the modal from closing it

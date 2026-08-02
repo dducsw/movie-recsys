@@ -10,6 +10,6 @@ def route_after_intent(state: GraphState) -> str:
         return "generate_answer"
     
 def route_after_query(state: GraphState) -> str:
-    """Skip Tavily search if no candidates found."""
-    return "tavily_search" if state["candidate_movies"] \
+    """Skip enrich movie if no candidates found."""
+    return "enrich_movies" if state["candidate_movies"] \
         else "generate_answer"

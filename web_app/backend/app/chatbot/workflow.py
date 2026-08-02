@@ -4,7 +4,7 @@ from app.chatbot.route import route_after_intent, route_after_query
 from app.chatbot.agents import (
     detect_intent_node,
     query_movies_node,
-    tavily_search_node,
+    enrich_movies_node,
     generate_answer_node
 )
 
@@ -14,7 +14,7 @@ def build_chatbot_graph():
     # Add nodes
     workflow.add_node("detect_intent", detect_intent_node)
     workflow.add_node("query_movies", query_movies_node)
-    workflow.add_node("tavily_search", tavily_search_node)
+    workflow.add_node("enrich_movies", enrich_movies_node)
     workflow.add_node("generate_answer", generate_answer_node)
 
     # Add edges
@@ -31,11 +31,11 @@ def build_chatbot_graph():
         "query_movies",
         route_after_query,
         {
-            "tavily_search": "tavily_search",
+            "enrich_movies": "enrich_movies",
             "generate_answer": "generate_answer"
         }
     )
-    workflow.add_edge("tavily_search", "generate_answer")
+    workflow.add_edge("enrich_movies", "generate_answer")
     workflow.add_edge("generate_answer", END)
 
     return workflow.compile()

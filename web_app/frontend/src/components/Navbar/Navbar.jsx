@@ -1,4 +1,5 @@
 import React from 'react';
+import './Navbar.css';
 
 function Navbar({ view, allType, setView, handleClearSearch, setSelectedMovieId, handleSeeAll, isSearching, user, onLogout, onOpenAuthModal }) {
   return (

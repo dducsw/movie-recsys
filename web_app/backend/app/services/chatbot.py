@@ -39,8 +39,8 @@ class ConversationMemory:
         
         cls._sessions[session_id].append(message)
 
-        if len(cls.sessions[session_id] > cls._max_history):
-            cls._sessions[session_id] = cls._sessions[session_id][-cls.max_history:]
+        if len(cls._sessions[session_id]) > cls._max_history:
+            cls._sessions[session_id] = cls._sessions[session_id][-cls._max_history:]
 
     @classmethod
     def clear_session(cls, session_id: str):
@@ -54,7 +54,7 @@ class ConversationMemory:
         """
         Get summary of session for debugging.
         """
-        messages = cls._session.get(session_id, [])
+        messages = cls._sessions.get(session_id, [])
         return {
             "session_id": session_id,
             "message_count": len(messages),
@@ -125,7 +125,7 @@ class ChatbotService:
             "text": result["final_text"],
             "movies": result.get("enriched_movies", []),
             "session_id": session_id,
-            "message_count": len(ConversationMemory.get_session_messages[session_id])
+            "message_count": len(ConversationMemory.get_session_messages(session_id))
         }
     
     @staticmethod

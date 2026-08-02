@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import Navbar from './components/Navbar';
-import MovieRow from './components/MovieRow';
-import MovieCard from './components/MovieCard';
-import ChatbotView from './components/ChatbotView';
-import Footer from './components/Footer';
-import AuthView from './components/AuthView';
-import WatchView from './components/WatchView';
-import AuthModal from './components/AuthModal';
-import OnboardingModal from './components/OnboardingModal';
+import Navbar from './components/Navbar/Navbar';
+import MovieRow from './components/MovieRow/MovieRow';
+import MovieCard from './components/MovieCard/MovieCard';
+import ChatbotView from './components/ChatbotView/ChatbotView';
+import Footer from './components/Footer/Footer';
+import AuthView from './components/AuthView/AuthView';
+import WatchView from './components/WatchView/WatchView';
+
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
@@ -33,7 +32,7 @@ const trackClick = (movieId, source, position = null) => {
     },
     credentials: 'include',   // gửi cookie movienex_sid
     body: JSON.stringify({ movie_id: movieId, source, position }),
-  }).catch(() => {});          // bỏ qua lỗi, không ảnh hưởng UX
+  }).catch(() => { });          // bỏ qua lỗi, không ảnh hưởng UX
 };
 
 function App() {
@@ -65,7 +64,7 @@ function App() {
             setUser(null);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, []);
 
@@ -116,15 +115,17 @@ function App() {
   const [activeTab, setActiveTab] = useState('today'); // 'today' or 'week'
 
   // AI Chatbot States
+  // AI Chatbot States
   const [chatMessages, setChatMessages] = useState([
-  {
-    sender: 'bot',
-    text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. I can remember our conversation and provide context-aware recommendations!\n\nTry asking me:\n• "Recommend sci-fi movies"\n• "Movies like Inception"\n• "Tell me more about the second one" (after I recommend movies)'
-  }
+    {
+      sender: 'bot',
+      text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. I can remember our conversation and provide context-aware recommendations!\n\nTry asking me:\n• "Recommend sci-fi movies"\n• "Movies like Inception"\n• "Tell me more about the second one" (after I recommend movies)'
+    }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef(null);
+  const isInitialChatLoad = useRef(true); // <-- ADD THIS LINE
 
   const [chatSessionId, setChatSessionId] = useState(() => {
     return localStorage.getItem('movienex_chat_session_id') || null;
@@ -198,7 +199,7 @@ function App() {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           },
           body: JSON.stringify({ impressions })
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }, { threshold: 0.5 });
 
@@ -259,11 +260,6 @@ function App() {
   };
 
   // Auto-scroll chat messages
-  useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages, isTyping]);
 
   // Handle sending chat messages
   const handleSendChatMessage = async (textToSend) => {
@@ -281,33 +277,33 @@ function App() {
     try {
       // Use existing session or create new one
       const currentSessionId = chatSessionId || generateSessionId();
-      
+
       const response = await fetch(`${API_BASE_URL}/chatbot/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message: text,
           session_id: currentSessionId
         })
       });
       const data = await response.json();
-      
+
       // Save session ID if it's new
       if (!chatSessionId) {
         setChatSessionId(data.session_id);
         localStorage.setItem('movienex_chat_session_id', data.session_id);
       }
-      
+
       // Update message count
       setChatMessageCount(data.message_count || 0);
-      
+
       setTimeout(() => {
         setChatMessages((prev) => [
           ...prev,
-          { 
-            sender: 'bot', 
-            text: data.text, 
-            movies: data.movies || [] 
+          {
+            sender: 'bot',
+            text: data.text,
+            movies: data.movies || []
           }
         ]);
         setIsTyping(false);
@@ -322,10 +318,20 @@ function App() {
     }
   };
 
+  // Auto-scroll chat messages
   useEffect(() => {
-  if (chatEndRef.current) {
-    chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-  }
+    if (chatEndRef.current) {
+      // Use 'auto' on initial load to prevent the "slide down" effect.
+      // Use 'smooth' for subsequent new messages.
+      chatEndRef.current.scrollIntoView({
+        behavior: isInitialChatLoad.current ? 'auto' : 'smooth',
+        block: 'end',
+      });
+
+      if (isInitialChatLoad.current) {
+        isInitialChatLoad.current = false;
+      }
+    }
   }, [chatMessages, isTyping]);
 
   useEffect(() => {
@@ -335,34 +341,34 @@ function App() {
   }, [view, chatSessionId]);
 
   const loadChatHistory = async () => {
-  if (!chatSessionId) return;
-  
-  try {
-    const response = await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data.messages && data.messages.length > 0) {
-        setChatMessages(
-          data.messages.map(msg => ({
-            sender: msg.role === 'human' ? 'user' : 'bot',
-            text: msg.content
-          }))
-        );
-        setChatMessageCount(data.messages.length);
-      } else {
-        // Session exists but no messages, show welcome
-        setChatMessages([
-          {
-            sender: 'bot',
-            text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. How can I help you today?'
-          }
-        ]);
+    if (!chatSessionId) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.messages && data.messages.length > 0) {
+          isInitialChatLoad.current = true; // <-- ADD THIS: Force instant scroll when history loads
+          setChatMessages(
+            data.messages.map(msg => ({
+              sender: msg.role === 'human' ? 'user' : 'bot',
+              text: msg.content
+            }))
+          );
+          setChatMessageCount(data.messages.length);
+        } else {
+          setChatMessages([
+            {
+              sender: 'bot',
+              text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. How can I help you today?'
+            }
+          ]);
+        }
       }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
     }
-  } catch (error) {
-    console.error('Error loading chat history:', error);
-    }
-  };  
+  };
 
   const generateSessionId = () => {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -374,7 +380,7 @@ function App() {
     setLoadingRecs(true);
     try {
       const idsParam = likedMovies.join(',');
-      const url = idsParam 
+      const url = idsParam
         ? `${API_BASE_URL}/recommendations?movie_ids=${idsParam}`
         : `${API_BASE_URL}/recommendations`;
       const response = await fetch(url);
@@ -394,7 +400,7 @@ function App() {
       return;
     }
     try {
-      const promises = likedMovies.map(id => 
+      const promises = likedMovies.map(id =>
         fetch(`${API_BASE_URL}/movies/${id}`).then(res => res.ok ? res.json() : null)
       );
       const results = await promises;
@@ -416,7 +422,7 @@ function App() {
       setSearchResults(data.results || []);
       setCurrentSearch(searchQuery);
       setIsSearching(true);
-      setView('home'); 
+      setView('home');
       setSelectedMovieId(null);
     } catch (error) {
       console.error('Error searching movies:', error);
@@ -437,7 +443,7 @@ function App() {
       setSearchResults(data.results || []);
       setCurrentSearch(queryText);
       setIsSearching(true);
-      setView('home'); 
+      setView('home');
       setSelectedMovieId(null);
     } catch (error) {
       console.error('Error searching movies by metadata:', error);
@@ -448,19 +454,19 @@ function App() {
 
   const handleClearChatHistory = async () => {
     if (!chatSessionId) return;
-    
+
     const confirmClear = window.confirm('Clear all conversation history?');
     if (!confirmClear) return;
 
     try {
-      await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`, { 
-        method: 'DELETE' 
+      await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`, {
+        method: 'DELETE'
       });
     } catch (error) {
       console.error('Error clearing history:', error);
     }
 
-    // Reset local state
+    isInitialChatLoad.current = true; // <-- ADD THIS
     setChatMessages([
       {
         sender: 'bot',
@@ -471,12 +477,11 @@ function App() {
   };
 
   const handleNewChatSession = () => {
-    // Generate new session ID
     const newSessionId = generateSessionId();
     setChatSessionId(newSessionId);
     localStorage.setItem('movienex_chat_session_id', newSessionId);
-    
-    // Reset messages
+
+    isInitialChatLoad.current = true; // <-- ADD THIS
     setChatMessages([
       {
         sender: 'bot',
@@ -547,7 +552,7 @@ function App() {
   const handleRateMovie = (movieId, rating) => {
     setMovieRatings(prev => ({
       ...prev,
-      [movieId]: prev[movieId] === rating ? 0 : rating 
+      [movieId]: prev[movieId] === rating ? 0 : rating
     }));
   };
 
@@ -588,19 +593,19 @@ function App() {
       } else if (type === 'recs') {
         // Recommendations fetch all at once (up to 80 items) and paginated in-memory on frontend
         const idsParam = likedMovies.join(',');
-        const url = idsParam 
+        const url = idsParam
           ? `${API_BASE_URL}/recommendations?movie_ids=${idsParam}`
           : `${API_BASE_URL}/recommendations`;
-        
+
         const response = await fetch(url);
         const data = await response.json();
         const results = data.results || [];
-        
+
         // Paginate in-memory (20 items per page)
         const limit = 20;
         const startIndex = (page - 1) * limit;
         const pagedResults = results.slice(startIndex, startIndex + limit);
-        
+
         setAllMovies(pagedResults);
         setTotalCount(results.length);
         setTotalPages(Math.ceil(results.length / limit) || 1);
@@ -690,11 +695,11 @@ function App() {
   // Render modern pagination buttons for "See All" view
   const renderPagination = () => {
     const pages = [];
-    
+
     // Previous Button
     pages.push(
-      <button 
-        key="prev" 
+      <button
+        key="prev"
         className="pagination-btn"
         onClick={() => handlePageChange(currentPage - 1)}
         disabled={currentPage === 1}
@@ -706,8 +711,8 @@ function App() {
     if (totalPages <= 7) {
       for (let i = 1; i <= totalPages; i++) {
         pages.push(
-          <button 
-            key={i} 
+          <button
+            key={i}
             className={`pagination-btn ${currentPage === i ? 'active' : ''}`}
             onClick={() => handlePageChange(i)}
           >
@@ -718,8 +723,8 @@ function App() {
     } else {
       // First page is always visible
       pages.push(
-        <button 
-          key={1} 
+        <button
+          key={1}
           className={`pagination-btn ${currentPage === 1 ? 'active' : ''}`}
           onClick={() => handlePageChange(1)}
         >
@@ -736,8 +741,8 @@ function App() {
       const end = Math.min(totalPages - 1, currentPage + 1);
       for (let i = start; i <= end; i++) {
         pages.push(
-          <button 
-            key={i} 
+          <button
+            key={i}
             className={`pagination-btn ${currentPage === i ? 'active' : ''}`}
             onClick={() => handlePageChange(i)}
           >
@@ -752,8 +757,8 @@ function App() {
 
       // Last page is always visible
       pages.push(
-        <button 
-          key={totalPages} 
+        <button
+          key={totalPages}
           className={`pagination-btn ${currentPage === totalPages ? 'active' : ''}`}
           onClick={() => handlePageChange(totalPages)}
         >
@@ -764,8 +769,8 @@ function App() {
 
     // Next Button
     pages.push(
-      <button 
-        key="next" 
+      <button
+        key="next"
         className="pagination-btn"
         onClick={() => handlePageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
@@ -780,7 +785,7 @@ function App() {
   return (
     <div className="app-container">
       {/* 1. Header/Navbar */}
-      <Navbar 
+      <Navbar
         view={view}
         allType={allType}
         setView={setView}
@@ -832,10 +837,10 @@ function App() {
                 ) : (
                   <div className="search-grid">
                     {searchResults.map((movie, idx) => (
-                      <MovieCard 
-                        key={movie.movieId} 
-                        movie={movie} 
-                        onClick={() => handleMovieClick(movie.movieId, 'search', idx)} 
+                      <MovieCard
+                        key={movie.movieId}
+                        movie={movie}
+                        onClick={() => handleMovieClick(movie.movieId, 'search', idx)}
                       />
                     ))}
                   </div>
@@ -849,8 +854,8 @@ function App() {
                   <div className="info-alert-box">
                     <div>
                       <strong>💡 Recommendation System Demo:</strong> This interface simulates the MovieNex movie platform.
-                      The <strong>"Recommended for You"</strong> row is dynamically computed in real-time using a <em>Content-based Filtering</em> algorithm on the Backend. 
-                      Click on any movie card, then click the <strong>❤️ Like</strong> button or select star ratings to teach the system your preferences. 
+                      The <strong>"Recommended for You"</strong> row is dynamically computed in real-time using a <em>Content-based Filtering</em> algorithm on the Backend.
+                      Click on any movie card, then click the <strong>❤️ Like</strong> button or select star ratings to teach the system your preferences.
                       When you return to the Homepage, your recommendations will automatically refresh to reflect your taste!
                     </div>
                     <button className="info-alert-close-btn" onClick={handleDismissGuide} title="Dismiss guide">
@@ -860,7 +865,7 @@ function App() {
                 )}
 
                 {/* Row 1: Personalized Recommendations (RecSys) */}
-                <MovieRow 
+                <MovieRow
                   title="Recommended for You"
                   movies={recommendations}
                   loading={loadingRecs}
@@ -878,7 +883,7 @@ function App() {
                 />
 
                 {/* Row 2: Trending Row */}
-                <MovieRow 
+                <MovieRow
                   title="Trending"
                   movies={trendingMovies}
                   loading={loadingTrending}
@@ -906,7 +911,7 @@ function App() {
                 />
 
                 {/* Row 3: Latest Row */}
-                <MovieRow 
+                <MovieRow
                   title="Latest"
                   movies={latestMovies}
                   loading={loadingLatest}
@@ -920,7 +925,7 @@ function App() {
                 {/* Row 4: Liked Movies (Interactive History) */}
                 {likedMoviesDetails.length > 0 && (
                   <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '24px' }}>
-                    <MovieRow 
+                    <MovieRow
                       title={`Your Favorite Movies (${likedMoviesDetails.length})`}
                       movies={likedMoviesDetails}
                       scrollRef={favoritesScrollRef}
@@ -928,9 +933,9 @@ function App() {
                       onMovieClick={handleMovieClick}
                       source="favorites"
                       headerExtra={
-                        <button 
-                          onClick={() => { if(confirm("Reset all liked history?")) setLikedMovies([]); }}
-                          className="search-clear-btn" 
+                        <button
+                          onClick={() => { if (confirm("Reset all liked history?")) setLikedMovies([]); }}
+                          className="search-clear-btn"
                           style={{ padding: '4px 14px', fontSize: '12px', marginLeft: 'auto' }}
                         >
                           Reset History
@@ -988,8 +993,8 @@ function App() {
                         <span className="detail-meta-item">• 2h 15m</span>
                         <div className="detail-genres-container">
                           {selectedMovie.genres && selectedMovie.genres.split('|').map((genre, i) => (
-                            <span 
-                              key={i} 
+                            <span
+                              key={i}
                               className="detail-genre-tag clickable-meta-link"
                               onClick={() => handleSearchSubmitWithQuery(genre)}
                             >
@@ -1015,18 +1020,18 @@ function App() {
                         >
                           {likedMovies.includes(selectedMovie.movieId) ? (
                             <svg viewBox="0 0 24 24" fill="white" style={{ width: '18px', height: '18px' }}>
-                              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
                             </svg>
                           ) : (
                             <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" style={{ width: '18px', height: '18px' }}>
-                              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
                             </svg>
                           )}
                         </button>
 
                         <button className="circle-action-btn" title="Add to Watchlist" onClick={() => alert("Added to watchlist (Mockup)!")}>
                           <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" style={{ width: '18px', height: '18px' }}>
-                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
                           </svg>
                         </button>
 
@@ -1061,7 +1066,7 @@ function App() {
                           }}
                         >
                           <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '16px', height: '16px', marginRight: '6px' }}>
-                            <path d="M8 5v14l11-7z"/>
+                            <path d="M8 5v14l11-7z" />
                           </svg>
                           Watch Movie
                         </button>
@@ -1092,7 +1097,7 @@ function App() {
                           }}
                         >
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px', marginRight: '6px' }}>
-                            <polygon points="5 3 19 12 5 21 5 3"/>
+                            <polygon points="5 3 19 12 5 21 5 3" />
                           </svg>
                           Play Trailer
                         </button>
@@ -1105,8 +1110,8 @@ function App() {
                       {selectedMovie.director && (
                         <div className="detail-director-box">
                           <span className="detail-label">Director:</span>
-                          <span 
-                            className="detail-value clickable-meta-link" 
+                          <span
+                            className="detail-value clickable-meta-link"
                             onClick={() => handleSearchSubmitWithQuery(selectedMovie.director)}
                           >
                             {selectedMovie.director}
@@ -1119,8 +1124,8 @@ function App() {
                           <span className="detail-label">Cast:</span>
                           <div className="detail-cast-chips">
                             {selectedMovie.cast.split('|').slice(0, 10).map((actor, idx) => (
-                              <span 
-                                key={idx} 
+                              <span
+                                key={idx}
                                 className="actor-chip clickable-meta-link"
                                 onClick={() => handleSearchSubmitWithQuery(actor)}
                               >
@@ -1136,8 +1141,8 @@ function App() {
                           <span className="detail-label">Tags:</span>
                           <div className="detail-tags-chips">
                             {selectedMovie.keywords.split('|').slice(0, 15).map((tag, idx) => (
-                              <span 
-                                key={idx} 
+                              <span
+                                key={idx}
                                 className="tag-chip clickable-meta-link"
                                 onClick={() => handleSearchSubmitWithQuery(tag)}
                               >
@@ -1155,7 +1160,7 @@ function App() {
               {/* Similar Recommendations Section (Recsys) */}
               {/* Similar Recommendations Section (Recsys) */}
               <div className="detail-recs-wrapper">
-                <MovieRow 
+                <MovieRow
                   title="Recommendations"
                   movies={similarMovies}
                   scrollRef={similarScrollRef}
@@ -1175,7 +1180,7 @@ function App() {
         </div>
       ) : view === 'chatbot' ? (
         /* ================= AI CHATBOT VIEW ================= */
-        <ChatbotView 
+        <ChatbotView
           chatMessages={chatMessages}
           chatInput={chatInput}
           setChatInput={setChatInput}
@@ -1191,9 +1196,9 @@ function App() {
         />
       ) : view === 'auth' ? (
         /* ================= AUTH VIEW ================= */
-        <AuthView 
-          setView={setView} 
-          onLoginSuccess={(username) => setUser(username)} 
+        <AuthView
+          setView={setView}
+          onLoginSuccess={(username) => setUser(username)}
         />
       ) : (
         /* ================= PAGINATED GRID VIEW ("SEE ALL") ================= */
@@ -1223,10 +1228,10 @@ function App() {
                 <div>
                   <div className="search-grid">
                     {allMovies.map((movie, idx) => (
-                      <MovieCard 
-                        key={movie.movieId} 
-                        movie={movie} 
-                        onClick={() => handleMovieClick(movie.movieId, allType, idx)} 
+                      <MovieCard
+                        key={movie.movieId}
+                        movie={movie}
+                        onClick={() => handleMovieClick(movie.movieId, allType, idx)}
                       />
                     ))}
                   </div>
@@ -1240,9 +1245,9 @@ function App() {
         </div>
       )}
       {showTrailer && selectedMovie && (
-        <WatchView 
-          movie={selectedMovie} 
-          onClose={() => setShowTrailer(false)} 
+        <WatchView
+          movie={selectedMovie}
+          onClose={() => setShowTrailer(false)}
         />
       )}
       <AuthModal
