@@ -20,7 +20,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
       ? { email, password }
       : { username, email, password };
 
-    try:
+    try {
       const res = await fetch(`http://localhost:8000${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

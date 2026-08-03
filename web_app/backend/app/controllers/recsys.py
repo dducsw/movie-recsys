@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, BackgroundTasks
 from pydantic import BaseModel
 from typing import List, Optional
 from app.services.recsys import RecsysService
@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api", tags=["Recommendation System"])
 
 @router.get("/recommendations", response_model=RecommendationResponse)
 def get_personalized_recommendations(
+    background_tasks: BackgroundTasks,
     movie_ids: Optional[str] = Query(None, description="Comma-separated list of liked movie IDs"),
     session_id: str = Depends(get_session_id),
     current_user: Optional[dict] = Depends(get_current_user_optional)
@@ -40,7 +41,8 @@ def get_personalized_recommendations(
             print(f"[Warning] Could not fetch user preferences: {e}")
 
     recommendations = RecsysService.get_personalized_recommendations(liked_ids)
-    emit(
+    background_tasks.add_task(
+        emit,
         EventType.RECOMMENDATION_REQUEST,
         user_id=user_identifier,
         extra={"liked_movie_ids": liked_ids, "result_count": len(recommendations)},
@@ -50,6 +52,7 @@ def get_personalized_recommendations(
 @router.get("/movies/{movie_id}/recommendations", response_model=RecommendationResponse)
 def get_movie_recommendations(
     movie_id: int,
+    background_tasks: BackgroundTasks,
     limit: int = Query(default=12, ge=1, le=50),
     session_id: str = Depends(get_session_id),
     current_user: Optional[dict] = Depends(get_current_user_optional)
@@ -59,7 +62,8 @@ def get_movie_recommendations(
     """
     user_identifier = str(current_user["id"]) if current_user else session_id
     similar_movies = RecsysService.get_similar_movies(movie_id, limit)
-    emit(
+    background_tasks.add_task(
+        emit,
         EventType.SIMILAR_MOVIE_REQUEST,
         user_id=user_identifier,
         movie_id=movie_id,

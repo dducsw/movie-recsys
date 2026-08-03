@@ -6,34 +6,9 @@ import ChatbotView from './components/ChatbotView/ChatbotView';
 import Footer from './components/Footer/Footer';
 import AuthView from './components/AuthView/AuthView';
 import WatchView from './components/WatchView/WatchView';
-
-
-const API_BASE_URL = 'http://localhost:8000/api';
-
-// ── Session tracking ──────────────────────────────────────────────────────────
-// Tạo session ID lần đầu, lưu localStorage 30 ngày
-const getOrCreateSessionId = () => {
-  const KEY = 'movienex_sid';
-  let sid = localStorage.getItem(KEY);
-  if (!sid) {
-    sid = crypto.randomUUID();
-    localStorage.setItem(KEY, sid);
-  }
-  return sid;
-};
-
-// Gửi click event lên backend (fire-and-forget, không block UI)
-const trackClick = (movieId, source, position = null) => {
-  fetch(`${API_BASE_URL}/events/click`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Session-Id': getOrCreateSessionId(),
-    },
-    credentials: 'include',   // gửi cookie movienex_sid
-    body: JSON.stringify({ movie_id: movieId, source, position }),
-  }).catch(() => { });          // bỏ qua lỗi, không ảnh hưởng UX
-};
+import AuthModal from './components/AuthModal';
+import OnboardingModal from './components/OnboardingModal';
+import { API_BASE_URL, getOrCreateSessionId, trackClick, apiFetch } from './api/client';
 
 function App() {
   // Navigation & View State

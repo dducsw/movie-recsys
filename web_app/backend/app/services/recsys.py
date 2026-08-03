@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 
 from app.models.movie import MovieModel
+from app.services.cache import recsys_cache
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ def get_ranker_model():
             filer_url = os.getenv("SEAWEEDFS_FILER_URL", "http://localhost:8888")
             seaweed_url = f"{filer_url}/recsys-data/models/lgb_ranker.pkl"
             logger.info(f"Local ranker model not found. Fetching from SeaweedFS: {seaweed_url}...")
-            res = requests.get(seaweed_url, timeout=10.0)
+            res = requests.get(seaweed_url, timeout=0.5)
             if res.status_code == 200:
                 os.makedirs(os.path.dirname(model_path), exist_ok=True)
                 with open(model_path, "wb") as f:
@@ -353,6 +354,11 @@ class RecsysService:
     @classmethod
     def get_similar_movies(cls, movie_id: int, limit: int = 12) -> List[Dict[str, Any]]:
         """Public API: 3-Stage Recommendation for Similar Movies."""
+        cache_key = f"similar:{movie_id}:{limit}"
+        cached = recsys_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         target_movie = MovieModel.get_by_id(movie_id)
         target_genres = set(target_movie["genres"].split("|")) if target_movie and target_movie.get("genres") else set()
 
@@ -368,7 +374,7 @@ class RecsysService:
         # Stage 3: Re-ranking (MMR)
         final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=0.75)
 
-        return [{
+        res = [{
             "movieId": m["movieId"],
             "title": m["title"],
             "release_date": m["release_date"],
@@ -377,12 +383,20 @@ class RecsysService:
             "vote_average": m.get("vote_average", 0.0),
             "poster_url": m["poster_url"]
         } for m in final_results]
+        recsys_cache.set(cache_key, res, ttl_seconds=300)
+        return res
 
     @classmethod
     def get_personalized_recommendations(cls, liked_movie_ids: List[int], limit: int = 20) -> List[Dict[str, Any]]:
         """Public API: 3-Stage Recommendation for Personalized User Feed."""
         if not liked_movie_ids:
             return MovieModel.get_trending(page=1, limit=limit)
+
+        sorted_ids = sorted(liked_movie_ids)
+        cache_key = f"personalized:{','.join(map(str, sorted_ids))}:{limit}"
+        cached = recsys_cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         liked_movies = MovieModel.get_by_ids(liked_movie_ids)
         target_genres = set()
@@ -403,7 +417,7 @@ class RecsysService:
         # Stage 3: Re-ranking (MMR)
         final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=0.7)
 
-        return [{
+        res = [{
             "movieId": m["movieId"],
             "title": m["title"],
             "release_date": m["release_date"],
@@ -412,3 +426,5 @@ class RecsysService:
             "vote_average": m.get("vote_average", 0.0),
             "poster_url": m["poster_url"]
         } for m in final_results]
+        recsys_cache.set(cache_key, res, ttl_seconds=180)
+        return res
