@@ -57,7 +57,7 @@ def _get_producer():
     """Khởi tạo KafkaProducer lần đầu, tái dùng sau đó."""
     global _producer
     if _producer is not None:
-        return _producer
+        return _producer if _producer is not False else None
 
     try:
         from kafka import KafkaProducer  # kafka-python
@@ -66,20 +66,33 @@ def _get_producer():
             bootstrap_servers=bootstrap,
             value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
             acks=0,               # fire-and-forget, không block HTTP response
-            retries=3,
-            request_timeout_ms=5_000,
+            retries=1,
+            request_timeout_ms=1_000,
+            max_block_ms=500,     # Max 500ms block
         )
         logger.info("KafkaProducer connected to %s", bootstrap)
     except Exception as exc:
-        # Kafka chưa sẵn sàng → log, trả None; app vẫn hoạt động bình thường
+        # Kafka chưa sẵn sàng → log, đánh dấu False; app không bị block trên các request sau
         logger.warning("KafkaProducer init failed (events will be dropped): %s", exc)
-        _producer = None
+        _producer = False
 
-    return _producer
+    return _producer if _producer is not False else None
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 TOPIC = "user-events"
+
+
+import threading
+
+def _send_in_background(record: dict[str, Any]) -> None:
+    producer = _get_producer()
+    if producer is None:
+        return
+    try:
+        producer.send(TOPIC, value=record)
+    except Exception as exc:
+        logger.warning("Failed to emit event '%s': %s", record.get("event_type"), exc)
 
 
 def emit(
@@ -90,18 +103,8 @@ def emit(
     extra: dict[str, Any] | None = None,
 ) -> None:
     """
-    Gửi một event lên Kafka. Non-blocking, lỗi chỉ được log.
-
-    Args:
-        event_type: Tên event (dùng hằng số từ EventType).
-        user_id:    Session ID hoặc "anonymous".
-        movie_id:   ID phim liên quan; None nếu event không gắn phim cụ thể.
-        extra:      Payload bổ sung tuỳ event_type.
+    Gửi một event lên Kafka. Non-blocking (chạy ngầm), không làm chậm HTTP response.
     """
-    producer = _get_producer()
-    if producer is None:
-        return
-
     record = {
         "userId":     user_id,
         "movieId":    movie_id,
@@ -111,11 +114,7 @@ def emit(
         "source":     "webapp",             # phân biệt real vs simulated data
         "extra":      extra or {},
     }
-
-    try:
-        producer.send(TOPIC, value=record)
-    except Exception as exc:
-        logger.warning("Failed to emit event '%s': %s", event_type, exc)
+    threading.Thread(target=_send_in_background, args=(record,), daemon=True).start()
 
 
 # ── Event type constants ───────────────────────────────────────────────────────
@@ -131,3 +130,6 @@ class EventType:
     RECOMMENDATION_REQUEST  = "recommendation_request"
     SIMILAR_MOVIE_REQUEST   = "similar_movie_request"
     CHATBOT_MESSAGE         = "chatbot_message"
+    IMPRESSION              = "impression"
+    RATING                  = "rating"
+    WATCHLIST               = "watchlist"

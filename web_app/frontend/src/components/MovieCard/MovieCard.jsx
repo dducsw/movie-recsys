@@ -66,9 +66,17 @@ function MovieCard({ movie, onClick }) {
       <div className="poster-container">
         <img
           className="movie-poster"
-          src={movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300'}
+          src={
+            movie.poster_url && !movie.poster_url.includes('placeholder.com')
+              ? movie.poster_url
+              : 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300'
+          }
           alt={movie.title}
           loading="lazy"
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300';
+          }}
         />
         <div className="movie-dots-btn">•••</div>
       </div>

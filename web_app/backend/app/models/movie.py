@@ -2,6 +2,7 @@ from app.config.db import get_db_connection
 from fastapi import HTTPException
 from typing import List, Dict, Any
 import os
+import re
 import requests
 
 class MovieModel:
@@ -195,7 +196,7 @@ class MovieModel:
                     m.vote_average, 
                     m.vote_count, 
                     m.poster_url,
-                    NULL AS trailer_url,
+                    m.trailer_url,
                     d.name AS director,
                     COALESCE(STRING_AGG(DISTINCT g.name, '|'), '') AS genres,
                     COALESCE(STRING_AGG(DISTINCT a.name, '|'), '') AS cast,
@@ -209,67 +210,76 @@ class MovieModel:
                 LEFT JOIN movie_tags mt ON m.movieid = mt.movie_id
                 LEFT JOIN tags t ON mt.tag_id = t.id
                 WHERE m.movieid = %s
-                GROUP BY m.movieid, d.name
+                GROUP BY m.movieid, m.trailer_url, d.name
             """
             cur.execute(query, (movie_id,))
             movie = cur.fetchone()
             if not movie:
                 raise HTTPException(status_code=404, detail="Movie not found.")
             
-            # If trailer_url is not in database, attempt to fetch it from TMDB
+            # If trailer_url is missing or is a fallback search link, attempt to fetch real trailer from TMDB
             trailer_url = movie.get("trailer_url")
-            if not trailer_url:
+            if not trailer_url or "search_query=" in trailer_url:
                 try:
                     api_key = os.getenv("TMDB_API_KEY")
-                    url = f"https://api.themoviedb.org/3/movie/{movie_id}/videos"
-                    res = requests.get(url, params={"api_key": api_key}, timeout=2.0)
-                    
-                    youtube_key = None
-                    if res.status_code == 200:
-                        videos_data = res.json().get("results", [])
-                        # 1. Search for official trailers on YouTube
-                        for video in videos_data:
-                            if video.get("site") == "YouTube" and video.get("type") == "Trailer" and video.get("official"):
-                                youtube_key = video.get("key")
-                                break
-                        # 2. Fallback to any trailer on YouTube
-                        if not youtube_key:
-                            for video in videos_data:
-                                if video.get("site") == "YouTube" and video.get("type") == "Trailer":
-                                    youtube_key = video.get("key")
-                                    break
-                        # 3. Fallback to any video on YouTube
-                        if not youtube_key:
-                            for video in videos_data:
-                                if video.get("site") == "YouTube":
-                                    youtube_key = video.get("key")
-                                    break
-                                    
-                    if youtube_key:
-                        trailer_url = f"https://www.youtube.com/embed/{youtube_key}"
-                    else:
-                        # Fallback to YouTube search link
-                        title = movie.get("title", "")
-                        year = ""
-                        r_date = movie.get("release_date", "")
-                        if r_date:
-                            year = r_date.split("-")[0]
-                        search_q = f"{title} {year} official trailer".replace(" ", "+")
-                        trailer_url = f"https://www.youtube.com/results?search_query={search_q}"
+                    if api_key:
+                        url = f"https://api.themoviedb.org/3/movie/{movie_id}/videos"
+                        res = requests.get(url, params={"api_key": api_key}, timeout=3.0)
                         
-                    # Save to database cache
-                    conn2 = get_db_connection()
-                    cur2 = conn2.cursor()
-                    cur2.execute("UPDATE movies SET trailer_url = %s WHERE movieid = %s", (trailer_url, movie_id))
-                    conn2.commit()
-                    cur2.close()
-                    conn2.close()
-                    
-                    # Update local dictionary
-                    movie["trailer_url"] = trailer_url
+                        if res.status_code != 200 or not res.json().get("results"):
+                            raw_title = movie.get("title", "")
+                            clean_title = re.sub(r'\s*\(\d{4}\)', '', raw_title).strip()
+                            rel_date = str(movie.get("release_date") or "")
+                            year = rel_date[:4] if len(rel_date) >= 4 else ""
+                            search_params = {"api_key": api_key, "query": clean_title}
+                            if year.isdigit():
+                                search_params["year"] = year
+                            s_res = requests.get("https://api.themoviedb.org/3/search/movie", params=search_params, timeout=3.0)
+                            if s_res.status_code == 200 and s_res.json().get("results"):
+                                tmdb_id = s_res.json()["results"][0]["id"]
+                                res = requests.get(f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos", params={"api_key": api_key}, timeout=3.0)
+
+                        youtube_key = None
+                        if res.status_code == 200:
+                            videos_data = res.json().get("results", [])
+                            # 1. Search for official trailers on YouTube
+                            for video in videos_data:
+                                if video.get("site") == "YouTube" and video.get("type") == "Trailer" and video.get("official"):
+                                    youtube_key = video.get("key")
+                                    break
+                            # 2. Fallback to any trailer on YouTube
+                            if not youtube_key:
+                                for video in videos_data:
+                                    if video.get("site") == "YouTube" and video.get("type") == "Trailer":
+                                        youtube_key = video.get("key")
+                                        break
+                            # 3. Fallback to any video on YouTube
+                            if not youtube_key:
+                                for video in videos_data:
+                                    if video.get("site") == "YouTube":
+                                        youtube_key = video.get("key")
+                                        break
+
+                        if youtube_key:
+                            embed_url = f"https://www.youtube.com/embed/{youtube_key}"
+                            movie["trailer_url"] = embed_url
+                            # Save resolved trailer_url to DB for instant zero-latency future lookups
+                            try:
+                                cur.execute("UPDATE movies SET trailer_url = %s WHERE movieid = %s", (embed_url, movie_id))
+                                conn.commit()
+                            except Exception as save_err:
+                                print(f"[Warning] Failed to cache trailer_url to DB: {save_err}")
+                        else:
+                            # Fallback search link
+                            title = movie.get("title", "")
+                            year = ""
+                            r_date = movie.get("release_date", "")
+                            if r_date:
+                                year = r_date.split("-")[0]
+                            search_q = f"{title} {year} official trailer".replace(" ", "+")
+                            movie["trailer_url"] = f"https://www.youtube.com/results?search_query={search_q}"
                 except Exception as ex:
-                    print(f"[Warning] Failed to fetch or cache trailer URL: {ex}")
-                    # Fallback to YouTube search link in case of error
+                    print(f"[Warning] Failed to fetch trailer URL: {ex}")
                     title = movie.get("title", "")
                     year = ""
                     r_date = movie.get("release_date", "")

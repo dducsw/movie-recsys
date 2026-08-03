@@ -1,12 +1,12 @@
 import React from 'react';
 import './Navbar.css';
 
-function Navbar({ view, allType, setView, handleClearSearch, setSelectedMovieId, handleSeeAll, isSearching, user, onLogout }) {
+function Navbar({ view, allType, setView, handleClearSearch, setSelectedMovieId, handleSeeAll, isSearching, user, onLogout, onOpenAuthModal }) {
   return (
     <nav className="navbar">
       <div className="navbar-left">
         <div 
-          className="navbar-logo" 
+          className="navbar-logo cursor-pointer" 
           onClick={() => { setView('home'); handleClearSearch(); setSelectedMovieId(null); }}
         >
           MovieNex <span>RecSys</span>
@@ -36,6 +36,14 @@ function Navbar({ view, allType, setView, handleClearSearch, setSelectedMovieId,
           >
             RecSys
           </li>
+          {user && (
+            <li 
+              style={view === 'watchlist' ? { color: 'var(--tmdbLightBlue)', opacity: 1 } : {}} 
+              onClick={() => { setView('watchlist'); handleClearSearch(); setSelectedMovieId(null); }}
+            >
+              My Watchlist
+            </li>
+          )}
         </ul>
       </div>
       <div className="navbar-right">
@@ -52,13 +60,13 @@ function Navbar({ view, allType, setView, handleClearSearch, setSelectedMovieId,
         
         {user ? (
           <div className="nav-user-menu" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div className="nav-avatar" title={`Logged in as ${user}`}>
+            <div className="nav-avatar" title={`Logged in as ${user.username || user}`}>
               <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '100%', height: '100%', opacity: 0.9 }}>
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
             </div>
             <span className="nav-user-greeting" style={{ fontSize: '13.5px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-              Hi, {user}
+              Hi, {user.username || user}
             </span>
             <button className="nav-auth-btn signout" onClick={onLogout} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.3)', color: 'white', padding: '6px 14px', borderRadius: '20px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, transition: 'all 0.2s ease' }}>
               Sign Out
@@ -71,7 +79,11 @@ function Navbar({ view, allType, setView, handleClearSearch, setSelectedMovieId,
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
             </div>
-            <button className="nav-auth-btn signin" onClick={() => setView('auth')} style={{ background: 'white', border: 'none', color: '#032541', padding: '6px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 700, boxShadow: '0 2px 5px rgba(0,0,0,0.15)', transition: 'all 0.2s ease' }}>
+            <button
+              className="nav-auth-btn signin hover:opacity-90"
+              onClick={onOpenAuthModal}
+              style={{ background: 'white', border: 'none', color: '#032541', padding: '6px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 700, boxShadow: '0 2px 5px rgba(0,0,0,0.15)', transition: 'all 0.2s ease' }}
+            >
               Sign In
             </button>
           </div>

@@ -1,0 +1,122 @@
+[
+  {
+    "pipeline_name": "Silver-Movies",
+    "source_table": "bronze.movies",
+    "target_table": "silver.movies",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "FAILED",
+    "start_time": "2026-07-29 15:40:47",
+    "end_time": "2026-07-29 15:40:48",
+    "duration_sec": 0.76,
+    "error_message": "An error occurred while calling o29.parquet.\n: java.lang.UnsatisfiedLinkError: 'boolean org.apache.hadoop.io.nativeio.NativeIO$Windows.access0(java.lang.String, int)'\r\n\tat org.apache.hadoop.io.nativeio.NativeIO$Windows.access0(Native Method)\r\n\tat org.apache.hadoop.io.nativeio.NativeIO$Windows.access(NativeIO.java:817)\r\n\tat org.apache.hadoop.fs.FileUtil.canRead(FileUtil.java:1415)\r\n\tat org.apache.hadoop.fs.FileUtil.list(FileUtil.java:1620)\r\n\tat org.apache.hadoop.fs.RawLocalFileSystem.listStatus(RawLocalFileSystem.java:802)\r\n\tat org.apache.hadoop.fs.FileSystem.listStatus(FileSystem.java:2078)\r\n\tat org.apache.hadoop.fs.FileSystem.listStatus(FileSystem.java:2122)\r\n\tat org.apache.hadoop.fs.ChecksumFileSystem.listStatus(ChecksumFileSystem.java:1020)\r\n\tat org.apache.spark.util.HadoopFSUtils$.listLeafFiles(HadoopFSUtils.scala:218)\r\n\tat org.apache.spark.util.HadoopFSUtils$.$anonfun$parallelListLeafFilesInternal$1(HadoopFSUtils.scala:132)\r\n\tat scala.collection.immutable.List.map(List.scala:236)\r\n\tat scala.collection.immutable.List.map(List.scala:79)\r\n\tat org.apache.spark.util.HadoopFSUtils$.parallelListLeafFilesInternal(HadoopFSUtils.scala:122)\r\n\tat org.apache.spark.util.HadoopFSUtils$.parallelListLeafFiles(HadoopFSUtils.scala:72)\r\n\tat org.apache.spark.sql.execution.datasources.InMemoryFileIndex$.bulkListLeafFiles(InMemoryFileIndex.scala:179)\r\n\tat org.apache.spark.sql.execution.datasources.InMemoryFileIndex.listLeafFiles(InMemoryFileIndex.scala:135)\r\n\tat org.apache.spark.sql.execution.datasources.InMemoryFileIndex.refresh0(InMemoryFileIndex.scala:98)\r\n\tat org.apache.spark.sql.execution.datasources.InMemoryFileIndex.<init>(InMemoryFileIndex.scala:70)\r\n\tat org.apache.spark.sql.execution.datasources.DataSource.createInMemoryFileIndex(DataSource.scala:568)\r\n\tat org.apache.spark.sql.execution.datasources.DataSource.resolveRelation(DataSource.scala:423)\r\n\tat org.apache.spark.sql.catalyst.analysis.ResolveDataSource.org$apache$spark$sql$catalyst$analysis$ResolveDataSource$$loadV1BatchSource(ResolveDataSource.scala:143)\r\n\tat org.apache.spark.sql.catalyst.analysis.ResolveDataSource$$anonfun$apply$1.$anonfun$applyOrElse$2(ResolveDataSource.scala:61)\r\n\tat scala.Option.getOrElse(Option.scala:201)\r\n\tat org.apache.spark.sql.catalyst.analysis.ResolveDataSource$$anonfun$apply$1.applyOrElse(ResolveDataSource.scala:61)\r\n\tat org.apache.spark.sql.catalyst.analysis.ResolveDataSource$$anonfun$apply$1.applyOrElse(ResolveDataSource.scala:45)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.$anonfun$resolveOperatorsUpWithPruning$3(AnalysisHelper.scala:139)\r\n\tat org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:107)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.$anonfun$resolveOperatorsUpWithPruning$1(AnalysisHelper.scala:139)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper$.allowInvokingTransformsInAnalyzer(AnalysisHelper.scala:416)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.resolveOperatorsUpWithPruning(AnalysisHelper.scala:135)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.resolveOperatorsUpWithPruning$(AnalysisHelper.scala:131)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.resolveOperatorsUpWithPruning(LogicalPlan.scala:37)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.resolveOperatorsUp(AnalysisHelper.scala:112)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.resolveOperatorsUp$(AnalysisHelper.scala:111)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.resolveOperatorsUp(LogicalPlan.scala:37)\r\n\tat org.apache.spark.sql.catalyst.analysis.ResolveDataSource.apply(ResolveDataSource.scala:45)\r\n\tat org.apache.spark.sql.catalyst.analysis.ResolveDataSource.apply(ResolveDataSource.scala:43)\r\n\tat org.apache.spark.sql.catalyst.rules.RuleExecutor.$anonfun$execute$2(RuleExecutor.scala:248)\r\n\tat scala.collection.LinearSeqOps.foldLeft(LinearSeq.scala:183)\r\n\tat scala.collection.LinearSeqOps.foldLeft$(LinearSeq.scala:179)\r\n\tat scala.collection.immutable.List.foldLeft(List.scala:79)\r\n\tat org.apache.spark.sql.catalyst.rules.RuleExecutor.$anonfun$execute$1(RuleExecutor.scala:245)\r\n\tat org.apache.spark.sql.catalyst.rules.RuleExecutor.$anonfun$execute$1$adapted(RuleExecutor.scala:237)\r\n\tat scala.collection.immutable.List.foreach(List.scala:323)\r\n\tat org.apache.spark.sql.catalyst.rules.RuleExecutor.execute(RuleExecutor.scala:237)\r\n\tat org.apache.spark.sql.catalyst.analysis.Analyzer.org$apache$spark$sql$catalyst$analysis$Analyzer$$executeSameContext(Analyzer.scala:343)\r\n\tat org.apache.spark.sql.catalyst.analysis.Analyzer.$anonfun$execute$1(Analyzer.scala:339)\r\n\tat org.apache.spark.sql.catalyst.analysis.AnalysisContext$.withNewAnalysisContext(Analyzer.scala:224)\r\n\tat org.apache.spark.sql.catalyst.analysis.Analyzer.execute(Analyzer.scala:339)\r\n\tat org.apache.spark.sql.catalyst.analysis.Analyzer.execute(Analyzer.scala:289)\r\n\tat org.apache.spark.sql.catalyst.rules.RuleExecutor.$anonfun$executeAndTrack$1(RuleExecutor.scala:207)\r\n\tat org.apache.spark.sql.catalyst.QueryPlanningTracker$.withTracker(QueryPlanningTracker.scala:89)\r\n\tat org.apache.spark.sql.catalyst.rules.RuleExecutor.executeAndTrack(RuleExecutor.scala:207)\r\n\tat org.apache.spark.sql.catalyst.analysis.resolver.HybridAnalyzer.resolveInFixedPoint(HybridAnalyzer.scala:236)\r\n\tat org.apache.spark.sql.catalyst.analysis.resolver.HybridAnalyzer.$anonfun$apply$1(HybridAnalyzer.scala:91)\r\n\tat org.apache.spark.sql.catalyst.analysis.resolver.HybridAnalyzer.withTrackedAnalyzerBridgeState(HybridAnalyzer.scala:122)\r\n\tat org.apache.spark.sql.catalyst.analysis.resolver.HybridAnalyzer.apply(HybridAnalyzer.scala:84)\r\n\tat org.apache.spark.sql.catalyst.analysis.Analyzer.$anonfun$executeAndCheck$1(Analyzer.scala:322)\r\n\tat org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper$.markInAnalyzer(AnalysisHelper.scala:423)\r\n\tat org.apache.spark.sql.catalyst.analysis.Analyzer.executeAndCheck(Analyzer.scala:322)\r\n\tat org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyAnalyzed$2(QueryExecution.scala:139)\r\n\tat org.apache.spark.sql.catalyst.QueryPlanningTracker.measurePhase(QueryPlanningTracker.scala:148)\r\n\tat org.apache.spark.sql.execution.QueryExecution.$anonfun$executePhase$2(QueryExecution.scala:330)\r\n\tat org.apache.spark.sql.execution.QueryExecution$.withInternalError(QueryExecution.scala:717)\r\n\tat org.apache.spark.sql.execution.QueryExecution.$anonfun$executePhase$1(QueryExecution.scala:330)\r\n\tat org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)\r\n\tat org.apache.spark.sql.execution.QueryExecution.executePhase(QueryExecution.scala:329)\r\n\tat org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyAnalyzed$1(QueryExecution.scala:139)\r\n\tat scala.util.Try$.apply(Try.scala:217)\r\n\tat org.apache.spark.util.Utils$.doTryWithCallerStacktrace(Utils.scala:1392)\r\n\tat org.apache.spark.util.LazyTry.tryT$lzycompute(LazyTry.scala:46)\r\n\tat org.apache.spark.util.LazyTry.tryT(LazyTry.scala:46)\r\n\tat org.apache.spark.util.LazyTry.get(LazyTry.scala:58)\r\n\tat org.apache.spark.sql.execution.QueryExecution.analyzed(QueryExecution.scala:150)\r\n\tat org.apache.spark.sql.execution.QueryExecution.assertAnalyzed(QueryExecution.scala:90)\r\n\tat org.apache.spark.sql.classic.Dataset$.$anonfun$ofRows$1(Dataset.scala:114)\r\n\tat org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)\r\n\tat org.apache.spark.sql.classic.Dataset$.ofRows(Dataset.scala:112)\r\n\tat org.apache.spark.sql.classic.DataFrameReader.load(DataFrameReader.scala:108)\r\n\tat org.apache.spark.sql.classic.DataFrameReader.load(DataFrameReader.scala:57)\r\n\tat org.apache.spark.sql.DataFrameReader.parquet(DataFrameReader.scala:457)\r\n\tat org.apache.spark.sql.classic.DataFrameReader.parquet(DataFrameReader.scala:305)\r\n\tat org.apache.spark.sql.classic.DataFrameReader.parquet(DataFrameReader.scala:57)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:75)\r\n\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:52)\r\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:580)\r\n\tat py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)\r\n\tat py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)\r\n\tat py4j.Gateway.invoke(Gateway.java:282)\r\n\tat py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)\r\n\tat py4j.commands.CallCommand.execute(CallCommand.java:79)\r\n\tat py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:184)\r\n\tat py4j.ClientServerConnection.run(ClientServerConnection.java:108)\r\n\tat java.base/java.lang.Thread.run(Thread.java:1583)\r\n"
+  },
+  {
+    "pipeline_name": "Silver-Movies",
+    "source_table": "bronze.movies",
+    "target_table": "silver.movies",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "SUCCESS",
+    "start_time": "2026-07-29 15:42:06",
+    "end_time": "2026-07-29 15:42:07",
+    "duration_sec": 0.86,
+    "error_message": ""
+  },
+  {
+    "pipeline_name": "Silver-Events",
+    "source_table": "bronze.events",
+    "target_table": "silver.events",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "SUCCESS",
+    "start_time": "2026-07-29 15:42:08",
+    "end_time": "2026-07-29 15:42:08",
+    "duration_sec": 0.05,
+    "error_message": ""
+  },
+  {
+    "pipeline_name": "Gold-Movies",
+    "source_table": "silver.movies",
+    "target_table": "gold.movies_features",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "SUCCESS",
+    "start_time": "2026-07-29 15:42:08",
+    "end_time": "2026-07-29 15:42:08",
+    "duration_sec": 0.05,
+    "error_message": ""
+  },
+  {
+    "pipeline_name": "Silver-Movies",
+    "source_table": "bronze.movies",
+    "target_table": "silver.movies",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "SUCCESS",
+    "start_time": "2026-07-29 15:43:02",
+    "end_time": "2026-07-29 15:43:03",
+    "duration_sec": 0.86,
+    "error_message": ""
+  },
+  {
+    "pipeline_name": "Silver-Events",
+    "source_table": "bronze.events",
+    "target_table": "silver.events",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "SUCCESS",
+    "start_time": "2026-07-29 15:43:03",
+    "end_time": "2026-07-29 15:43:03",
+    "duration_sec": 0.05,
+    "error_message": ""
+  },
+  {
+    "pipeline_name": "Gold-Movies",
+    "source_table": "silver.movies",
+    "target_table": "gold.movies_features",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "SUCCESS",
+    "start_time": "2026-07-29 15:43:04",
+    "end_time": "2026-07-29 15:43:04",
+    "duration_sec": 0.04,
+    "error_message": ""
+  },
+  {
+    "pipeline_name": "Silver-Movies",
+    "source_table": "bronze.movies",
+    "target_table": "silver_movies",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "SUCCESS",
+    "start_time": "2026-07-29 15:45:28",
+    "end_time": "2026-07-29 15:45:30",
+    "duration_sec": 1.76,
+    "error_message": ""
+  },
+  {
+    "pipeline_name": "Silver-Events",
+    "source_table": "bronze.events",
+    "target_table": "silver_events",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "SUCCESS",
+    "start_time": "2026-07-29 15:45:30",
+    "end_time": "2026-07-29 15:45:30",
+    "duration_sec": 0.27,
+    "error_message": ""
+  },
+  {
+    "pipeline_name": "Gold-Movies",
+    "source_table": "silver_movies",
+    "target_table": "gold_movies_features",
+    "source_count": 0,
+    "target_count": 0,
+    "status": "SUCCESS",
+    "start_time": "2026-07-29 15:45:31",
+    "end_time": "2026-07-29 15:45:31",
+    "duration_sec": 0.24,
+    "error_message": ""
+  }
+]

@@ -2,29 +2,45 @@ import os
 import uvicorn
 from dotenv import load_dotenv, find_dotenv
 
+from contextlib import asynccontextmanager
+
 # Load environment variables from .env file
 load_dotenv(find_dotenv())
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Load API Key
-from dotenv import load_dotenv
-load_dotenv()
+# Import routers and DB initializer
+from app import (
+    movie_router,
+    recsys_router,
+    chatbot_router,
+    events_router,
+    auth_router,
+    onboarding_router,
+    init_db_tables
+)
 
-# Import routers from controllers
-from app import movie_router, recsys_router, chatbot_router, events_router
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Tự động kiểm tra và khởi tạo các bảng DB người dùng khi khởi chạy API."""
+    init_db_tables()
+    yield
 
 app = FastAPI(
     title="MovieNex Recommendation System API (MVC)",
     description="Backend API for MovieNex Recsys Demo structured in MVC architecture",
-    version="1.1.0"
+    version="1.2.0",
+    lifespan=lifespan
 )
 
-# Enable CORS so the React Frontend can communicate with the backend
+# Enable CORS with explicit origins
+raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000")
+allowed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins for development ease
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,6 +51,8 @@ app.include_router(movie_router)
 app.include_router(recsys_router)
 app.include_router(chatbot_router)
 app.include_router(events_router)
+app.include_router(auth_router)
+app.include_router(onboarding_router)
 
 @app.get("/")
 def read_root():
