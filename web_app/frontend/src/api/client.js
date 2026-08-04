@@ -45,15 +45,22 @@ export const trackClick = (movieId, source, position = null) => {
   }).catch(() => {});
 };
 
-export const trackImpressions = (movieIds, source) => {
-  if (!movieIds || movieIds.length === 0) return;
+export const trackImpressions = (items) => {
+  if (!items || items.length === 0) return;
   fetch(`${API_BASE_URL}/events/impression`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Session-Id': getOrCreateSessionId(),
+      ...(localStorage.getItem('auth_token') ? { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` } : {})
     },
     credentials: 'include',
-    body: JSON.stringify({ movie_ids: movieIds, source }),
+    body: JSON.stringify({
+      impressions: items.map(item => ({
+        movie_id: item.movieId,
+        source: item.source || 'listing',
+        position: item.position ?? null
+      }))
+    }),
   }).catch(() => {});
 };

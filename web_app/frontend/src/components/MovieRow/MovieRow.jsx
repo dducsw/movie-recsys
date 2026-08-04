@@ -25,7 +25,13 @@ function MovieRow({
       </div>
 
       {loading ? (
-        <div className="spinner-container"><div className="spinner"></div></div>
+        <div className="scroll-row-wrapper">
+          <div className="horizontal-scroll">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="skeleton-card" />
+            ))}
+          </div>
+        </div>
       ) : !movies || movies.length === 0 ? (
         fallbackMessage ? (
           <div className="no-results" style={{ padding: '30px', background: 'rgba(0,0,0,0.01)', borderRadius: '10px' }}>

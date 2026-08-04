@@ -132,6 +132,22 @@
   font-size: 14px;
 }
 
+/* Skeleton Loading Shimmer */
+.skeleton-card {
+  flex-shrink: 0;
+  width: 180px;
+  height: 270px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* Sign In Prompt Button */
 .signin-prompt-btn {
   background: linear-gradient(135deg, #667eea, #764ba2);
