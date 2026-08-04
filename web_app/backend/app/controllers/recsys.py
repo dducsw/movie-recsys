@@ -71,10 +71,3 @@ def get_movie_recommendations(
     )
     return {"results": similar_movies}
 
-class ChatMessageRequest(BaseModel):
-    message: str
-
-@router.post("/chatbot/chat")
-def chat_with_bot(request: ChatMessageRequest):
-    from app.services.chatbot import ChatbotService
-    return ChatbotService.get_reply(request.message)

@@ -20,29 +20,34 @@ def query_movies_node(state: GraphState) -> dict:
             matched = results[0]
             movie_id = matched.get("movieId") or matched.get("movieid")
             if movie_id:
-                similar_ids = RecsysService.get_similar_movies(int(movie_id), top_n=15)
-                if similar_ids:
-                    candidates = MovieModel.get_by_ids(similar_ids)
+                similar = RecsysService.get_similar_movies(int(movie_id), limit=15)
+                if similar:
+                    candidates = similar
 
-    elif intent == "genre" and genres:
-        # Fetch movies for each requested genre, page 1, up to 5 per genre
+    if not candidates and genres:
         seen_ids: set = set()
         for g in genres:
             g_lower = g.strip().lower()
             if not g_lower:
                 continue
-            results = MovieModel.get_movie_by_genre(g_lower, page=1, limit=5)
+            results = MovieModel.get_movie_by_genre(g_lower, page=1, limit=6)
             for m in results:
                 mid = m.get("movieId") or m.get("movieid")
                 if mid and mid not in seen_ids:
                     seen_ids.add(mid)
                     candidates.append(m)
-        # Sort by popularity descending and cap at 15
-        candidates.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
-        candidates = candidates[:15]
 
-    elif intent == "followup":
-        # Pass through — generate_answer will use enriched_movies from prior turns
-        pass
+    # General text search or keyword fallback if no candidates retrieved yet
+    if not candidates:
+        last_user_msg = state["messages"][-1].content if state.get("messages") else ""
+        if last_user_msg:
+            # Try search using the user message query
+            search_res = MovieModel.search(last_user_msg, limit=10)
+            if search_res:
+                candidates = search_res
+
+    # Final fallback to top trending movies so recommendations panel is NEVER empty on recommendation turns
+    if not candidates:
+        candidates = MovieModel.get_trending(page=1, limit=10)
 
     return {"matched_movie": matched, "candidate_movies": candidates}

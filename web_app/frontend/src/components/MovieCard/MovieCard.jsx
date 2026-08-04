@@ -61,8 +61,29 @@ function MovieCard({ movie, onClick }) {
     );
   };
 
+  const cardRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!cardRef.current || !movie || !movie.movieId) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            import('../../api/client').then(({ trackImpressions }) => {
+              trackImpressions([{ movieId: movie.movieId, source: movie.source || 'listing', position: movie.position ?? null }]);
+            });
+            observer.disconnect();
+          }
+        });
+      },
+      { threshold: 0.5 }
+    );
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [movie]);
+
   return (
-    <div className="movie-card" onClick={onClick}>
+    <div ref={cardRef} className="movie-card" onClick={onClick}>
       <div className="poster-container">
         <img
           className="movie-poster"

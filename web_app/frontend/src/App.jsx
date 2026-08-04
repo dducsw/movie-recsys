@@ -130,11 +130,15 @@ function App() {
   });
 
   // Sync Liked Movies to LocalStorage & refetch recs
+  const isFirstMount = useRef(true);
   useEffect(() => {
     localStorage.setItem('tmdb_recsys_liked', JSON.stringify(likedMovies));
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
     fetchLikedMovieDetails();
     fetchRecommendations();
-    // If viewing recommendations in "See All" view, refresh it
     if (view === 'all' && allType === 'recs') {
       fetchAllMovies('recs', 1);
     }
@@ -145,57 +149,20 @@ function App() {
     localStorage.setItem('tmdb_recsys_ratings', JSON.stringify(movieRatings));
   }, [movieRatings]);
 
-  // Automatic Impression Tracking Hook using IntersectionObserver
+  // Initial load: Fetch Trending, Latest, and Recs in parallel
   useEffect(() => {
-    const seenIds = new Set();
-    const observer = new IntersectionObserver((entries) => {
-      const impressions = [];
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const el = entry.target;
-          const movieId = parseInt(el.getAttribute('data-movie-id'), 10);
-          const source = el.getAttribute('data-source') || 'listing';
-          const posStr = el.getAttribute('data-position');
-          const position = posStr !== null ? parseInt(posStr, 10) : null;
-
-          if (movieId && !seenIds.has(movieId)) {
-            seenIds.add(movieId);
-            impressions.push({ movie_id: movieId, source, position });
-          }
-        }
-      });
-
-      if (impressions.length > 0) {
-        const token = localStorage.getItem('auth_token');
-        fetch(`${API_BASE_URL}/events/impression`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({ impressions })
-        }).catch(() => { });
-      }
-    }, { threshold: 0.5 });
-
-    const timer = setTimeout(() => {
-      const cards = document.querySelectorAll('.movie-card[data-movie-id]');
-      cards.forEach((c) => observer.observe(c));
-    }, 500);
-
-    return () => {
-      clearTimeout(timer);
-      observer.disconnect();
+    const initData = async () => {
+      await Promise.allSettled([
+        fetchTrending(),
+        fetchLatest(),
+        fetchRecommendations(),
+        fetchLikedMovieDetails()
+      ]);
     };
-  }, [view, trendingMovies, recommendations, searchResults, allMovies]);
+    initData();
+  }, []);
 
-  // Sync Guide Dismiss State to LocalStorage
-  const handleDismissGuide = () => {
-    setShowGuide(false);
-    localStorage.setItem('tmdb_recsys_hide_guide', 'true');
-  };
-
-  // Fetch trending movies for homepage on load and when activeTab changes
+  // Refetch trending when activeTab changes (Today vs Week)
   useEffect(() => {
     fetchTrending();
   }, [activeTab]);
@@ -214,11 +181,6 @@ function App() {
       setLoadingTrending(false);
     }
   };
-
-  // Fetch latest movies on load
-  useEffect(() => {
-    fetchLatest();
-  }, []);
 
   // Fetch latest movies for homepage
   const fetchLatest = async () => {
@@ -327,7 +289,8 @@ function App() {
           setChatMessages(
             data.messages.map(msg => ({
               sender: msg.role === 'human' ? 'user' : 'bot',
-              text: msg.content
+              text: msg.content,
+              movies: msg.movies || []
             }))
           );
           setChatMessageCount(data.messages.length);
@@ -346,7 +309,7 @@ function App() {
   };
 
   const generateSessionId = () => {
-    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `session_${crypto.randomUUID()}`;
   };
 
 
@@ -355,11 +318,10 @@ function App() {
     setLoadingRecs(true);
     try {
       const idsParam = likedMovies.join(',');
-      const url = idsParam
-        ? `${API_BASE_URL}/recommendations?movie_ids=${idsParam}`
-        : `${API_BASE_URL}/recommendations`;
-      const response = await fetch(url);
-      const data = await response.json();
+      const path = idsParam
+        ? `/recommendations?movie_ids=${idsParam}`
+        : `/recommendations`;
+      const data = await apiFetch(path);
       setRecommendations(data.results || []);
     } catch (error) {
       console.error('Error fetching recommendations:', error);

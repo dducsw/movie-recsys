@@ -6,35 +6,23 @@ from typing import Optional, Dict, Any
 from fastapi import Header, HTTPException, Depends
 from app.models.user import UserModel
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "recsys_super_secret_jwt_key_2026")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "movienex_default_secret_key_2026_dev_mode")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_SECONDS = 30 * 24 * 3600  # 30 days
 
 
 def hash_password(password: str) -> str:
-    """Mã hóa mật khẩu sử dụng passlib/bcrypt hoặc fallback sha256 + salt."""
-    try:
-        from passlib.context import CryptContext
-        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        return pwd_context.hash(password)
-    except Exception:
-        salt = "recsys_salt_v1"
-        return hashlib.sha256((password + salt).encode("utf-8")).hexdigest()
+    """Mã hóa mật khẩu sử dụng bcrypt."""
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Xác thực mật khẩu."""
-    try:
-        from passlib.context import CryptContext
-        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        if pwd_context.verify(plain_password, hashed_password):
-            return True
-    except Exception:
-        pass
-    
-    salt = "recsys_salt_v1"
-    fallback_hash = hashlib.sha256((plain_password + salt).encode("utf-8")).hexdigest()
-    return fallback_hash == hashed_password
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_access_token(user_id: int, username: str) -> str:

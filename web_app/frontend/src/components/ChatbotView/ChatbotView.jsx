@@ -1,14 +1,15 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import MovieCard from '../MovieCard/MovieCard';
 import './ChatbotView.css';
 
-function ChatbotView({ 
-  chatMessages, 
-  chatInput, 
-  setChatInput, 
-  isTyping, 
-  chatEndRef, 
-  handleSendChatMessage, 
+function ChatbotView({
+  chatMessages,
+  chatInput,
+  setChatInput,
+  isTyping,
+  chatEndRef,
+  handleSendChatMessage,
   handleMovieClick,
   sessionId,
   handleClearHistory,
@@ -27,137 +28,141 @@ function ChatbotView({
 
   return (
     <div className="modern-chat-shell">
-      {/* Top Navigation Bar */}
+      {/* Minimalist Top Navigation Bar */}
       <header className="modern-header">
         <div className="modern-header-left">
-          <h1 className="modern-title">🎬 AI Movie Recommender</h1>
+          <h1 className="modern-title">MovieNex AI</h1>
+          <span className="modern-model-badge">LLM RecSys</span>
         </div>
         <div className="modern-header-right">
           <button className="modern-ghost-btn" onClick={handleClearHistory} title="Clear conversation history">
-            🗑️ Clear
+            Clear
           </button>
           <button className="modern-primary-btn" onClick={handleNewSession} title="Start a new conversation">
-            ✨ New Chat
+            + New Chat
           </button>
         </div>
       </header>
 
-      {/* Chat Messages Area */}
+      {/* Main Chat Content Area */}
       <main className="modern-chat-body">
         <div className="modern-messages-container">
-          {chatMessages.map((msg, index) => (
-            <div key={index} className={`modern-msg-row ${msg.sender}`}>
-              
-              {/* Bot Avatar (Left) */}
-              {msg.sender === 'bot' && (
-                <div className="modern-avatar bot-avatar">🤖</div>
-              )}
-
-              <div className={`modern-bubble ${msg.sender}`}>
-                {msg.sender === 'bot' ? (
-                  <div className="modern-markdown">
-                    <ReactMarkdown>{msg.text}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <p className="modern-user-text">{msg.text}</p>
-                )}
-                
-                {/* Movie Recommendations */}
-                {msg.movies && msg.movies.length > 0 && (
-                  <div className="modern-movie-carousel">
-                    <div className="modern-carousel-label">🎬 Recommended Movies</div>
-                    <div className="modern-movie-track">
-                      {msg.movies.map((movie, movieIndex) => (
-                        <div 
-                          key={movie.movieId || movie.id || movieIndex} 
-                          className="modern-movie-card"
-                          onClick={() => handleMovieClick(movie.movieId || movie.id, 'chatbot')}
-                        >
-                          <img 
-                            className="modern-movie-poster" 
-                            src={getPosterUrl(movie)}
-                            alt={movie.title}
-                            onError={(e) => {
-                              e.currentTarget.src = 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=150';
-                            }}
-                          />
-                          <div className="modern-movie-info">
-                            <div className="modern-movie-title">{movie.title}</div>
-                            <div className="modern-movie-year">
-                              {getYear(movie.year || movie.release_date)}
-                            </div>
-                            {movie.description && (
-                              <div className="modern-movie-desc">
-                                {movie.description}
-                              </div>
-                            )}
-                            {movie.genres && (
-                              <div className="modern-movie-genres">
-                                {Array.isArray(movie.genres) 
-                                  ? movie.genres.slice(0, 2).join(' • ')
-                                  : movie.genres.split('|').slice(0, 2).join(' • ')
-                                }
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+          <div className="modern-messages-inner">
+            {chatMessages.map((msg, index) => (
+              <div key={index} className={`modern-msg-row ${msg.sender}`}>
+                <div className={`modern-bubble ${msg.sender}`}>
+                  {msg.sender === 'bot' ? (
+                    <div className="modern-markdown">
+                      <ReactMarkdown>
+                        {msg.text ? msg.text.replace(/!\[.*?\]\(.*?\)/g, '') : ''}
+                      </ReactMarkdown>
                     </div>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <p className="modern-user-text">{msg.text}</p>
+                  )}
 
-              {/* User Avatar (Right) */}
-              {msg.sender === 'user' && (
-                <div className="modern-avatar user-avatar">👤</div>
-              )}
-            </div>
-          ))}
-          
-          {/* Typing Indicator */}
-          {isTyping && (
-            <div className="modern-msg-row bot">
-              <div className="modern-avatar bot-avatar">🤖</div>
-              <div className="modern-bubble bot">
-                <div className="modern-typing">
-                  <span></span><span></span><span></span>
+                  {/* Movie Recommendations Horizontal Panel */}
+                  {msg.movies && msg.movies.length > 0 && (
+                    <div className="modern-movie-carousel">
+                      <div className="modern-carousel-header">
+                        <span className="modern-carousel-label">🎬 Recommended Movies</span>
+                        <span className="modern-carousel-count">{msg.movies.length} movies</span>
+                      </div>
+                      <div className="modern-track-wrapper">
+                        <button
+                          className="modern-scroll-arrow left"
+                          onClick={(e) => {
+                            const track = e.currentTarget.nextElementSibling;
+                            if (track) track.scrollBy({ left: -360, behavior: 'smooth' });
+                          }}
+                        >
+                          ‹
+                        </button>
+
+                        <div className="modern-movie-track">
+                          {msg.movies.map((movie, movieIndex) => (
+                            <MovieCard
+                              key={movie.movieId || movie.id || movieIndex}
+                              movie={movie}
+                              onClick={() => handleMovieClick(movie.movieId || movie.id, 'chatbot', movieIndex)}
+                            />
+                          ))}
+                        </div>
+
+                        <button
+                          className="modern-scroll-arrow right"
+                          onClick={(e) => {
+                            const track = e.currentTarget.previousElementSibling;
+                            if (track) track.scrollBy({ left: 360, behavior: 'smooth' });
+                          }}
+                        >
+                          ›
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          )}
-          <div ref={chatEndRef} />
+            ))}
+
+            {/* Minimal Typing Indicator */}
+            {isTyping && (
+              <div className="modern-msg-row bot">
+                <div className="modern-bubble bot typing-bubble">
+                  <div className="modern-typing">
+                    <span></span><span></span><span></span>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
         </div>
 
-        {/* Input Area */}
+        {/* ChatGPT Style Floating Input Area */}
         <div className="modern-input-zone">
-          <div className="modern-suggestions">
-            <span onClick={() => handleSendChatMessage("Recommend sci-fi action movies")}>🚀 Sci-Fi Action</span>
-            <span onClick={() => handleSendChatMessage("Find movies similar to Toy Story")}>🧸 Like Toy Story</span>
-            <span onClick={() => handleSendChatMessage("What are some good comedy movies?")}>😂 Comedy Movies</span>
-          </div>
-          
+          {chatMessages.length <= 1 && (
+            <div className="modern-suggestions">
+              <button onClick={() => handleSendChatMessage("Recommend top sci-fi movies")}>🚀 Sci-Fi Classics</button>
+              <button onClick={() => handleSendChatMessage("Find movies similar to Inception")}>🌀 Like Inception</button>
+              <button onClick={() => handleSendChatMessage("Best mind-bending thrillers?")}>🧠 Mind Thrillers</button>
+            </div>
+          )}
+
           <div className="modern-input-box">
-            <input
-              type="text"
-              className="modern-input"
-              placeholder="Ask me anything about movies..."
+            <textarea
+              className="modern-textarea"
+              placeholder="Message MovieNex AI..."
               value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
+              rows={1}
+              onChange={(e) => {
+                setChatInput(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendChatMessage();
+                }
+              }}
               disabled={isTyping}
             />
-            <button 
-              className="modern-send-btn" 
+            <button
+              className="modern-send-btn"
               onClick={() => handleSendChatMessage()}
               disabled={isTyping || !chatInput.trim()}
+              title="Send message"
             >
-              {isTyping ? '...' : '➤'}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="5 12 12 5 19 12"></polyline>
+              </svg>
             </button>
           </div>
-          
+
           <div className="modern-footer-info">
-            {sessionId && <span className="modern-session-id">Session: {sessionId.slice(0, 8)}...</span>}
-            <span className="modern-msg-count">{messageCount} messages</span>
+            MovieNex AI can provide tailored recommendations based on your preferences.
           </div>
         </div>
       </main>

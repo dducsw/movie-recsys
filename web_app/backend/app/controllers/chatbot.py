@@ -18,7 +18,7 @@ class ChatResponse(BaseModel):
     message_count: int
 
 class HistoryResponse(BaseModel):
-    messages: List[Dict[str, str]]
+    messages: List[Dict[str, Any]]
 
 class ClearResponse(BaseModel):
     status: str

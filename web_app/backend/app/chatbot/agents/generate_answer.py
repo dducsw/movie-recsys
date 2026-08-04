@@ -49,7 +49,20 @@ def generate_answer_node(state: GraphState) -> dict:
     })
 
     final_text = response.content.strip()
+
+    # Filter enriched_movies to ensure candidate cards match the movies mentioned by LLM, placed at the top
+    filtered_movies = enriched
+    if enriched:
+        mentioned = []
+        for m in enriched:
+            title = m.get("title", "")
+            if title and title.lower() in final_text.lower():
+                mentioned.append(m)
+        if mentioned:
+            filtered_movies = mentioned
+
     return {
         "final_text": final_text,
+        "enriched_movies": filtered_movies,
         "messages": [AIMessage(content=final_text)],
     }
