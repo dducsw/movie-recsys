@@ -1,0 +1,51 @@
+paths:
+  crawled: ../../data/crawler/movies_crawled.csv
+  links: ../../data/ml-latest-small/links.csv
+  movies: ../../data/ml-latest-small/movies.csv
+  ratings: ../../data/ml-latest-small/ratings.csv
+
+split:
+  method: "time_by_user"
+  n_holdout_per_user: 5
+  val_frac_of_train: 0.1
+  min_user_ratings: 5
+  random_state: 42
+
+features:
+  top_n_directors: 200
+  top_n_actors: 500
+  top_n_keywords: 300
+  genre_list: ["Action","Adventure","Animation","Children","Comedy","Crime",
+               "Documentary","Drama","Fantasy","Film-Noir","Horror","Musical",
+               "Mystery","Romance","Sci-Fi","Thriller","War","Western","IMAX"]
+
+lgbm:
+  objective: "regression"
+  metric: ["rmse", "mae"]
+  learning_rate: 0.05
+  num_leaves: 63
+  max_depth: -1
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  bagging_freq: 5
+  min_data_in_leaf: 30
+  lambda_l2: 1.0
+  n_estimators: 3000
+  early_stopping_rounds: 100
+  verbose: -1
+
+catboost:
+  loss_function: "RMSE"
+  eval_metric: "RMSE"
+  learning_rate: 0.05
+  depth: 8
+  l2_leaf_reg: 3.0
+  iterations: 3000
+  early_stopping_rounds: 100
+  task_type: "cuda"
+  random_seed: 42
+  verbose: 200
+
+recommend:
+  top_k: 10
+  candidate_pool_size: 500
