@@ -232,3 +232,5 @@ catboost_info/
 # vscode
 .vscode/
 .codegraph
+*.joblib
+evaluation/ml_training/models.joblib
