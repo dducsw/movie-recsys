@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../api/client';
+import './AuthModal.css';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -15,13 +17,13 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     setError('');
     setLoading(true);
 
-    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+    const endpoint = isLogin ? '/auth/login' : '/auth/register';
     const payload = isLogin
       ? { email, password }
       : { username, email, password };
 
     try {
-      const res = await fetch(`http://localhost:8000${endpoint}`, {
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -32,11 +34,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         throw new Error(data.detail || 'Thao tác thất bại');
       }
 
-      // Lưu Access Token
+      // Save token
       localStorage.setItem('auth_token', data.access_token);
       localStorage.setItem('user_info', JSON.stringify(data.user));
 
-      onAuthSuccess(data.user, !isLogin); // true if newly registered -> trigger onboarding
+      onAuthSuccess(data.user, !isLogin);
       onClose();
     } catch (err) {
       setError(err.message);
@@ -46,103 +48,84 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-6 text-white">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl font-bold"
-        >
-          ✕
-        </button>
+    <div className="auth-modal-overlay" onClick={onClose}>
+      <div className="auth-modal-card" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="auth-modal-close">✕</button>
 
-        <h2 className="text-2xl font-bold text-center mb-2">
-          {isLogin ? 'Đăng Nhập MovieNex' : 'Tạo Tài Khoản Mới'}
+        <h2 className="auth-modal-title">
+          {isLogin ? 'Sign In to MovieNex' : 'Create a MovieNex Account'}
         </h2>
-        <p className="text-sm text-gray-400 text-center mb-6">
+        <p className="auth-modal-subtitle">
           {isLogin
-            ? 'Đăng nhập để nhận gợi ý phim cá nhân hóa theo thời gian thực'
-            : 'Đăng ký ngay để trải nghiệm AI Recommender System'}
+            ? 'Sign in to access personalized movie recommendations in real-time'
+            : 'Join MovieNex to discover curated movies with AI recommendations'}
         </p>
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-900/50 border border-red-500 rounded-lg text-red-200 text-sm">
-            {error}
-          </div>
-        )}
+        {error && <div className="auth-error-box">{error}</div>}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="auth-form">
           {!isLogin && (
-            <div>
-              <label className="block text-xs font-semibold uppercase text-gray-400 mb-1">
-                Tên đăng nhập
-              </label>
+            <div className="auth-form-group">
+              <label className="auth-form-label">Username</label>
               <input
                 type="text"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="VD: user123"
-                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 text-white"
+                placeholder="e.g. alex123"
+                className="auth-form-input"
               />
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold uppercase text-gray-400 mb-1">
-              Email
-            </label>
+          <div className="auth-form-group">
+            <label className="auth-form-label">Email</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@example.com"
-              className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 text-white"
+              className="auth-form-input"
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold uppercase text-gray-400 mb-1">
-              Mật khẩu
-            </label>
+          <div className="auth-form-group">
+            <label className="auth-form-label">Password</label>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-red-500 text-white"
+              className="auth-form-input"
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-lg shadow-lg transition duration-200"
-          >
-            {loading ? 'Đang xử lý...' : isLogin ? 'Đăng Nhập' : 'Tạo Tài Khoản'}
+          <button type="submit" disabled={loading} className="btn-auth-submit">
+            {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Create Account'}
           </button>
         </form>
 
-        <div className="mt-6 text-center text-sm text-gray-400">
+        <div className="auth-switch-prompt">
           {isLogin ? (
             <p>
-              Chưa có tài khoản?{' '}
+              Don't have an account?{' '}
               <button
                 onClick={() => { setIsLogin(false); setError(''); }}
-                className="text-red-400 hover:underline font-medium"
+                className="auth-switch-btn"
               >
-                Đăng ký ngay
+                Sign up now
               </button>
             </p>
           ) : (
             <p>
-              Đã có tài khoản?{' '}
+              Already have an account?{' '}
               <button
                 onClick={() => { setIsLogin(true); setError(''); }}
-                className="text-red-400 hover:underline font-medium"
+                className="auth-switch-btn"
               >
-                Đăng nhập
+                Sign in
               </button>
             </p>
           )}

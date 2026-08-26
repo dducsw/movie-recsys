@@ -1,25 +1,51 @@
 import React, { useState, useEffect, useRef } from 'react';
-import Navbar from './components/Navbar/Navbar';
+import Sidebar from './components/Sidebar/Sidebar';
+import TopNav from './components/TopNav/TopNav';
+import HeroBanner from './components/HeroBanner/HeroBanner';
+import GenreFilterBar from './components/GenreFilterBar/GenreFilterBar';
 import MovieRow from './components/MovieRow/MovieRow';
 import MovieCard from './components/MovieCard/MovieCard';
 import ChatbotView from './components/ChatbotView/ChatbotView';
-import Footer from './components/Footer/Footer';
-import AuthView from './components/AuthView/AuthView';
 import WatchView from './components/WatchView/WatchView';
 import AuthModal from './components/AuthModal';
 import OnboardingModal from './components/OnboardingModal';
-import { API_BASE_URL, getOrCreateSessionId, trackClick, apiFetch } from './api/client';
+import { API_BASE_URL, getOrCreateSessionId, trackClick } from './api/client';
+import './App.css';
 
 function App() {
+  // Theme State (Dark mode default)
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('cinemax_dark_mode');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('cinemax_dark_mode', JSON.stringify(darkMode));
+    if (darkMode) {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }, [darkMode]);
+
   // Navigation & View State
-  const [view, setView] = useState('home'); // 'home', 'detail', 'all', 'auth', 'watch'
+  const [view, setView] = useState('home'); // 'home', 'all', 'watchlist', 'chatbot', 'watch'
   const [selectedMovieId, setSelectedMovieId] = useState(null);
   const [selectedMovie, setSelectedMovie] = useState(null);
-  const [showTrailer, setShowTrailer] = useState(false);
+  const [activeGenreFilter, setActiveGenreFilter] = useState('Trending');
+
+  // Search and Advanced Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('all'); // 'all', 'released', 'upcoming'
+  const [selectedYear, setSelectedYear] = useState('all'); // 'all', '2026', '2025', '2024', '2020-2023', '2010s', '2000s', 'classic'
+  const [selectedGenre, setSelectedGenre] = useState('all'); // 'all', 'Action', ...
+  const [searchResults, setSearchResults] = useState([]);
+
+  // Hero carousel slide index
+  const [heroIndex, setHeroIndex] = useState(0);
 
   // Active User & Auth Modals state
   const [user, setUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
@@ -33,13 +59,12 @@ function App() {
         .then((data) => {
           if (data && data.user) {
             setUser(data.user);
-            setUserProfile(data);
           } else {
             localStorage.removeItem('auth_token');
             setUser(null);
           }
         })
-        .catch(() => { });
+        .catch(() => {});
     }
   }, []);
 
@@ -47,7 +72,6 @@ function App() {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user_info');
     setUser(null);
-    setUserProfile(null);
     setView('home');
   };
 
@@ -58,1149 +82,662 @@ function App() {
     }
   };
 
-  // Lists of Movies (Homepage)
+  // Movie Datasets
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [latestMovies, setLatestMovies] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
-  const [likedMoviesDetails, setLikedMoviesDetails] = useState([]);
   const [similarMovies, setSimilarMovies] = useState([]);
-
-  // Swipe Row Refs for scroll buttons
-  const recsScrollRef = useRef(null);
-  const trendingScrollRef = useRef(null);
-  const latestScrollRef = useRef(null);
-  const favoritesScrollRef = useRef(null);
-  const similarScrollRef = useRef(null);
+  const [likedMoviesDetails, setLikedMoviesDetails] = useState([]);
 
   // "See All" / Paged View States
-  const [allType, setAllType] = useState('trending'); // 'trending' or 'recs'
+  const [allType, setAllType] = useState('trending'); // 'trending', 'latest', 'recs', 'genre', 'search'
   const [allMovies, setAllMovies] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [loadingAll, setLoadingAll] = useState(false);
 
-  // Search States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [currentSearch, setCurrentSearch] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-
-  // Tab State (Trending Row)
-  const [activeTab, setActiveTab] = useState('today'); // 'today' or 'week'
-
-  // AI Chatbot States
-  // AI Chatbot States
-  const [chatMessages, setChatMessages] = useState([
-    {
-      sender: 'bot',
-      text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. I can remember our conversation and provide context-aware recommendations!\n\nTry asking me:\n• "Recommend sci-fi movies"\n• "Movies like Inception"\n• "Tell me more about the second one" (after I recommend movies)'
-    }
-  ]);
-  const [chatInput, setChatInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const chatEndRef = useRef(null);
-  const isInitialChatLoad = useRef(true); // <-- ADD THIS LINE
-
-  const [chatSessionId, setChatSessionId] = useState(() => {
-    return localStorage.getItem('movienex_chat_session_id') || null;
-  });
-  const [chatMessageCount, setChatMessageCount] = useState(0);
-
-  // Loading States
-  const [loadingTrending, setLoadingTrending] = useState(false);
-  const [loadingLatest, setLoadingLatest] = useState(false);
-  const [loadingRecs, setLoadingRecs] = useState(false);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-
-  // Guide Dismiss State
-  const [showGuide, setShowGuide] = useState(() => {
-    const saved = localStorage.getItem('tmdb_recsys_hide_guide');
-    return saved !== 'true';
-  });
-
-  // LocalStorage-based User State
+  // Watchlist (Liked Movies) & Star Ratings State
   const [likedMovies, setLikedMovies] = useState(() => {
     const saved = localStorage.getItem('tmdb_recsys_liked');
     return saved ? JSON.parse(saved) : [];
   });
+
   const [movieRatings, setMovieRatings] = useState(() => {
     const saved = localStorage.getItem('tmdb_recsys_ratings');
     return saved ? JSON.parse(saved) : {};
   });
 
-  // Sync Liked Movies to LocalStorage & refetch recs
-  const isFirstMount = useRef(true);
   useEffect(() => {
     localStorage.setItem('tmdb_recsys_liked', JSON.stringify(likedMovies));
-    if (isFirstMount.current) {
-      isFirstMount.current = false;
-      return;
-    }
-    fetchLikedMovieDetails();
     fetchRecommendations();
-    if (view === 'all' && allType === 'recs') {
-      fetchAllMovies('recs', 1);
-    }
+    fetchLikedMovieDetails();
   }, [likedMovies]);
 
-  // Sync Movie Ratings to LocalStorage
   useEffect(() => {
     localStorage.setItem('tmdb_recsys_ratings', JSON.stringify(movieRatings));
   }, [movieRatings]);
 
-  // Initial load: Fetch Trending, Latest, and Recs in parallel
-  useEffect(() => {
-    const initData = async () => {
-      await Promise.allSettled([
-        fetchTrending(),
-        fetchLatest(),
-        fetchRecommendations(),
-        fetchLikedMovieDetails()
-      ]);
-    };
-    initData();
-  }, []);
-
-  // Refetch trending when activeTab changes (Today vs Week)
-  useEffect(() => {
-    fetchTrending();
-  }, [activeTab]);
-
-  // Fetch trending movies for homepage
-  const fetchTrending = async () => {
-    setLoadingTrending(true);
-    try {
-      const limit = activeTab === 'today' ? 20 : 35;
-      const response = await fetch(`${API_BASE_URL}/movies/trending?limit=${limit}`);
-      const data = await response.json();
-      setTrendingMovies(data.results || []);
-    } catch (error) {
-      console.error('Error fetching trending movies:', error);
-    } finally {
-      setLoadingTrending(false);
+  // AI Chatbot States & Logic
+  const [chatMessages, setChatMessages] = useState([
+    {
+      sender: 'bot',
+      text: "Hello! 👋 I'm your MovieNex AI assistant. Ask me anything about movies, actors, plots, or personalized suggestions!\n\nTry asking:\n• \"Recommend top sci-fi thriller movies\"\n• \"Mind-bending movies like Inception\"\n• \"What are the latest trending action releases?\""
     }
-  };
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const chatEndRef = useRef(null);
 
-  // Fetch latest movies for homepage
-  const fetchLatest = async () => {
-    setLoadingLatest(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/movies/latest?limit=20`);
-      const data = await response.json();
-      setLatestMovies(data.results || []);
-    } catch (error) {
-      console.error('Error fetching latest movies:', error);
-    } finally {
-      setLoadingLatest(false);
-    }
-  };
+  const [chatSessionId, setChatSessionId] = useState(() => {
+    return localStorage.getItem('movienex_chat_session_id') || getOrCreateSessionId();
+  });
 
-  // Auto-scroll chat messages
-
-  // Handle sending chat messages
   const handleSendChatMessage = async (textToSend) => {
     const text = textToSend || chatInput;
-    if (!text.trim()) return;
+    if (!text || !text.trim()) return;
 
     if (!textToSend) {
       setChatInput('');
     }
 
-    // Add user message to local state immediately
     setChatMessages((prev) => [...prev, { sender: 'user', text }]);
     setIsTyping(true);
 
     try {
-      // Use existing session or create new one
-      const currentSessionId = chatSessionId || generateSessionId();
-
-      const response = await fetch(`${API_BASE_URL}/chatbot/chat`, {
+      const res = await fetch(`${API_BASE_URL}/chatbot/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          session_id: currentSessionId
+          session_id: chatSessionId
         })
       });
-      const data = await response.json();
+      const data = await res.json();
 
-      // Save session ID if it's new
-      if (!chatSessionId) {
+      if (data.session_id && data.session_id !== chatSessionId) {
         setChatSessionId(data.session_id);
         localStorage.setItem('movienex_chat_session_id', data.session_id);
       }
-
-      // Update message count
-      setChatMessageCount(data.message_count || 0);
 
       setTimeout(() => {
         setChatMessages((prev) => [
           ...prev,
           {
             sender: 'bot',
-            text: data.text,
+            text: data.text || "Here are some top recommendations for you:",
             movies: data.movies || []
           }
         ]);
         setIsTyping(false);
-      }, 600);
-    } catch (error) {
-      console.error('Error in chatbot communication:', error);
+      }, 500);
+    } catch (err) {
+      console.error('Chatbot error:', err);
       setIsTyping(false);
       setChatMessages((prev) => [
         ...prev,
-        { sender: 'bot', text: 'Xin lỗi, đã xảy ra lỗi kết nối với máy chủ AI. Vui lòng thử lại sau.' }
+        {
+          sender: 'bot',
+          text: "I had trouble connecting to the AI recommendation engine. Please try again!"
+        }
       ]);
     }
   };
 
-  // Auto-scroll chat messages
-  useEffect(() => {
-    if (chatEndRef.current) {
-      // Use 'auto' on initial load to prevent the "slide down" effect.
-      // Use 'smooth' for subsequent new messages.
-      chatEndRef.current.scrollIntoView({
-        behavior: isInitialChatLoad.current ? 'auto' : 'smooth',
-        block: 'end',
+  const handleClearHistory = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/chatbot/history?session_id=${chatSessionId}`, {
+        method: 'DELETE'
       });
-
-      if (isInitialChatLoad.current) {
-        isInitialChatLoad.current = false;
+    } catch (e) {}
+    setChatMessages([
+      {
+        sender: 'bot',
+        text: 'Chat history cleared. What kind of movie would you like to explore today?'
       }
-    }
-  }, [chatMessages, isTyping]);
+    ]);
+  };
 
+  const handleNewSession = () => {
+    const newSid = crypto.randomUUID ? crypto.randomUUID() : `sid_${Date.now()}`;
+    setChatSessionId(newSid);
+    localStorage.setItem('movienex_chat_session_id', newSid);
+    setChatMessages([
+      {
+        sender: 'bot',
+        text: 'New session started! How can I help you find your next favorite movie?'
+      }
+    ]);
+  };
+
+  // Initial Data Fetching
   useEffect(() => {
-    if (view === 'chatbot' && chatSessionId) {
-      loadChatHistory();
-    }
-  }, [view, chatSessionId]);
+    fetchTrending();
+    fetchLatest();
+    fetchRecommendations();
+  }, []);
 
-  const loadChatHistory = async () => {
-    if (!chatSessionId) return;
-
+  const fetchTrending = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.messages && data.messages.length > 0) {
-          isInitialChatLoad.current = true; // <-- ADD THIS: Force instant scroll when history loads
-          setChatMessages(
-            data.messages.map(msg => ({
-              sender: msg.role === 'human' ? 'user' : 'bot',
-              text: msg.content,
-              movies: msg.movies || []
-            }))
-          );
-          setChatMessageCount(data.messages.length);
-        } else {
-          setChatMessages([
-            {
-              sender: 'bot',
-              text: 'Hello! 👋 I am your AI movie recommendation chatbot with memory. How can I help you today?'
-            }
-          ]);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading chat history:', error);
+      const res = await fetch(`${API_BASE_URL}/movies/trending?limit=20`);
+      const data = await res.json();
+      setTrendingMovies(data.results || []);
+    } catch (e) {
+      console.error('Error fetching trending:', e);
     }
   };
 
-  const generateSessionId = () => {
-    return `session_${crypto.randomUUID()}`;
+  const fetchLatest = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/movies/latest?limit=20`);
+      const data = await res.json();
+      setLatestMovies(data.results || []);
+    } catch (e) {
+      console.error('Error fetching latest:', e);
+    }
   };
 
-
-  // Fetch personalized recommendations for homepage
   const fetchRecommendations = async () => {
-    setLoadingRecs(true);
     try {
-      const idsParam = likedMovies.join(',');
-      const path = idsParam
-        ? `/recommendations?movie_ids=${idsParam}`
-        : `/recommendations`;
-      const data = await apiFetch(path);
+      const likedStr = likedMovies.length > 0 ? likedMovies.join(',') : '';
+      const url = likedStr
+        ? `${API_BASE_URL}/recommendations?liked_movie_ids=${likedStr}&limit=16`
+        : `${API_BASE_URL}/recommendations?limit=16`;
+      const res = await fetch(url);
+      const data = await res.json();
       setRecommendations(data.results || []);
-    } catch (error) {
-      console.error('Error fetching recommendations:', error);
-    } finally {
-      setLoadingRecs(false);
+    } catch (e) {
+      console.error('Error fetching recommendations:', e);
     }
   };
 
-  // Fetch full details of liked movies to display them on the homepage
   const fetchLikedMovieDetails = async () => {
     if (likedMovies.length === 0) {
       setLikedMoviesDetails([]);
       return;
     }
     try {
-      const promises = likedMovies.map(id =>
-        fetch(`${API_BASE_URL}/movies/${id}`).then(res => res.ok ? res.json() : null)
+      const promises = likedMovies.slice(-20).map((id) =>
+        fetch(`${API_BASE_URL}/movies/${id}`).then((r) => (r.ok ? r.json() : null))
       );
-      const results = await promises;
-      setLikedMoviesDetails(results.filter(movie => movie !== null));
-    } catch (error) {
-      console.error('Error fetching liked movie details:', error);
+      const results = await Promise.all(promises);
+      setLikedMoviesDetails(results.filter(Boolean));
+    } catch (e) {
+      console.error('Error fetching liked details:', e);
     }
   };
 
-  // Handle Search Submission
-  const handleSearchSubmit = async (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-
-    setLoadingTrending(true);
+  const fetchMovieDetail = async (movieId) => {
+    setSelectedMovieId(movieId);
     try {
-      const response = await fetch(`${API_BASE_URL}/movies/search?query=${encodeURIComponent(searchQuery)}`);
-      const data = await response.json();
-      setSearchResults(data.results || []);
-      setCurrentSearch(searchQuery);
-      setIsSearching(true);
-      setView('home');
-      setSelectedMovieId(null);
-    } catch (error) {
-      console.error('Error searching movies:', error);
-    } finally {
-      setLoadingTrending(false);
-    }
-  };
-
-  // Handle Click-to-Search (e.g., clicking tags, directors, actors, or genres)
-  const handleSearchSubmitWithQuery = async (queryText) => {
-    if (!queryText.trim()) return;
-
-    setSearchQuery(queryText);
-    setLoadingTrending(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/movies/search?query=${encodeURIComponent(queryText)}`);
-      const data = await response.json();
-      setSearchResults(data.results || []);
-      setCurrentSearch(queryText);
-      setIsSearching(true);
-      setView('home');
-      setSelectedMovieId(null);
-    } catch (error) {
-      console.error('Error searching movies by metadata:', error);
-    } finally {
-      setLoadingTrending(false);
-    }
-  };
-
-  const handleClearChatHistory = async () => {
-    if (!chatSessionId) return;
-
-    const confirmClear = window.confirm('Clear all conversation history?');
-    if (!confirmClear) return;
-
-    try {
-      await fetch(`${API_BASE_URL}/chatbot/history/${chatSessionId}`, {
-        method: 'DELETE'
-      });
-    } catch (error) {
-      console.error('Error clearing history:', error);
-    }
-
-    isInitialChatLoad.current = true; // <-- ADD THIS
-    setChatMessages([
-      {
-        sender: 'bot',
-        text: 'Conversation cleared! 🧹 How can I help you with movie recommendations?'
+      const res = await fetch(`${API_BASE_URL}/movies/${movieId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedMovie(data);
       }
-    ]);
-    setChatMessageCount(0);
-  };
-
-  const handleNewChatSession = () => {
-    const newSessionId = generateSessionId();
-    setChatSessionId(newSessionId);
-    localStorage.setItem('movienex_chat_session_id', newSessionId);
-
-    isInitialChatLoad.current = true; // <-- ADD THIS
-    setChatMessages([
-      {
-        sender: 'bot',
-        text: 'New conversation started! ✨ I\'m ready to help you find great movies. What would you like to watch?'
+      const simRes = await fetch(`${API_BASE_URL}/movies/${movieId}/recommendations?limit=10`);
+      if (simRes.ok) {
+        const simData = await simRes.json();
+        setSimilarMovies(simData.results || []);
       }
-    ]);
-    setChatMessageCount(0);
-    setChatInput('');
+      trackClick(movieId, 'detail_view');
+    } catch (e) {
+      console.error('Error fetching movie detail:', e);
+    }
   };
 
-  // Clear Search Results
+  // Search & Filter Execution
+  const executeSearchWithFilters = async (overrideQuery) => {
+    const q = overrideQuery !== undefined ? overrideQuery : searchQuery;
+    setView('all');
+    setAllType('search');
+
+    const params = new URLSearchParams();
+    if (q && q.trim()) params.append('query', q.trim());
+    if (selectedGenre && selectedGenre !== 'all') params.append('genre', selectedGenre);
+    if (selectedYear && selectedYear !== 'all') params.append('year', selectedYear);
+    if (selectedStatus && selectedStatus !== 'all') params.append('status', selectedStatus);
+    params.append('limit', '30');
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/movies/search?${params.toString()}`);
+      const data = await res.json();
+      setSearchResults(data.results || []);
+      setAllMovies(data.results || []);
+    } catch (e) {
+      console.error('Error executing search with filters:', e);
+    }
+  };
+
   const handleClearSearch = () => {
     setSearchQuery('');
-    setCurrentSearch('');
-    setIsSearching(false);
+    setSelectedStatus('all');
+    setSelectedYear('all');
+    setSelectedGenre('all');
     setSearchResults([]);
+    setActiveGenreFilter('Trending');
   };
 
-  // Handle click on Movie Card -> Go to Details view
-  // source: listing nơi user click ('trending'|'latest'|'search'|'recommendations'|'similar'|'chatbot')
-  const handleMovieClick = async (movieId, source = 'unknown', position = null) => {
-    // Emit click event trước khi navigate (fire-and-forget)
-    trackClick(movieId, source, position);
-
-    setView('detail');
-    setSelectedMovieId(movieId);
-    setLoadingDetail(true);
-    try {
-      // Fetch movie detail
-      const resDetail = await fetch(`${API_BASE_URL}/movies/${movieId}`, {
-        credentials: 'include',
-      });
-      if (resDetail.ok) {
-        const movieData = await resDetail.json();
-        setSelectedMovie(movieData);
-      } else {
-        console.error('Failed to fetch movie details');
-      }
-
-      // Fetch similar movie recommendations
-      const resSimilar = await fetch(`${API_BASE_URL}/movies/${movieId}/recommendations?limit=12`, {
-        credentials: 'include',
-      });
-      if (resSimilar.ok) {
-        const similarData = await resSimilar.json();
-        setSimilarMovies(similarData.results || []);
-      } else {
-        setSimilarMovies([]);
-      }
-    } catch (error) {
-      console.error('Error fetching movie details:', error);
-    } finally {
-      setLoadingDetail(false);
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleResetFilters = () => {
+    setSelectedStatus('all');
+    setSelectedYear('all');
+    setSelectedGenre('all');
   };
 
-  // Toggle Like Status of a movie
-  const toggleLike = (movieId) => {
-    if (likedMovies.includes(movieId)) {
-      setLikedMovies(prev => prev.filter(id => id !== movieId));
+  // Genre Filter Bar Selection
+  const handleSelectGenreFilter = (genre) => {
+    setActiveGenreFilter(genre);
+    if (genre === 'Trending') {
+      setView('home');
     } else {
-      setLikedMovies(prev => [...prev, movieId]);
+      setView('all');
+      setAllType('genre');
+      setSelectedGenre(genre);
+      fetch(`${API_BASE_URL}/movies/search?genre=${encodeURIComponent(genre)}&limit=30`)
+        .then((r) => r.json())
+        .then((data) => {
+          setAllMovies(data.results || []);
+        })
+        .catch(() => {});
     }
   };
 
-  // Handle Star Rating submission
-  const handleRateMovie = (movieId, rating) => {
-    setMovieRatings(prev => ({
-      ...prev,
-      [movieId]: prev[movieId] === rating ? 0 : rating
-    }));
-  };
-
-  // Scroll Row Helper
-  const scrollRow = (ref, direction) => {
-    if (ref.current) {
-      const scrollAmount = direction === 'left' ? -620 : 620;
-      ref.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-    }
-  };
-
-  // "See All" Handler
+  // See All Handler
   const handleSeeAll = (type) => {
-    setView('all');
     setAllType(type);
-    setCurrentPage(1);
-    fetchAllMovies(type, 1);
-  };
-
-  // Fetch paged data for "See All"
-  const fetchAllMovies = async (type, page) => {
-    setLoadingAll(true);
-    try {
-      if (type === 'trending') {
-        const limit = 20;
-        const response = await fetch(`${API_BASE_URL}/movies/trending?page=${page}&limit=${limit}`);
-        const data = await response.json();
-        setAllMovies(data.results || []);
-        setTotalCount(data.total_movies || 10000);
-        setTotalPages(Math.ceil((data.total_movies || 10000) / limit));
-      } else if (type === 'latest') {
-        const limit = 20;
-        const response = await fetch(`${API_BASE_URL}/movies/latest?page=${page}&limit=${limit}`);
-        const data = await response.json();
-        setAllMovies(data.results || []);
-        setTotalCount(data.total_movies || 10000);
-        setTotalPages(Math.ceil((data.total_movies || 10000) / limit));
-      } else if (type === 'recs') {
-        // Recommendations fetch all at once (up to 80 items) and paginated in-memory on frontend
-        const idsParam = likedMovies.join(',');
-        const url = idsParam
-          ? `${API_BASE_URL}/recommendations?movie_ids=${idsParam}`
-          : `${API_BASE_URL}/recommendations`;
-
-        const response = await fetch(url);
-        const data = await response.json();
-        const results = data.results || [];
-
-        // Paginate in-memory (20 items per page)
-        const limit = 20;
-        const startIndex = (page - 1) * limit;
-        const pagedResults = results.slice(startIndex, startIndex + limit);
-
-        setAllMovies(pagedResults);
-        setTotalCount(results.length);
-        setTotalPages(Math.ceil(results.length / limit) || 1);
-      }
-    } catch (error) {
-      console.error('Error fetching all movies:', error);
-    } finally {
-      setLoadingAll(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    setView('all');
+    handleClearSearch();
+    if (type === 'trending') {
+      setAllMovies(trendingMovies);
+    } else if (type === 'latest') {
+      setAllMovies(latestMovies);
+    } else if (type === 'recs') {
+      setAllMovies(recommendations);
     }
   };
 
-  // Handle page change inside "See All" view
-  const handlePageChange = (page) => {
-    if (page < 1 || page > totalPages) return;
-    setCurrentPage(page);
-    fetchAllMovies(allType, page);
+  // Watchlist (Like) Toggle
+  const toggleWatchlist = (movieId) => {
+    if (!movieId) return;
+    const mid = Number(movieId);
+    setLikedMovies((prev) => {
+      const exists = prev.includes(mid);
+      const updated = exists ? prev.filter((id) => id !== mid) : [...prev, mid];
+      return updated;
+    });
+
+    // Notify backend
+    fetch(`${API_BASE_URL}/events/watchlist`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': getOrCreateSessionId(),
+        ...(localStorage.getItem('auth_token') ? { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` } : {})
+      },
+      body: JSON.stringify({ movie_id: mid })
+    }).catch(() => {});
   };
 
-  // Helper: Format release date
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A';
+  // Star Rating Handler
+  const handleRateMovie = async (movieId, star) => {
+    if (!movieId) return;
+    const mid = Number(movieId);
+    setMovieRatings((prev) => ({ ...prev, [mid]: star }));
+
+    if (star >= 4 && !likedMovies.includes(mid)) {
+      setLikedMovies((prev) => [...prev, mid]);
+    }
+
     try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return dateStr;
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
+      await fetch(`${API_BASE_URL}/events/rating`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': getOrCreateSessionId(),
+          ...(localStorage.getItem('auth_token') ? { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` } : {})
+        },
+        body: JSON.stringify({ movie_id: mid, rating: Number(star) })
       });
     } catch (e) {
-      return dateStr;
+      console.error('Error saving rating:', e);
     }
   };
 
-  // Helper: Get Year from date string
-  const getYear = (dateStr) => {
-    if (!dateStr) return '';
-    return dateStr.split('-')[0] || '';
+  // Hero Spotlight Slider Logic
+  const spotlightPool = trendingMovies.length > 0 ? trendingMovies : [
+    {
+      movieId: 1084244,
+      title: "Elio",
+      overview: "An underdog with an active imagination finds himself inadvertently beamed up to the Communiverse, an interplanetary organization with representatives from galaxies far and wide.",
+      genres: "Family|Adventure|Animation",
+      vote_average: 8.8,
+      poster_url: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=1200"
+    }
+  ];
+
+  const currentHeroMovie = spotlightPool[heroIndex % spotlightPool.length];
+  const nextHeroMovie = spotlightPool[(heroIndex + 1) % spotlightPool.length];
+
+  const handleNextHeroSlide = () => {
+    setHeroIndex((prev) => (prev + 1) % spotlightPool.length);
   };
 
-  // Helper: Render Circular SVG rating badge
-  const renderRatingCircle = (score, isLarge = false) => {
-    const percentage = Math.round(score * 10);
-    const size = isLarge ? 58 : 36;
-    const strokeWidth = isLarge ? 3.2 : 2.2;
-    const radius = (size - strokeWidth) / 2;
-    const circumference = radius * 2 * Math.PI;
-    const strokeDashoffset = circumference - (percentage / 100) * circumference;
-
-    let strokeColor = '#01d277'; // Green
-    if (percentage < 70 && percentage >= 40) {
-      strokeColor = '#d2d219'; // Yellow
-    } else if (percentage < 40) {
-      strokeColor = '#db2323'; // Red
-    }
-
-    return (
-      <div className={isLarge ? "detail-score-circle" : "rating-circle"}>
-        <svg width={size} height={size}>
-          <circle
-            className="circle-bg"
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            strokeWidth={strokeWidth}
-          />
-          <circle
-            className="circle-progress"
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            strokeWidth={strokeWidth}
-            strokeDasharray={circumference}
-            strokeDashoffset={strokeDashoffset}
-            stroke={strokeColor}
-          />
-        </svg>
-        <div className="rating-percent" style={{ fontSize: isLarge ? '15px' : '10.5px' }}>
-          {percentage}
-          <span style={{ fontSize: isLarge ? '8px' : '5px' }}>%</span>
-        </div>
-      </div>
-    );
+  const handlePrevHeroSlide = () => {
+    setHeroIndex((prev) => (prev - 1 + spotlightPool.length) % spotlightPool.length);
   };
 
-  // Render modern pagination buttons for "See All" view
-  const renderPagination = () => {
-    const pages = [];
-
-    // Previous Button
-    pages.push(
-      <button
-        key="prev"
-        className="pagination-btn"
-        onClick={() => handlePageChange(currentPage - 1)}
-        disabled={currentPage === 1}
-      >
-        ‹
-      </button>
-    );
-
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(
-          <button
-            key={i}
-            className={`pagination-btn ${currentPage === i ? 'active' : ''}`}
-            onClick={() => handlePageChange(i)}
-          >
-            {i}
-          </button>
-        );
-      }
-    } else {
-      // First page is always visible
-      pages.push(
-        <button
-          key={1}
-          className={`pagination-btn ${currentPage === 1 ? 'active' : ''}`}
-          onClick={() => handlePageChange(1)}
-        >
-          1
-        </button>
-      );
-
-      if (currentPage > 3) {
-        pages.push(<span key="ell1" className="pagination-ellipsis">...</span>);
-      }
-
-      // Middle pages (around current page)
-      const start = Math.max(2, currentPage - 1);
-      const end = Math.min(totalPages - 1, currentPage + 1);
-      for (let i = start; i <= end; i++) {
-        pages.push(
-          <button
-            key={i}
-            className={`pagination-btn ${currentPage === i ? 'active' : ''}`}
-            onClick={() => handlePageChange(i)}
-          >
-            {i}
-          </button>
-        );
-      }
-
-      if (currentPage < totalPages - 2) {
-        pages.push(<span key="ell2" className="pagination-ellipsis">...</span>);
-      }
-
-      // Last page is always visible
-      pages.push(
-        <button
-          key={totalPages}
-          className={`pagination-btn ${currentPage === totalPages ? 'active' : ''}`}
-          onClick={() => handlePageChange(totalPages)}
-        >
-          {totalPages}
-        </button>
-      );
-    }
-
-    // Next Button
-    pages.push(
-      <button
-        key="next"
-        className="pagination-btn"
-        onClick={() => handlePageChange(currentPage + 1)}
-        disabled={currentPage === totalPages}
-      >
-        ›
-      </button>
-    );
-
-    return <div className="pagination-container">{pages}</div>;
+  // Construct filtered search title description
+  const getFilterSummaryText = () => {
+    const parts = [];
+    if (searchQuery.trim()) parts.push(`"${searchQuery.trim()}"`);
+    if (selectedGenre !== 'all') parts.push(`Genre: ${selectedGenre}`);
+    if (selectedYear !== 'all') parts.push(`Year: ${selectedYear}`);
+    if (selectedStatus !== 'all') parts.push(`Status: ${selectedStatus === 'released' ? 'Released' : 'Upcoming'}`);
+    return parts.length > 0 ? parts.join(' • ') : 'All Movies';
   };
 
   return (
-    <div className="app-container">
-      {/* 1. Header/Navbar */}
-      <Navbar
+    <div className="streamix-app-layout">
+      {/* 1. Left Sidebar Navigation */}
+      <Sidebar
         view={view}
-        allType={allType}
         setView={setView}
-        handleClearSearch={handleClearSearch}
-        setSelectedMovieId={setSelectedMovieId}
+        allType={view === 'all' ? allType : null}
         handleSeeAll={handleSeeAll}
-        isSearching={isSearching}
+        setSelectedMovieId={setSelectedMovieId}
+        handleClearSearch={handleClearSearch}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
         user={user}
-        onLogout={handleLogout}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
       />
 
-      {view === 'home' ? (
-        /* ================= HOMEPAGE VIEW ================= */
-        <div>
-          {/* Hero Banner Section */}
-          <header className="banner">
-            <h1>Welcome.</h1>
-            <h2>Millions of movies, TV shows and recommendation algorithms to discover. Explore now.</h2>
-            <form className="search-container" onSubmit={handleSearchSubmit}>
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search for a movie, tv show, person..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+      {/* 2. Main Full-Width Content Container */}
+      <main className="streamix-main-container">
+        <TopNav
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          handleSearch={() => executeSearchWithFilters()}
+          handleClearSearch={handleClearSearch}
+          user={user}
+          onLogout={handleLogout}
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          setView={setView}
+          selectedStatus={selectedStatus}
+          setSelectedStatus={setSelectedStatus}
+          selectedYear={selectedYear}
+          setSelectedYear={setSelectedYear}
+          selectedGenre={selectedGenre}
+          setSelectedGenre={setSelectedGenre}
+          onApplyFilters={() => executeSearchWithFilters()}
+          onResetFilters={handleResetFilters}
+        />
+
+        <div className="streamix-content-body">
+          {/* VIEW: Home Dashboard */}
+          {view === 'home' && (
+            <>
+              {/* 1. Hero Spotlight Carousel Banner (16:9 widescreen + peek slide) */}
+              <HeroBanner
+                movie={currentHeroMovie}
+                nextMovie={nextHeroMovie}
+                onWatchNow={() => fetchMovieDetail(currentHeroMovie.movieId)}
+                onToggleWatchlist={toggleWatchlist}
+                isInWatchlist={likedMovies.includes(currentHeroMovie.movieId)}
+                onNextSlide={handleNextHeroSlide}
+                onPrevSlide={handlePrevHeroSlide}
+                onOpenDetail={() => fetchMovieDetail(currentHeroMovie.movieId)}
               />
-              <button type="submit" className="search-button">
-                Search
-              </button>
-            </form>
-          </header>
 
-          <main className="main-content">
-            {isSearching ? (
-              /* Search Results Grid */
-              <div className="section-wrapper">
-                <div className="search-status-wrapper">
-                  <div className="search-status">
-                    Search results for: "{currentSearch}" ({searchResults.length} movies)
-                  </div>
-                  <button className="search-clear-btn" onClick={handleClearSearch}>
-                    Clear Search
-                  </button>
-                </div>
+              {/* 2. Horizontal Genre Filter Bar with Arrow Controls */}
+              <GenreFilterBar
+                activeFilter={activeGenreFilter}
+                onSelectFilter={handleSelectGenreFilter}
+              />
 
-                {searchResults.length === 0 ? (
-                  <div className="no-results">No movies found matching your query.</div>
-                ) : (
-                  <div className="search-grid">
-                    {searchResults.map((movie, idx) => (
-                      <MovieCard
-                        key={movie.movieId}
-                        movie={movie}
-                        onClick={() => handleMovieClick(movie.movieId, 'search', idx)}
-                      />
-                    ))}
-                  </div>
-                )}
+              {/* 3. Section: "You Might Like" (AI 3-Stage Recommendations) */}
+              <MovieRow
+                title="You Might Like"
+                badge="AI 3-Stage"
+                movies={recommendations}
+                onMovieClick={fetchMovieDetail}
+                onSeeAll={() => handleSeeAll('recs')}
+                likedMovies={likedMovies}
+                movieRatings={movieRatings}
+                onToggleLike={toggleWatchlist}
+                onRateMovie={handleRateMovie}
+              />
+
+              {/* 4. Section: "Trending Movies" */}
+              <MovieRow
+                title="Trending Movies"
+                movies={trendingMovies}
+                onMovieClick={fetchMovieDetail}
+                onSeeAll={() => handleSeeAll('trending')}
+                likedMovies={likedMovies}
+                movieRatings={movieRatings}
+                onToggleLike={toggleWatchlist}
+                onRateMovie={handleRateMovie}
+              />
+
+              {/* 5. Section: "Recently Added" */}
+              <MovieRow
+                title="Recently Added"
+                movies={latestMovies}
+                onMovieClick={fetchMovieDetail}
+                onSeeAll={() => handleSeeAll('latest')}
+                likedMovies={likedMovies}
+                movieRatings={movieRatings}
+                onToggleLike={toggleWatchlist}
+                onRateMovie={handleRateMovie}
+              />
+            </>
+          )}
+
+          {/* VIEW: All Movies Grid / Search Results / Filtered View */}
+          {view === 'all' && (
+            <div className="streamix-grid-view">
+              <div className="grid-view-header">
+                <h1 className="grid-view-title">
+                  {allType === 'search' && `Filter Results: ${getFilterSummaryText()}`}
+                  {allType === 'genre' && `Genre: ${activeGenreFilter || searchQuery}`}
+                  {allType === 'trending' && 'Top Trending Movies'}
+                  {allType === 'latest' && 'Recently Added Movies'}
+                  {allType === 'recs' && 'Personalized AI Recommendations'}
+                </h1>
+                <span className="grid-view-count">{allMovies.length} movies found</span>
               </div>
-            ) : (
-              /* Standard Homepage Rows */
-              <div>
-                {/* Glassmorphism Information Alert Guide */}
-                {showGuide && (
-                  <div className="info-alert-box">
-                    <div>
-                      <strong>💡 Recommendation System Demo:</strong> This interface simulates the MovieNex movie platform.
-                      The <strong>"Recommended for You"</strong> row is dynamically computed in real-time using a <em>Content-based Filtering</em> algorithm on the Backend.
-                      Click on any movie card, then click the <strong>❤️ Like</strong> button or select star ratings to teach the system your preferences.
-                      When you return to the Homepage, your recommendations will automatically refresh to reflect your taste!
-                    </div>
-                    <button className="info-alert-close-btn" onClick={handleDismissGuide} title="Dismiss guide">
-                      ✕
-                    </button>
-                  </div>
-                )}
 
-                {/* Row 1: Personalized Recommendations (RecSys) */}
-                <MovieRow
-                  title="Recommended for You"
-                  movies={recommendations}
-                  loading={loadingRecs}
-                  scrollRef={recsScrollRef}
-                  onScroll={(dir) => scrollRow(recsScrollRef, dir)}
-                  onMovieClick={handleMovieClick}
-                  onSeeAll={() => handleSeeAll('recs')}
-                  source="recommendations"
-                  fallbackMessage="Like some movies in the Trending section below to start building your personalized recommendation profile!"
-                  headerExtra={
-                    <span style={{ fontSize: '11px', background: 'rgba(1, 180, 228, 0.1)', color: 'var(--tmdbLightBlue)', border: '1px solid rgba(1, 180, 228, 0.2)', padding: '2px 10px', borderRadius: '12px', fontWeight: 700, marginRight: '10px' }}>
-                      RecSys Active
-                    </span>
-                  }
-                />
-
-                {/* Row 2: Trending Row */}
-                <MovieRow
-                  title="Trending"
-                  movies={trendingMovies}
-                  loading={loadingTrending}
-                  scrollRef={trendingScrollRef}
-                  onScroll={(dir) => scrollRow(trendingScrollRef, dir)}
-                  onMovieClick={handleMovieClick}
-                  onSeeAll={() => handleSeeAll('trending')}
-                  source="trending"
-                  headerExtra={
-                    <div className="selector-tabs">
-                      <div
-                        className={`tab ${activeTab === 'today' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('today')}
-                      >
-                        Today
-                      </div>
-                      <div
-                        className={`tab ${activeTab === 'week' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('week')}
-                      >
-                        This Week
-                      </div>
-                    </div>
-                  }
-                />
-
-                {/* Row 3: Latest Row */}
-                <MovieRow
-                  title="Latest"
-                  movies={latestMovies}
-                  loading={loadingLatest}
-                  scrollRef={latestScrollRef}
-                  onScroll={(dir) => scrollRow(latestScrollRef, dir)}
-                  onMovieClick={handleMovieClick}
-                  onSeeAll={() => handleSeeAll('latest')}
-                  source="latest"
-                />
-
-                {/* Row 4: Liked Movies (Interactive History) */}
-                {likedMoviesDetails.length > 0 && (
-                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '24px' }}>
-                    <MovieRow
-                      title={`Your Favorite Movies (${likedMoviesDetails.length})`}
-                      movies={likedMoviesDetails}
-                      scrollRef={favoritesScrollRef}
-                      onScroll={(dir) => scrollRow(favoritesScrollRef, dir)}
-                      onMovieClick={handleMovieClick}
-                      source="favorites"
-                      headerExtra={
-                        <button
-                          onClick={() => { if (confirm("Reset all liked history?")) setLikedMovies([]); }}
-                          className="search-clear-btn"
-                          style={{ padding: '4px 14px', fontSize: '12px', marginLeft: 'auto' }}
-                        >
-                          Reset History
-                        </button>
-                      }
+              <div className="streamix-movie-grid">
+                {allMovies.map((movie) => {
+                  const mid = movie.movieId || movie.id;
+                  return (
+                    <MovieCard
+                      key={mid}
+                      movie={movie}
+                      onClick={() => fetchMovieDetail(mid)}
+                      isLiked={likedMovies.includes(mid)}
+                      onToggleLike={toggleWatchlist}
+                      userRating={movieRatings[mid] || 0}
+                      onRateMovie={handleRateMovie}
                     />
-                  </div>
-                )}
-              </div>
-            )}
-          </main>
-        </div>
-      ) : view === 'detail' ? (
-        /* ================= MOVIE DETAIL PAGE VIEW ================= */
-        <div className="detail-page-container">
-          <div className="back-btn-container">
-            <button className="back-btn" onClick={() => setView('home')}>
-              ← Back to Homepage
-            </button>
-          </div>
-
-          {loadingDetail || !selectedMovie ? (
-            <div className="spinner-container" style={{ minHeight: '450px' }}>
-              <div className="spinner"></div>
-            </div>
-          ) : (
-            <div>
-              {/* Hero Banner with Blur Background Overlay */}
-              <div
-                className="detail-hero-section"
-                style={{
-                  backgroundImage: `url(${selectedMovie.poster_url || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1920'})`
-                }}
-              >
-                <div className="detail-hero-overlay">
-                  <div className="detail-hero-content">
-                    {/* Movie Poster */}
-                    <div className="detail-poster-wrapper">
-                      <img
-                        className="detail-poster"
-                        src={selectedMovie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400'}
-                        alt={selectedMovie.title}
-                      />
-                    </div>
-
-                    {/* Movie Details */}
-                    <div className="detail-info-wrapper">
-                      <h1 className="detail-title">
-                        {selectedMovie.title} {selectedMovie.release_date && <span>({getYear(selectedMovie.release_date)})</span>}
-                      </h1>
-
-                      <div className="detail-meta-row">
-                        {selectedMovie.adult && <span className="detail-adult-badge">18+</span>}
-                        <span className="detail-meta-item">{formatDate(selectedMovie.release_date)} (US)</span>
-                        <span className="detail-meta-item">• 2h 15m</span>
-                        <div className="detail-genres-container">
-                          {selectedMovie.genres && selectedMovie.genres.split('|').map((genre, i) => (
-                            <span
-                              key={i}
-                              className="detail-genre-tag clickable-meta-link"
-                              onClick={() => handleSearchSubmitWithQuery(genre)}
-                            >
-                              {genre}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Score & Actions Row */}
-                      <div className="detail-actions-row">
-                        {/* Circular Score Badge */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          {renderRatingCircle(selectedMovie.vote_average, true)}
-                          <div className="detail-score-text">User<br />Score</div>
-                        </div>
-
-                        {/* Watchlist/Favorite Buttons */}
-                        <button
-                          className={`circle-action-btn ${likedMovies.includes(selectedMovie.movieId) ? 'liked' : ''}`}
-                          onClick={() => toggleLike(selectedMovie.movieId)}
-                          title={likedMovies.includes(selectedMovie.movieId) ? "Unlike" : "Mark as Favorite"}
-                        >
-                          {likedMovies.includes(selectedMovie.movieId) ? (
-                            <svg viewBox="0 0 24 24" fill="white" style={{ width: '18px', height: '18px' }}>
-                              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-                            </svg>
-                          ) : (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" style={{ width: '18px', height: '18px' }}>
-                              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-                            </svg>
-                          )}
-                        </button>
-
-                        <button className="circle-action-btn" title="Add to Watchlist" onClick={() => alert("Added to watchlist (Mockup)!")}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" style={{ width: '18px', height: '18px' }}>
-                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-                          </svg>
-                        </button>
-
-
-
-                        {/* Interactive Ratings Bar */}
-                        <div className="rate-wrapper">
-                          <span className="rate-label">Rate:</span>
-                          <div className="stars-container">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button
-                                key={star}
-                                className={`star-btn ${movieRatings[selectedMovie.movieId] >= star ? 'active' : ''}`}
-                                onClick={() => handleRateMovie(selectedMovie.movieId, star)}
-                                title={`Rate ${star} stars`}
-                              >
-                                ★
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Play Trailer & Watch Movie Buttons */}
-                      <div className="play-buttons-row" style={{ display: 'flex', gap: '12px', margin: '15px 0 25px 0' }}>
-                        <button
-                          className="watch-now-btn"
-                          onClick={() => setShowTrailer(true)}
-                          style={{
-                            background: 'linear-gradient(135deg, #ff007f, #7f00ff)',
-                            boxShadow: '0 4px 15px rgba(255, 0, 127, 0.4)'
-                          }}
-                        >
-                          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '16px', height: '16px', marginRight: '6px' }}>
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                          Watch Movie
-                        </button>
-
-                        <button
-                          className="watch-trailer-btn"
-                          onClick={() => setShowTrailer(true)}
-                          style={{
-                            background: 'transparent',
-                            border: '1px solid rgba(255, 255, 255, 0.3)',
-                            color: 'white',
-                            padding: '10px 18px',
-                            borderRadius: '20px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            fontWeight: '600',
-                            transition: 'all 0.2s',
-                            fontSize: '14px'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = 'white';
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                            e.currentTarget.style.background = 'transparent';
-                          }}
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px', marginRight: '6px' }}>
-                            <polygon points="5 3 19 12 5 21 5 3" />
-                          </svg>
-                          Play Trailer
-                        </button>
-                      </div>
-
-                      {/* Overview & Crew */}
-                      <h3 className="overview-header">Overview</h3>
-                      <p className="overview-text">{selectedMovie.overview || 'No overview available for this movie.'}</p>
-
-                      {selectedMovie.director && (
-                        <div className="detail-director-box">
-                          <span className="detail-label">Director:</span>
-                          <span
-                            className="detail-value clickable-meta-link"
-                            onClick={() => handleSearchSubmitWithQuery(selectedMovie.director)}
-                          >
-                            {selectedMovie.director}
-                          </span>
-                        </div>
-                      )}
-
-                      {selectedMovie.cast && (
-                        <div className="detail-cast-box">
-                          <span className="detail-label">Cast:</span>
-                          <div className="detail-cast-chips">
-                            {selectedMovie.cast.split('|').slice(0, 10).map((actor, idx) => (
-                              <span
-                                key={idx}
-                                className="actor-chip clickable-meta-link"
-                                onClick={() => handleSearchSubmitWithQuery(actor)}
-                              >
-                                {actor}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {selectedMovie.keywords && (
-                        <div className="detail-tags-box">
-                          <span className="detail-label">Tags:</span>
-                          <div className="detail-tags-chips">
-                            {selectedMovie.keywords.split('|').slice(0, 15).map((tag, idx) => (
-                              <span
-                                key={idx}
-                                className="tag-chip clickable-meta-link"
-                                onClick={() => handleSearchSubmitWithQuery(tag)}
-                              >
-                                #{tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Similar Recommendations Section (Recsys) */}
-              {/* Similar Recommendations Section (Recsys) */}
-              <div className="detail-recs-wrapper">
-                <MovieRow
-                  title="Recommendations"
-                  movies={similarMovies}
-                  scrollRef={similarScrollRef}
-                  onScroll={(dir) => scrollRow(similarScrollRef, dir)}
-                  onMovieClick={handleMovieClick}
-                  source="similar"
-                  fallbackMessage="No similar movies found."
-                  headerExtra={
-                    <div style={{ color: 'var(--textSecondary)', fontSize: '13.5px', margin: '4px 0 16px 0', fontWeight: 500 }}>
-                      If you liked <strong>{selectedMovie.title}</strong>, you might also like...
-                    </div>
-                  }
-                />
+                  );
+                })}
               </div>
             </div>
           )}
-        </div>
-      ) : view === 'chatbot' ? (
-        /* ================= AI CHATBOT VIEW ================= */
-        <ChatbotView
-          chatMessages={chatMessages}
-          chatInput={chatInput}
-          setChatInput={setChatInput}
-          isTyping={isTyping}
-          chatEndRef={chatEndRef}
-          handleSendChatMessage={handleSendChatMessage}
-          handleMovieClick={handleMovieClick}
-          // NEW props for session management
-          sessionId={chatSessionId}
-          handleClearHistory={handleClearChatHistory}
-          handleNewSession={handleNewChatSession}
-          messageCount={chatMessageCount}
-        />
-      ) : view === 'auth' ? (
-        /* ================= AUTH VIEW ================= */
-        <AuthView
-          setView={setView}
-          onLoginSuccess={(username) => setUser(username)}
-        />
-      ) : (
-        /* ================= PAGINATED GRID VIEW ("SEE ALL") ================= */
-        <div className="detail-page-container" style={{ paddingBottom: '80px' }}>
-          <div className="back-btn-container">
-            <button className="back-btn" onClick={() => setView('home')}>
-              ← Back to Homepage
-            </button>
-          </div>
 
-          <main className="main-content">
-            <div className="section-wrapper">
-              <div className="search-status-wrapper">
-                <div className="search-status">
-                  {allType === 'trending' ? 'All Trending Movies' : allType === 'latest' ? 'All Latest Movies' : 'All Personalized Recommendations'}
-                  <span style={{ fontSize: '14px', color: 'var(--textSecondary)', fontWeight: 500, marginLeft: '12px' }}>
-                    ({totalCount} movies total)
-                  </span>
-                </div>
+          {/* VIEW: Watchlist */}
+          {view === 'watchlist' && (
+            <div className="streamix-grid-view">
+              <div className="grid-view-header">
+                <h1 className="grid-view-title">My Favourites ({likedMoviesDetails.length})</h1>
               </div>
-
-              {loadingAll ? (
-                <div className="spinner-container" style={{ minHeight: '300px' }}><div className="spinner"></div></div>
-              ) : allMovies.length === 0 ? (
-                <div className="no-results">No movies found.</div>
-              ) : (
-                <div>
-                  <div className="search-grid">
-                    {allMovies.map((movie, idx) => (
+              {likedMoviesDetails.length > 0 ? (
+                <div className="streamix-movie-grid">
+                  {likedMoviesDetails.map((movie) => {
+                    const mid = movie.movieId || movie.id;
+                    return (
                       <MovieCard
-                        key={movie.movieId}
+                        key={mid}
                         movie={movie}
-                        onClick={() => handleMovieClick(movie.movieId, allType, idx)}
+                        onClick={() => fetchMovieDetail(mid)}
+                        isLiked={likedMovies.includes(mid)}
+                        onToggleLike={toggleWatchlist}
+                        userRating={movieRatings[mid] || 0}
+                        onRateMovie={handleRateMovie}
                       />
-                    ))}
-                  </div>
-
-                  {/* Rendering Pagination Bar */}
-                  {totalPages > 1 && renderPagination()}
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-state-card">
+                  <span className="empty-state-icon">🎬</span>
+                  <p className="empty-state-text">Your favourites library is empty. Click the heart icon on any movie to save it here!</p>
                 </div>
               )}
             </div>
-          </main>
+          )}
+
+          {/* VIEW: Chatbot Assistant (Full Width) */}
+          {view === 'chatbot' && (
+            <ChatbotView
+              chatMessages={chatMessages}
+              chatInput={chatInput}
+              setChatInput={setChatInput}
+              isTyping={isTyping}
+              chatEndRef={chatEndRef}
+              handleSendChatMessage={handleSendChatMessage}
+              handleMovieClick={fetchMovieDetail}
+              handleClearHistory={handleClearHistory}
+              handleNewSession={handleNewSession}
+            />
+          )}
+
+          {/* VIEW: Video Player */}
+          {view === 'watch' && selectedMovie && (
+            <WatchView
+              movie={selectedMovie}
+              onBack={() => setView('home')}
+            />
+          )}
+        </div>
+      </main>
+
+      {/* Movie Detail Modal Overlay */}
+      {selectedMovieId && selectedMovie && (
+        <div className="movie-detail-overlay" onClick={() => setSelectedMovieId(null)}>
+          <div className="movie-detail-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setSelectedMovieId(null)}>✕</button>
+            <div 
+              className="detail-hero-section"
+              style={{ backgroundImage: `url(${selectedMovie.poster_url || currentHeroMovie.poster_url})` }}
+            >
+              <div className="detail-hero-gradient" />
+            </div>
+
+            <div className="detail-body-content">
+              <img
+                src={selectedMovie.poster_url || "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300"}
+                alt={selectedMovie.title}
+                className="detail-poster-img"
+              />
+              <div className="detail-main-info">
+                <h2 className="detail-title">{selectedMovie.title}</h2>
+                <div className="detail-meta-row">
+                  <span>{selectedMovie.release_date ? selectedMovie.release_date.split('-')[0] : '2025'}</span>
+                  <span>•</span>
+                  <span>{selectedMovie.genres ? selectedMovie.genres.replace(/\|/g, ' • ') : 'Drama'}</span>
+                  <span>•</span>
+                  <span className="detail-star">★ {selectedMovie.vote_average || '8.5'}</span>
+                </div>
+                <p className="detail-overview">{selectedMovie.overview || "No overview available for this movie."}</p>
+
+                {/* Star Rating & Like Widget inside Detail Modal */}
+                <div className="detail-rate-bar">
+                  <span className="detail-rate-title">Your Rating:</span>
+                  <div className="detail-stars-wrap">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <span
+                        key={star}
+                        className={`detail-star-btn ${(movieRatings[selectedMovie.movieId] || 0) >= star ? 'active' : ''}`}
+                        onClick={() => handleRateMovie(selectedMovie.movieId, star)}
+                        title={`Rate ${star} Stars`}
+                      >
+                        ★
+                      </span>
+                    ))}
+                  </div>
+                  {movieRatings[selectedMovie.movieId] && (
+                    <span className="detail-rated-text">Rated: {movieRatings[selectedMovie.movieId]} / 5 ⭐</span>
+                  )}
+                </div>
+
+                <div className="detail-actions-row">
+                  <button 
+                    className="btn-detail-play"
+                    onClick={() => {
+                      setSelectedMovieId(null);
+                      setView('watch');
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="btn-detail-icon">
+                      <polygon points="6 4 20 12 6 20 6 4" />
+                    </svg>
+                    <span>Watch Now</span>
+                  </button>
+                  <button
+                    className={`btn-detail-watchlist ${likedMovies.includes(selectedMovie.movieId) ? 'active' : ''}`}
+                    onClick={() => toggleWatchlist(selectedMovie.movieId)}
+                  >
+                    <svg 
+                      viewBox="0 0 24 24" 
+                      fill={likedMovies.includes(selectedMovie.movieId) ? "#ef4444" : "none"} 
+                      stroke={likedMovies.includes(selectedMovie.movieId) ? "#ef4444" : "currentColor"} 
+                      strokeWidth="2.2" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      className="btn-detail-icon"
+                    >
+                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                    </svg>
+                    <span>{likedMovies.includes(selectedMovie.movieId) ? 'In Favourites' : 'Add to Favourites'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Similar Movies Section */}
+            {similarMovies.length > 0 && (
+              <div className="similar-section">
+                <MovieRow
+                  title="More Like This (Vector Search)"
+                  badge="AI Similar"
+                  movies={similarMovies}
+                  onMovieClick={fetchMovieDetail}
+                  likedMovies={likedMovies}
+                  movieRatings={movieRatings}
+                  onToggleLike={toggleWatchlist}
+                  onRateMovie={handleRateMovie}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
-      {showTrailer && selectedMovie && (
-        <WatchView
-          movie={selectedMovie}
-          onClose={() => setShowTrailer(false)}
-        />
-      )}
+
+      {/* Auth Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         onAuthSuccess={handleAuthSuccess}
       />
+
+      {/* Onboarding Modal */}
       <OnboardingModal
         isOpen={isOnboardingOpen}
         onClose={() => setIsOnboardingOpen(false)}
-        onComplete={() => {
+        onFinish={() => {
           setIsOnboardingOpen(false);
-          window.location.reload();
+          fetchRecommendations();
         }}
       />
-      <Footer />
     </div>
   );
 }

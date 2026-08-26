@@ -46,7 +46,7 @@ def get_qdrant_client():
         from qdrant_client import QdrantClient
         host = os.getenv("QDRANT_HOST", "localhost")
         port = int(os.getenv("QDRANT_PORT", 6333))
-        client = QdrantClient(host=host, port=port, timeout=1.0, check_compatibility=False)
+        client = QdrantClient(host=host, port=port, timeout=5.0, check_compatibility=False)
         _qdrant_client = client
         logger.info("Connected to Qdrant Vector Database.")
     except Exception as e:

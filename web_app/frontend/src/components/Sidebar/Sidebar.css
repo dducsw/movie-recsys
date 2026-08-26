@@ -1,0 +1,196 @@
+.cinemax-sidebar {
+  width: 224px;
+  min-width: 224px;
+  background: rgba(19, 19, 26, 0.72);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  padding: 24px 16px;
+  user-select: none;
+  z-index: 50;
+  transition: background-color var(--transition-speed), border-color var(--transition-speed);
+}
+
+.sidebar-brand-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px 24px 8px;
+  cursor: pointer;
+}
+
+/* Classic Soft-Blurred Border Brand Logo */
+.brand-logo-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(14, 165, 233, 0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-blue);
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.15), inset 0 0 8px rgba(14, 165, 233, 0.06);
+  transition: all 0.25s ease;
+}
+
+.brand-logo-icon:hover {
+  background: rgba(14, 165, 233, 0.12);
+  border-color: rgba(14, 165, 233, 0.6);
+  box-shadow: 0 0 18px rgba(14, 165, 233, 0.3), inset 0 0 10px rgba(14, 165, 233, 0.12);
+  transform: scale(1.05);
+}
+
+.brand-logo-icon svg {
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  stroke: var(--accent-blue);
+}
+
+.brand-name {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+}
+
+.brand-accent {
+  color: var(--accent-blue);
+}
+
+.sidebar-nav-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color 0.2s ease, stroke 0.2s ease;
+}
+
+.nav-item-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  border-color: rgba(14, 165, 233, 0.18);
+  color: var(--text-primary);
+}
+
+.nav-item-btn:hover .nav-icon {
+  color: var(--accent-blue);
+}
+
+.nav-item-btn.active {
+  background: rgba(14, 165, 233, 0.08);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  color: var(--accent-blue);
+  font-weight: 700;
+  box-shadow: 0 0 14px rgba(14, 165, 233, 0.15);
+}
+
+.nav-item-btn.active .nav-icon {
+  color: var(--accent-blue);
+}
+
+.sidebar-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.05);
+  margin: 12px 6px;
+}
+
+.bottom-pref {
+  margin-top: auto;
+}
+
+.theme-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-toggle-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  border-color: rgba(14, 165, 233, 0.18);
+}
+
+.toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.switch-pill {
+  width: 38px;
+  height: 20px;
+  border-radius: 20px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+  transition: all 0.25s ease;
+}
+
+.switch-pill.on {
+  background: rgba(14, 165, 233, 0.25);
+  border-color: rgba(14, 165, 233, 0.4);
+}
+
+.switch-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.switch-pill.on .switch-dot {
+  transform: translateX(18px);
+  background-color: var(--accent-blue);
+}

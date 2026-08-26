@@ -1,171 +1,181 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import MovieCard from '../MovieCard/MovieCard';
 import './ChatbotView.css';
 
 function ChatbotView({
-  chatMessages,
-  chatInput,
+  chatMessages = [],
+  chatInput = '',
   setChatInput,
-  isTyping,
+  isTyping = false,
   chatEndRef,
   handleSendChatMessage,
   handleMovieClick,
-  sessionId,
   handleClearHistory,
-  handleNewSession,
-  messageCount
+  handleNewSession
 }) {
-  const getYear = (dateStr) => {
-    if (!dateStr) return '';
-    if (dateStr.length === 4) return dateStr;
-    return dateStr.split('-')[0] || '';
-  };
+  const localEndRef = useRef(null);
 
-  const getPosterUrl = (movie) => {
-    return movie.image_url || movie.poster_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=150';
-  };
+  useEffect(() => {
+    const target = chatEndRef?.current || localEndRef.current;
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, isTyping]);
+
+  const quickPrompts = [
+    { label: "🚀 Sci-Fi Classics", prompt: "Recommend the best sci-fi movies of all time" },
+    { label: "🌀 Like Inception", prompt: "Suggest mind-bending psychological thrillers like Inception" },
+    { label: "🍿 Top Animated", prompt: "What are the highest rated animated movies?" },
+    { label: "🎭 Deep Drama", prompt: "Recommend emotional and deep drama movies" }
+  ];
 
   return (
-    <div className="modern-chat-shell">
-      {/* Minimalist Top Navigation Bar */}
-      <header className="modern-header">
-        <div className="modern-header-left">
-          <h1 className="modern-title">MovieNex AI</h1>
-          <span className="modern-model-badge">LLM RecSys</span>
+    <div className="cinemax-chat-container">
+      {/* 1. Header */}
+      <header className="chat-top-header">
+        <div className="chat-title-group">
+          <div className="chat-avatar-icon">🤖</div>
+          <div className="chat-title-text">
+            <h2 className="chat-app-name">MovieNex AI</h2>
+            <span className="chat-tagline">Context-Aware Movie Recommendation Agent</span>
+          </div>
         </div>
-        <div className="modern-header-right">
-          <button className="modern-ghost-btn" onClick={handleClearHistory} title="Clear conversation history">
-            Clear
+        <div className="chat-header-actions">
+          <button className="chat-ghost-btn" onClick={handleClearHistory} title="Clear history">
+            Clear Chat
           </button>
-          <button className="modern-primary-btn" onClick={handleNewSession} title="Start a new conversation">
+          <button className="chat-action-btn" onClick={handleNewSession} title="New conversation">
             + New Chat
           </button>
         </div>
       </header>
 
-      {/* Main Chat Content Area */}
-      <main className="modern-chat-body">
-        <div className="modern-messages-container">
-          <div className="modern-messages-inner">
-            {chatMessages.map((msg, index) => (
-              <div key={index} className={`modern-msg-row ${msg.sender}`}>
-                <div className={`modern-bubble ${msg.sender}`}>
-                  {msg.sender === 'bot' ? (
-                    <div className="modern-markdown">
-                      <ReactMarkdown>
-                        {msg.text ? msg.text.replace(/!\[.*?\]\(.*?\)/g, '') : ''}
-                      </ReactMarkdown>
-                    </div>
-                  ) : (
-                    <p className="modern-user-text">{msg.text}</p>
-                  )}
-
-                  {/* Movie Recommendations Horizontal Panel */}
-                  {msg.movies && msg.movies.length > 0 && (
-                    <div className="modern-movie-carousel">
-                      <div className="modern-carousel-header">
-                        <span className="modern-carousel-label">🎬 Recommended Movies</span>
-                        <span className="modern-carousel-count">{msg.movies.length} movies</span>
-                      </div>
-                      <div className="modern-track-wrapper">
-                        <button
-                          className="modern-scroll-arrow left"
-                          onClick={(e) => {
-                            const track = e.currentTarget.nextElementSibling;
-                            if (track) track.scrollBy({ left: -360, behavior: 'smooth' });
-                          }}
-                        >
-                          ‹
-                        </button>
-
-                        <div className="modern-movie-track">
-                          {msg.movies.map((movie, movieIndex) => (
-                            <MovieCard
-                              key={movie.movieId || movie.id || movieIndex}
-                              movie={movie}
-                              onClick={() => handleMovieClick(movie.movieId || movie.id, 'chatbot', movieIndex)}
-                            />
-                          ))}
-                        </div>
-
-                        <button
-                          className="modern-scroll-arrow right"
-                          onClick={(e) => {
-                            const track = e.currentTarget.previousElementSibling;
-                            if (track) track.scrollBy({ left: 360, behavior: 'smooth' });
-                          }}
-                        >
-                          ›
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {/* Minimal Typing Indicator */}
-            {isTyping && (
-              <div className="modern-msg-row bot">
-                <div className="modern-bubble bot typing-bubble">
-                  <div className="modern-typing">
-                    <span></span><span></span><span></span>
+      {/* 2. Scrollable Messages Body */}
+      <div className="chat-messages-viewport">
+        <div className="chat-messages-list">
+          {chatMessages.map((msg, index) => (
+            <div key={index} className={`chat-message-row ${msg.sender}`}>
+              {msg.sender === 'bot' && <div className="bot-avatar-badge">AI</div>}
+              
+              <div className={`chat-bubble ${msg.sender}`}>
+                {msg.sender === 'bot' ? (
+                  <div className="markdown-content">
+                    <ReactMarkdown>
+                      {msg.text ? msg.text.replace(/!\[.*?\]\(.*?\)/g, '') : ''}
+                    </ReactMarkdown>
                   </div>
+                ) : (
+                  <p className="user-message-text">{msg.text}</p>
+                )}
+
+                {/* Recommended Movies Carousel in Chat */}
+                {msg.movies && msg.movies.length > 0 && (
+                  <div className="chat-movie-deck">
+                    <div className="chat-deck-title">
+                      <span>🎬 Recommended for you ({msg.movies.length})</span>
+                    </div>
+                    <div className="chat-movie-scroll-row">
+                      {msg.movies.map((movie, movieIdx) => (
+                        <div 
+                          key={movie.movieId || movie.id || movieIdx} 
+                          className="chat-embedded-movie-card"
+                          onClick={() => handleMovieClick && handleMovieClick(movie.movieId || movie.id)}
+                        >
+                          <img
+                            src={movie.poster_url || movie.image_url || 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=200'}
+                            alt={movie.title}
+                            className="chat-card-poster"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=200';
+                            }}
+                          />
+                          <div className="chat-card-meta">
+                            <span className="chat-movie-name" title={movie.title}>{movie.title}</span>
+                            <span className="chat-movie-star">★ {movie.vote_average ? Number(movie.vote_average).toFixed(1) : '8.5'}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {/* Typing Indicator */}
+          {isTyping && (
+            <div className="chat-message-row bot">
+              <div className="bot-avatar-badge">AI</div>
+              <div className="chat-bubble bot typing-bubble">
+                <div className="typing-dots">
+                  <span />
+                  <span />
+                  <span />
                 </div>
               </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-        </div>
-
-        {/* ChatGPT Style Floating Input Area */}
-        <div className="modern-input-zone">
-          {chatMessages.length <= 1 && (
-            <div className="modern-suggestions">
-              <button onClick={() => handleSendChatMessage("Recommend top sci-fi movies")}>🚀 Sci-Fi Classics</button>
-              <button onClick={() => handleSendChatMessage("Find movies similar to Inception")}>🌀 Like Inception</button>
-              <button onClick={() => handleSendChatMessage("Best mind-bending thrillers?")}>🧠 Mind Thrillers</button>
             </div>
           )}
 
-          <div className="modern-input-box">
-            <textarea
-              className="modern-textarea"
-              placeholder="Message MovieNex AI..."
-              value={chatInput}
-              rows={1}
-              onChange={(e) => {
-                setChatInput(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendChatMessage();
-                }
-              }}
-              disabled={isTyping}
-            />
-            <button
-              className="modern-send-btn"
-              onClick={() => handleSendChatMessage()}
-              disabled={isTyping || !chatInput.trim()}
-              title="Send message"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="19" x2="12" y2="5"></line>
-                <polyline points="5 12 12 5 19 12"></polyline>
-              </svg>
-            </button>
-          </div>
-
-          <div className="modern-footer-info">
-            MovieNex AI can provide tailored recommendations based on your preferences.
-          </div>
+          <div ref={chatEndRef || localEndRef} />
         </div>
-      </main>
+      </div>
+
+      {/* 3. Pinned Bottom Input Zone */}
+      <footer className="chat-footer-dock">
+        {/* Quick Suggestion Chips */}
+        {chatMessages.length <= 1 && (
+          <div className="chat-suggestions-bar">
+            {quickPrompts.map((item, idx) => (
+              <button 
+                key={idx}
+                className="suggestion-chip"
+                onClick={() => handleSendChatMessage(item.prompt)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Input Bar Form */}
+        <div className="chat-input-pill">
+          <textarea
+            className="chat-textarea"
+            placeholder="Ask MovieNex AI for movie recommendations, plot discussions, or actor suggestions..."
+            value={chatInput}
+            rows={1}
+            onChange={(e) => {
+              setChatInput(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendChatMessage();
+              }
+            }}
+            disabled={isTyping}
+          />
+          <button
+            className="chat-send-icon-btn"
+            onClick={() => handleSendChatMessage()}
+            disabled={isTyping || !chatInput.trim()}
+            title="Send Message"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </button>
+        </div>
+
+        <p className="chat-disclaimer-note">
+          MovieNex AI uses hybrid neural retrieval and vector embeddings to recommend movies from your interaction history.
+        </p>
+      </footer>
     </div>
   );
 }

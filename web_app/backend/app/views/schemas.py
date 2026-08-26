@@ -1,7 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 
 class MovieResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     movieId: int
     title: str
     release_date: Optional[str] = ""
@@ -16,9 +18,6 @@ class MovieResponse(BaseModel):
     cast: Optional[str] = ""
     keywords: Optional[str] = ""
     trailer_url: Optional[str] = ""
-
-    class Config:
-        from_attributes = True
 
 class PaginatedMovieResponse(BaseModel):
     page: int

@@ -8,36 +8,41 @@ import logging
 from collections import defaultdict
 from typing import Dict, List, Tuple, Any
 import numpy as np
+import pandas as pd
 
 logger = logging.getLogger("BatchSimilarity")
 
 
-def compute_item_similarity_matrix(norm_df, als_factors_map: Dict[int, np.ndarray]) -> Tuple[Dict[int, List[Dict[str, Any]]], Dict[int, Dict[str, Any]]]:
+def compute_item_similarity_matrix(
+    movies_df,
+    genre_vectors: np.ndarray,
+    als_factors_map: Dict[int, np.ndarray] = None
+) -> Tuple[Dict[int, List[Dict[str, Any]]], Dict[int, Dict[str, Any]]]:
     """
     Consolidate TF-IDF genre vectors & ALS factors, and compute item similarity matrix via chunked dot-products.
     """
     logger.info("Extracting movie vectors & calculating similarity matrix...")
-    movie_rows = norm_df.select("movieId", "title", "genres", "norm_features").collect()
+    if als_factors_map is None:
+        als_factors_map = {}
 
     m_ids = []
     vectors = []
     movie_meta = {}
 
-    for row in movie_rows:
+    for idx, row in movies_df.iterrows():
         m_id = int(row["movieId"])
-        title = str(row["title"]) if row["title"] else ""
-        genres = str(row["genres"]) if row["genres"] else ""
+        title = str(row["title"]) if pd.notna(row["title"]) else ""
+        genres = str(row["genres"]) if pd.notna(row["genres"]) else ""
 
-        # Dense genre vector from PySpark DenseVector / SparseVector
-        spark_vec = row["norm_features"].toArray() if hasattr(row["norm_features"], "toArray") else np.zeros(20)
+        genre_vec = genre_vectors[idx]
 
         # Combine with ALS factor vector if available
         if m_id in als_factors_map:
-            combined = 0.5 * spark_vec + 0.5 * als_factors_map[m_id]
+            combined = 0.5 * genre_vec + 0.5 * als_factors_map[m_id]
             norm = np.linalg.norm(combined)
-            final_vec = (combined / norm).tolist() if norm > 0 else spark_vec.tolist()
+            final_vec = (combined / norm).tolist() if norm > 0 else genre_vec.tolist()
         else:
-            final_vec = spark_vec.tolist()
+            final_vec = genre_vec.tolist()
 
         # Ensure exact dimension size 20
         if len(final_vec) < 20:

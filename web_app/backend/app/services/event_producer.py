@@ -1,96 +1,63 @@
 """
 event_producer.py
 -----------------
-Kafka producer singleton. Emit user-interaction events lên topic "user-events".
-
-Schema align với data/simulator/sim_click_events.csv để Spark job
-xử lý realtime và batch data chung một schema:
-
-{
-    "userId":     str,    # session_id từ chatbot hoặc "anonymous"
-    "movieId":    int | null,  # ID phim liên quan (null nếu không liên quan)
-    "timestamp":  float,  # Unix epoch (giây, float) — giống simulator
-    "event_type": str,    # xem EventType bên dưới
-    "session_id": str,    # duplicate userId cho compat với simulator
-    "source":     "webapp",  # phân biệt với simulated data
-    "extra":      dict    # payload bổ sung tuỳ event_type
-}
-
-Mapping event_type với simulator (sim_click_events.csv):
-  Simulator           │ Webapp
-  ────────────────────┼────────────────────────────────────────
-  click               │ — (không có listing page)
-  detail_view         │ detail_view  (GET /api/movies/{id})
-  watch_start         │ — (không có player)
-  watch_complete      │ — (không có player)
-  ────────────────────┼────────────────────────────────────────
-  (không có)          │ movie_search          (search query)
-  (không có)          │ trending_browse       (duyệt trending)
-  (không có)          │ latest_browse         (duyệt latest)
-  (không có)          │ recommendation_request (liked list → rec)
-  (không có)          │ similar_movie_request  (xem similar)
-  (không có)          │ chatbot_message        (chat với bot)
-
-extra payload per event_type:
-  detail_view            → { title, genres }
-  movie_search           → { query, result_count }
-  trending_browse        → { page, limit }
-  latest_browse          → { page, limit }
-  recommendation_request → { liked_movie_ids: [int], result_count }
-  similar_movie_request  → { limit }
-  chatbot_message        → { message_len, result_movie_count, message_count }
+Event producer singleton. Emit user-interaction events lên Redis stream "user-events-stream"
+hoặc fallback logger. Non-blocking qua background thread.
 """
 
 import json
 import logging
 import os
+import threading
 import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# ── Lazy singleton ─────────────────────────────────────────────────────────────
-_producer = None
+# ── Redis Event Stream Helper ──────────────────────────────────────────────────
+_redis_client = None
 
-
-def _get_producer():
-    """Khởi tạo KafkaProducer lần đầu, tái dùng sau đó."""
-    global _producer
-    if _producer is not None:
-        return _producer if _producer is not False else None
+def _get_redis():
+    """Khởi tạo kết nối Redis cho event streaming."""
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client if _redis_client is not False else None
 
     try:
-        from kafka import KafkaProducer  # kafka-python
-        bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-        _producer = KafkaProducer(
-            bootstrap_servers=bootstrap,
-            value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
-            acks=0,               # fire-and-forget, không block HTTP response
-            retries=1,
-            request_timeout_ms=1_000,
-            max_block_ms=500,     # Max 500ms block
-        )
-        logger.info("KafkaProducer connected to %s", bootstrap)
+        import redis
+        host = os.getenv("REDIS_HOST", "localhost")
+        port = int(os.getenv("REDIS_PORT", "6379"))
+        client = redis.Redis(host=host, port=port, db=0, decode_responses=True, socket_timeout=1.0)
+        client.ping()
+        _redis_client = client
+        logger.info("EventProducer connected to Redis stream at %s:%d", host, port)
     except Exception as exc:
-        # Kafka chưa sẵn sàng → log, đánh dấu False; app không bị block trên các request sau
-        logger.warning("KafkaProducer init failed (events will be dropped): %s", exc)
-        _producer = False
+        logger.warning("EventProducer Redis init failed (events fallback to logger): %s", exc)
+        _redis_client = False
 
-    return _producer if _producer is not False else None
+    return _redis_client if _redis_client is not False else None
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
-TOPIC = "user-events"
+STREAM_KEY = "user-events-stream"
 
-
-import threading
 
 def _send_in_background(record: dict[str, Any]) -> None:
-    producer = _get_producer()
-    if producer is None:
-        return
     try:
-        producer.send(TOPIC, value=record)
+        r = _get_redis()
+        if r:
+            # Flatten extra for Redis stream entry
+            payload = {
+                "userId": str(record.get("userId") or ""),
+                "movieId": str(record.get("movieId") or ""),
+                "timestamp": str(record.get("timestamp") or ""),
+                "event_type": str(record.get("event_type") or ""),
+                "session_id": str(record.get("session_id") or ""),
+                "source": str(record.get("source") or "webapp"),
+                "extra": json.dumps(record.get("extra") or {}, default=str),
+            }
+            r.xadd(STREAM_KEY, payload, maxlen=100000, approximate=True)
+        logger.debug("Emitted event '%s' for user '%s'", record.get("event_type"), record.get("userId"))
     except Exception as exc:
         logger.warning("Failed to emit event '%s': %s", record.get("event_type"), exc)
 

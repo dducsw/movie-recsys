@@ -1,5 +1,5 @@
 # start-webapp.ps1
-# Khởi động webapp (chỉ infra services + backend + frontend, KHÔNG data pipeline)
+# Khởi động webapp (chỉ docker core services + backend + frontend, KHÔNG data pipeline)
 # Data pipeline services bị loại: seaweedfs, seaweedfs-init, mlflow, spark-master, spark-worker, polaris
 
 param(
@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # --- Services cần cho webapp ---
-$WebappServices = @("postgres", "redis", "qdrant", "kafka")
+$WebappServices = @("postgres", "redis", "qdrant", "seaweedfs")
 
 if ($Down) {
     Write-Host "`n[*] Stopping webapp services..." -ForegroundColor Yellow

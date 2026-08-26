@@ -44,19 +44,30 @@ def get_latest_movies(
         "results": movies
     }
 
+from typing import Optional
+
 @router.get("/search", response_model=SearchMovieResponse)
 def search_movies(
-    query: str = Query(..., min_length=1),
-    limit: int = Query(default=20, ge=1, le=50),
+    query: str = Query(default=""),
+    genre: Optional[str] = Query(default=None),
+    year: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    limit: int = Query(default=30, ge=1, le=100),
     session_id: str = Depends(get_session_id),
 ):
     """
-    Search movies by title (case-insensitive).
+    Search movies with optional genre, release year, and status filters.
     """
-    results = MovieModel.search(query, limit)
-    emit(EventType.MOVIE_SEARCH, user_id=session_id, extra={"query": query, "result_count": len(results)})
+    results = MovieModel.search_with_filters(
+        query_str=query,
+        genre=genre,
+        year=year,
+        status=status,
+        limit=limit
+    )
+    emit(EventType.MOVIE_SEARCH, user_id=session_id, extra={"query": query, "genre": genre, "year": year, "status": status, "result_count": len(results)})
     return {
-        "query": query,
+        "query": query or genre or year or status or "all",
         "count": len(results),
         "results": results
     }

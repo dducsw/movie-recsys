@@ -1,61 +1,71 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import MovieCard from '../MovieCard/MovieCard';
 import './MovieRow.css';
 
 function MovieRow({ 
   title, 
-  movies, 
-  loading, 
-  scrollRef, 
-  onScroll, 
+  movies = [], 
   onMovieClick, 
-  headerExtra, 
-  onSeeAll,
-  fallbackMessage,
-  source = 'unknown',   // listing nguồn: 'trending', 'latest', 'recommendations', 'similar', 'search'
+  onSeeAll, 
+  badge = null,
+  likedMovies = [],
+  movieRatings = {},
+  onToggleLike,
+  onRateMovie
 }) {
+  const rowRef = useRef(null);
+
+  const scroll = (direction) => {
+    if (!rowRef.current) return;
+    const { scrollLeft, clientWidth } = rowRef.current;
+    const scrollAmount = clientWidth * 0.75;
+    rowRef.current.scrollTo({
+      left: direction === 'left' ? scrollLeft - scrollAmount : scrollLeft + scrollAmount,
+      behavior: 'smooth',
+    });
+  };
+
+  if (!movies || movies.length === 0) return null;
+
   return (
-    <div className="section-wrapper">
-      <div className="section-header">
-        <h2>{title}</h2>
-        {headerExtra}
-        {onSeeAll && movies && movies.length > 0 && (
-          <span className="see-all-link" onClick={onSeeAll}>See All</span>
-        )}
+    <section className="streamix-row-section">
+      <div className="streamix-row-header">
+        <div className="streamix-title-group">
+          <h2 className="streamix-row-title">{title}</h2>
+          {badge && <span className="streamix-row-badge">{badge}</span>}
+        </div>
+        
+        <div className="streamix-row-controls">
+          {onSeeAll && (
+            <button className="streamix-see-all-btn" onClick={onSeeAll}>
+              See All
+            </button>
+          )}
+          <div className="streamix-arrow-group">
+            <button className="streamix-arrow-btn" onClick={() => scroll('left')} title="Scroll left">‹</button>
+            <button className="streamix-arrow-btn" onClick={() => scroll('right')} title="Scroll right">›</button>
+          </div>
+        </div>
       </div>
 
-      {loading ? (
-        <div className="scroll-row-wrapper">
-          <div className="horizontal-scroll">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="skeleton-card" />
-            ))}
-          </div>
-        </div>
-      ) : !movies || movies.length === 0 ? (
-        fallbackMessage ? (
-          <div className="no-results" style={{ padding: '30px', background: 'rgba(0,0,0,0.01)', borderRadius: '10px' }}>
-            {fallbackMessage}
-          </div>
-        ) : null
-      ) : (
-        <div className="scroll-row-wrapper">
-          <button className="scroll-arrow-btn left" onClick={() => onScroll('left')}>‹</button>
-          
-          <div className="horizontal-scroll" ref={scrollRef}>
-            {movies.map((movie, idx) => (
-              <MovieCard 
-                key={movie.movieId} 
-                movie={movie} 
-                onClick={() => onMovieClick(movie.movieId, source, idx)} 
+      <div className="streamix-cards-track" ref={rowRef}>
+        {movies.map((movie) => {
+          const mid = movie.movieId || movie.id;
+          return (
+            <div key={mid} className="streamix-card-wrapper">
+              <MovieCard
+                movie={movie}
+                onClick={() => onMovieClick && onMovieClick(mid)}
+                isLiked={likedMovies.includes(mid)}
+                onToggleLike={onToggleLike}
+                userRating={movieRatings[mid] || 0}
+                onRateMovie={onRateMovie}
               />
-            ))}
-          </div>
-
-          <button className="scroll-arrow-btn right" onClick={() => onScroll('right')}>›</button>
-        </div>
-      )}
-    </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

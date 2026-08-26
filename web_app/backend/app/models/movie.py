@@ -117,11 +117,74 @@ class MovieModel:
 
     @staticmethod
     def search(query_str: str, limit: int) -> List[Dict[str, Any]]:
+        return MovieModel.search_with_filters(query_str=query_str, limit=limit)
+
+    @staticmethod
+    def search_with_filters(
+        query_str: str = "",
+        genre: str = None,
+        year: str = None,
+        status: str = None,
+        limit: int = 30
+    ) -> List[Dict[str, Any]]:
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            search_query = f"%{query_str}%"
-            sql_query = """
+            where_clauses = []
+            params = []
+
+            # 1. Text Query Filter
+            if query_str and query_str.strip():
+                q = f"%{query_str.strip()}%"
+                where_clauses.append("""
+                    (m.title ILIKE %s 
+                     OR d.name ILIKE %s 
+                     OR g.name ILIKE %s 
+                     OR a.name ILIKE %s 
+                     OR t.name ILIKE %s)
+                """)
+                params.extend([q, q, q, q, q])
+
+            # 2. Genre Filter
+            if genre and genre.strip() and genre.strip().lower() != 'all':
+                g_param = f"%{genre.strip()}%"
+                where_clauses.append("g.name ILIKE %s")
+                params.append(g_param)
+
+            # 3. Year Filter
+            if year and year.strip() and year.strip().lower() != 'all':
+                y = year.strip()
+                if y == '2026':
+                    where_clauses.append("m.release_date LIKE '2026%'")
+                elif y == '2025':
+                    where_clauses.append("m.release_date LIKE '2025%'")
+                elif y == '2024':
+                    where_clauses.append("m.release_date LIKE '2024%'")
+                elif y == '2020-2023':
+                    where_clauses.append("m.release_date >= '2020' AND m.release_date <= '2023-12-31'")
+                elif y == '2010s':
+                    where_clauses.append("m.release_date >= '2010' AND m.release_date <= '2019-12-31'")
+                elif y == '2000s':
+                    where_clauses.append("m.release_date >= '2000' AND m.release_date <= '2009-12-31'")
+                elif y == 'classic':
+                    where_clauses.append("m.release_date < '2000' AND m.release_date != ''")
+                elif len(y) == 4 and y.isdigit():
+                    where_clauses.append("m.release_date LIKE %s")
+                    params.append(f"{y}%")
+
+            # 4. Status Filter ('released' / 'upcoming')
+            if status and status.strip() and status.strip().lower() != 'all':
+                st = status.strip().lower()
+                if st == 'released':
+                    where_clauses.append("m.release_date <= TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD') AND m.release_date != ''")
+                elif st == 'upcoming':
+                    where_clauses.append("m.release_date > TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')")
+
+            where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
+            params.append(limit)
+
+            sql_query = f"""
                 WITH matched_movies AS (
                     SELECT m.movieid
                     FROM movies m
@@ -132,11 +195,7 @@ class MovieModel:
                     LEFT JOIN actors a ON ma.actor_id = a.id
                     LEFT JOIN movie_tags mt ON m.movieid = mt.movie_id
                     LEFT JOIN tags t ON mt.tag_id = t.id
-                    WHERE m.title ILIKE %s 
-                       OR d.name ILIKE %s 
-                       OR g.name ILIKE %s 
-                       OR a.name ILIKE %s 
-                       OR t.name ILIKE %s
+                    {where_sql}
                     GROUP BY m.movieid
                 ),
                 paginated_movies AS (
@@ -171,11 +230,11 @@ class MovieModel:
                 GROUP BY m.movieid, m.title, m.release_date, m.popularity, m.adult, m.overview, m.vote_average, m.vote_count, m.poster_url, d.name
                 ORDER BY m.popularity DESC
             """
-            cur.execute(sql_query, (search_query, search_query, search_query, search_query, search_query, limit))
+            cur.execute(sql_query, tuple(params))
             return cur.fetchall()
         except Exception as e:
-            print(f"[Error] Search failed: {e}")
-            raise HTTPException(status_code=500, detail="Failed to execute search query.")
+            print(f"[Error] Search with filters failed: {e}")
+            raise HTTPException(status_code=500, detail="Failed to execute search query with filters.")
         finally:
             cur.close()
             conn.close()

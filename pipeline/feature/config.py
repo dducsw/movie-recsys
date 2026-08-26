@@ -14,9 +14,11 @@ DATA_DIR = os.getenv("DATA_DIR", os.path.join(PROJECT_ROOT, "data", "ml-latest-s
 MOVIES_CSV = os.path.join(DATA_DIR, "movies.csv")
 RATINGS_CSV = os.path.join(DATA_DIR, "ratings.csv")
 
-# Redis Online Feature Store
+# Redis Online Feature Store & Event Streaming
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_STREAM_KEY = os.getenv("REDIS_STREAM_KEY", "user-events-stream")
+REDIS_CONSUMER_GROUP = os.getenv("REDIS_CONSUMER_GROUP", "recsys-feature-group")
 
 # Qdrant Vector Database
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
@@ -29,14 +31,6 @@ POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5435))
 POSTGRES_DB = os.getenv("POSTGRES_DB", "movie_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mysecretpassword")
-
-# PySpark Master
-SPARK_MASTER = os.getenv("SPARK_MASTER", "local[*]")
-
-# Kafka Streaming
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "user-events")
-KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "recsys-streaming-group")
 
 # Event Score Weights for Real-time Trending
 SCORE_WEIGHTS = {

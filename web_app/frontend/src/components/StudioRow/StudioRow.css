@@ -1,0 +1,59 @@
+.cinemax-category-highlight-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.category-highlight-card {
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+.category-highlight-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent-purple);
+  box-shadow: 0 8px 24px rgba(168, 85, 247, 0.25);
+}
+
+.cat-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+
+.cat-text-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.cat-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.cat-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 850px) {
+  .cinemax-category-highlight-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

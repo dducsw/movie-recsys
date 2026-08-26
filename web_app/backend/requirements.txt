@@ -2,8 +2,9 @@ fastapi>=0.95.0
 uvicorn>=0.22.0
 psycopg2-binary>=2.9.6
 pandas>=1.5.0
+scikit-learn>=1.2.0
+lightgbm>=4.0.0
 python-dotenv>=1.0.0
-kafka-python>=2.0.0      # Kafka event producer
 
 # Chatbot
 langchain-core==1.4.6
