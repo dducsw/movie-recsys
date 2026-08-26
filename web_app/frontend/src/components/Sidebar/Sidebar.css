@@ -1,10 +1,10 @@
 .cinemax-sidebar {
   width: 224px;
   min-width: 224px;
-  background: rgba(19, 19, 26, 0.72);
+  background: var(--bg-sidebar-glass);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -29,7 +29,7 @@
   width: 36px;
   height: 36px;
   border-radius: 12px;
-  background: rgba(14, 165, 233, 0.05);
+  background: rgba(14, 165, 233, 0.08);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(14, 165, 233, 0.35);
   display: flex;
@@ -41,7 +41,7 @@
 }
 
 .brand-logo-icon:hover {
-  background: rgba(14, 165, 233, 0.12);
+  background: rgba(14, 165, 233, 0.16);
   border-color: rgba(14, 165, 233, 0.6);
   box-shadow: 0 0 18px rgba(14, 165, 233, 0.3), inset 0 0 10px rgba(14, 165, 233, 0.12);
   transform: scale(1.05);
@@ -104,9 +104,9 @@
 }
 
 .nav-item-btn:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover-bg);
   backdrop-filter: blur(8px);
-  border-color: rgba(14, 165, 233, 0.18);
+  border-color: rgba(14, 165, 233, 0.2);
   color: var(--text-primary);
 }
 
@@ -115,9 +115,9 @@
 }
 
 .nav-item-btn.active {
-  background: rgba(14, 165, 233, 0.08);
+  background: rgba(14, 165, 233, 0.1);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(14, 165, 233, 0.35);
+  border: 1px solid rgba(14, 165, 233, 0.4);
   color: var(--accent-blue);
   font-weight: 700;
   box-shadow: 0 0 14px rgba(14, 165, 233, 0.15);
@@ -129,7 +129,7 @@
 
 .sidebar-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--border-color);
   margin: 12px 6px;
 }
 
@@ -149,9 +149,9 @@
 }
 
 .theme-toggle-row:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover-bg);
   backdrop-filter: blur(8px);
-  border-color: rgba(14, 165, 233, 0.18);
+  border-color: rgba(14, 165, 233, 0.2);
 }
 
 .toggle-left {
@@ -163,19 +163,23 @@
   color: var(--text-secondary);
 }
 
+.theme-toggle-row:hover .toggle-left {
+  color: var(--text-primary);
+}
+
 .switch-pill {
   width: 38px;
   height: 20px;
   border-radius: 20px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--hover-bg);
+  border: 1px solid var(--border-color);
   position: relative;
   transition: all 0.25s ease;
 }
 
 .switch-pill.on {
   background: rgba(14, 165, 233, 0.25);
-  border-color: rgba(14, 165, 233, 0.4);
+  border-color: rgba(14, 165, 233, 0.45);
 }
 
 .switch-dot {
@@ -186,8 +190,12 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease;
+}
+
+[data-theme="light"] .switch-pill.off .switch-dot {
+  background-color: #94a3b8;
 }
 
 .switch-pill.on .switch-dot {

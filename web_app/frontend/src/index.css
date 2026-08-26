@@ -4,8 +4,13 @@
   /* Ocean Blue Dark Theme (Default) */
   --bg-body: #0d0d12;
   --bg-sidebar: #13131a;
+  --bg-sidebar-glass: rgba(19, 19, 26, 0.78);
+  --bg-topnav-glass: rgba(13, 13, 18, 0.8);
+  --bg-dock: rgba(28, 28, 40, 0.5);
   --bg-card: #1c1c28;
+  --modal-bg: rgba(19, 19, 28, 0.94);
   --border-color: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.05);
   --text-primary: #ffffff;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
@@ -14,6 +19,7 @@
   --accent-purple: #0ea5e9; /* alias to blue */
   --accent-gradient: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
   --accent-glow: 0 4px 20px rgba(14, 165, 233, 0.35);
+  --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --transition-speed: 0.25s;
 
@@ -29,16 +35,22 @@
   /* Clean Ocean Blue Light Theme */
   --bg-body: #f8fafc;
   --bg-sidebar: #ffffff;
+  --bg-sidebar-glass: rgba(255, 255, 255, 0.92);
+  --bg-topnav-glass: rgba(248, 250, 252, 0.88);
+  --bg-dock: rgba(255, 255, 255, 0.9);
   --bg-card: #ffffff;
-  --border-color: rgba(0, 0, 0, 0.08);
+  --modal-bg: rgba(255, 255, 255, 0.98);
+  --border-color: rgba(15, 23, 42, 0.08);
+  --border-subtle: rgba(15, 23, 42, 0.04);
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --hover-bg: rgba(0, 0, 0, 0.04);
+  --text-muted: #64748b;
+  --hover-bg: rgba(15, 23, 42, 0.04);
   --accent-blue: #0284c7;
   --accent-purple: #0284c7; /* alias to blue */
   --accent-gradient: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
   --accent-glow: 0 4px 16px rgba(2, 132, 199, 0.25);
+  --card-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
 }
 
 * {
