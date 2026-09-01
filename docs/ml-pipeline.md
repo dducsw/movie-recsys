@@ -53,14 +53,14 @@ Reduces the search space from thousands of movies down to $200\text{--}250$ cand
 
 ```mermaid
 flowchart LR
-    User["Target User $u$"]
-    User -->|Interaction History| ALS["iALS Factorizer"]
-    User -->|Favorite Attributes| CB["TF-IDF Vectorizer"]
-    User -->|Embedding Centroid| Qdrant["Qdrant HNSW"]
+    User["Target User u"]
+    User -->|"Interaction History"| ALS["iALS Factorizer"]
+    User -->|"Favorite Attributes"| CB["TF-IDF Vectorizer"]
+    User -->|"Embedding Centroid"| Qdrant["Qdrant HNSW"]
 
-    ALS -->|Score $s_{\text{als}}$| Pool["Fused Candidate Pool"]
-    CB -->|Score $s_{\text{cb}}$| Pool
-    Qdrant -->|Score $s_{\text{vec}}$| Pool
+    ALS -->|"Score s_als"| Pool["Fused Candidate Pool"]
+    CB -->|"Score s_cb"| Pool
+    Qdrant -->|"Score s_vec"| Pool
 ```
 
 1. **Content-Based Filtering (TF-IDF)**:
@@ -99,10 +99,10 @@ Prevents genre clustering (e.g., recommending 10 Marvel superhero movies simulta
 ```mermaid
 flowchart TD
     In["Ranked Candidates from Stage 2"] --> Loop{"Selected < K ?"}
-    Loop -->|Yes| ArgMax["Select $i^* = \arg\max \left[ \lambda \cdot S(u, i) - (1-\lambda) \max_{j \in S} \text{Sim}(i, j) \right]$"]
-    ArgMax --> Add["Append $i^*$ to Slate $S$"]
+    Loop -->|Yes| ArgMax["Compute MMR Score:<br/>λ · RankScore - (1-λ) · MaxSim"]
+    ArgMax --> Add["Append best candidate to Slate S"]
     Add --> Loop
-    Loop -->|No| Out["Deliver Final Diverse Slate $S$"]
+    Loop -->|No| Out["Deliver Final Diverse Slate S"]
 ```
 
 ---

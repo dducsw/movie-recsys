@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
+import { Sparkles, Check, ArrowRight } from 'lucide-react';
 import { API_BASE_URL } from '../api/client';
 import './OnboardingModal.css';
 
 const GENRE_OPTIONS = [
   'Action', 'Adventure', 'Animation', 'Comedy', 'Crime',
-  'Documentary', 'Drama', 'Fantasy', 'Horror', 'Mystery',
+  'Drama', 'Fantasy', 'Horror', 'Mystery',
   'Romance', 'Science Fiction', 'Thriller'
 ];
 
 const POPULAR_STARTER_MOVIES = [
   { movieId: 27205, title: 'Inception', year: '2010' },
   { movieId: 157336, title: 'Interstellar', year: '2014' },
-  { movieId: 299536, title: 'Avengers', year: '2018' },
+  { movieId: 299536, title: 'Avengers: Infinity War', year: '2018' },
   { movieId: 155, title: 'The Dark Knight', year: '2008' },
   { movieId: 550, title: 'Fight Club', year: '1999' },
   { movieId: 680, title: 'Pulp Fiction', year: '1994' },
@@ -60,62 +61,92 @@ export default function OnboardingModal({ isOpen, onClose, onFinish }) {
       });
 
       if (res.ok) {
-        onFinish();
+        if (onFinish) onFinish();
+        onClose();
       }
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
     } finally {
       setSubmitting(false);
-      onClose();
     }
   };
 
   return (
-    <div className="onboard-modal-overlay">
-      <div className="onboard-modal-card">
-        <h2 className="onboard-title">Welcome to MovieNex! 🎉</h2>
-        <p className="onboard-subtitle">
-          Select at least 3 favorite genres and a few movies you love so our AI recommendation engine can tailor your profile.
-        </p>
+    <div className="onboarding-overlay" onClick={onClose}>
+      <div className="onboarding-card" onClick={(e) => e.stopPropagation()}>
+        <div className="onboarding-header">
+          <div className="onboarding-icon-badge">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <h2 className="onboarding-title">Personalize Your AI Taste</h2>
+          <p className="onboarding-subtitle">
+            Select your preferred genres and starter movies to instantly personalize your recommendations feed.
+          </p>
+        </div>
 
-        <div>
-          <h3 className="onboard-section-heading">1. Favorite Movie Genres:</h3>
-          <div className="onboard-genres-grid">
-            {GENRE_OPTIONS.map((genre) => (
-              <button
-                key={genre}
-                onClick={() => toggleGenre(genre)}
-                className={`onboard-genre-btn ${selectedGenres.includes(genre) ? 'selected' : ''}`}
-              >
-                {genre}
-              </button>
-            ))}
+        {/* 1. Genres */}
+        <div className="onboarding-section">
+          <label className="onboarding-label">Favorite Genres</label>
+          <div className="onboarding-chips">
+            {GENRE_OPTIONS.map((g) => {
+              const active = selectedGenres.includes(g);
+              return (
+                <button
+                  key={g}
+                  type="button"
+                  className={`onboarding-chip ${active ? 'active' : ''}`}
+                  onClick={() => toggleGenre(g)}
+                >
+                  {g}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div>
-          <h3 className="onboard-section-heading">2. Movies You've Enjoyed:</h3>
-          <div className="onboard-movies-grid">
-            {POPULAR_STARTER_MOVIES.map((movie) => (
-              <div
-                key={movie.movieId}
-                onClick={() => toggleMovie(movie.movieId)}
-                className={`onboard-movie-chip ${selectedMovies.includes(movie.movieId) ? 'selected' : ''}`}
-              >
-                <div className="onboard-m-title">{movie.title}</div>
-                <div className="onboard-m-year">{movie.year}</div>
-              </div>
-            ))}
+        {/* 2. Movies */}
+        <div className="onboarding-section">
+          <label className="onboarding-label">Movies You Love</label>
+          <div className="onboarding-movie-grid">
+            {POPULAR_STARTER_MOVIES.map((m) => {
+              const active = selectedMovies.includes(m.movieId);
+              return (
+                <button
+                  key={m.movieId}
+                  type="button"
+                  className={`onboarding-movie-btn ${active ? 'active' : ''}`}
+                  onClick={() => toggleMovie(m.movieId)}
+                >
+                  <div className="onboarding-movie-info">
+                    <span className="onboarding-movie-title">{m.title}</span>
+                    <span className="onboarding-movie-year">{m.year}</span>
+                  </div>
+                  {active && <Check className="w-4 h-4 text-cyan-400 shrink-0" color="var(--accent-cyan)" />}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <button
-          onClick={handleSubmit}
-          disabled={submitting || (selectedGenres.length === 0 && selectedMovies.length === 0)}
-          className="btn-onboard-submit"
-        >
-          {submitting ? 'Setting up...' : 'Complete & Explore Recommendations'}
-        </button>
+        {/* Actions */}
+        <div className="onboarding-footer">
+          <button
+            type="button"
+            className="btn-onboarding-skip"
+            onClick={onClose}
+          >
+            Skip for now
+          </button>
+          <button
+            type="button"
+            className="btn-onboarding-submit"
+            disabled={submitting}
+            onClick={handleSubmit}
+          >
+            <span>{submitting ? 'Saving...' : 'Start Watching'}</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

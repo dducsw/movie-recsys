@@ -1,0 +1,435 @@
+.movie-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 100px 54px 60px 54px;
+  max-width: 1600px;
+  margin: 0 auto;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.btn-back-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 12px;
+  cursor: pointer;
+  width: fit-content;
+  transition: all 0.2s ease;
+}
+
+.btn-back-nav:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-hover);
+  color: var(--accent-cyan);
+  transform: translateX(-2px);
+}
+
+.detail-hero-card {
+  position: relative;
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  box-shadow: var(--card-shadow);
+  padding: 44px;
+}
+
+.detail-backdrop-blur {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(24px) brightness(0.2);
+  transform: scale(1.08);
+  pointer-events: none;
+}
+
+.detail-backdrop-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(7, 9, 14, 0.95) 0%, rgba(7, 9, 14, 0.75) 100%);
+  pointer-events: none;
+}
+
+.detail-content-layout {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+}
+
+.detail-poster-wrapper {
+  width: 250px;
+  min-width: 250px;
+  aspect-ratio: 2 / 3;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+}
+
+.detail-poster-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.detail-poster-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.2s ease;
+}
+
+.detail-poster-wrapper:hover .detail-poster-overlay {
+  opacity: 1;
+}
+
+.detail-info-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-genre-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.detail-rating-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 12px;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+}
+
+.detail-title {
+  font-size: 42px;
+  font-weight: 900;
+  color: var(--text-primary);
+  line-height: 1.15;
+  letter-spacing: -1px;
+}
+
+.detail-overview {
+  font-size: 14.5px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  max-width: 860px;
+}
+
+/* Director & Compact Cast Badges Section */
+.detail-meta-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.detail-meta-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+}
+
+.detail-director-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detail-director-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: var(--bg-dock);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.detail-cast-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-cast-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Compact Cast Pill Chip */
+.detail-cast-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.detail-cast-pill:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-hover);
+  color: var(--accent-cyan);
+  transform: translateY(-1px);
+}
+
+/* Action Bar */
+.detail-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding-top: 10px;
+}
+
+.btn-play-trailer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  border-radius: 16px;
+  background: var(--accent-gradient);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  box-shadow: var(--accent-glow);
+  transition: all 0.25s ease;
+}
+
+.btn-play-trailer:hover {
+  background: var(--accent-gradient-hover);
+  box-shadow: 0 0 30px rgba(14, 165, 233, 0.5);
+  transform: translateY(-2px);
+}
+
+.btn-detail-fav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-detail-fav:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-hover);
+  color: var(--accent-cyan);
+}
+
+.btn-detail-fav.liked {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #ef4444;
+}
+
+.detail-rating-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-radius: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+}
+
+.detail-rating-stars {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.star-btn {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  padding: 3px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.star-btn:hover {
+  transform: scale(1.2);
+}
+
+.star-btn.active {
+  color: #fbbf24;
+}
+
+.star-btn .star-icon {
+  width: 18px;
+  height: 18px;
+  transition: all 0.2s ease;
+}
+
+.star-btn:hover .star-icon,
+.star-btn.active .star-icon {
+  fill: #fbbf24;
+  color: #fbbf24;
+  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.5));
+}
+
+/* Modal Trailer */
+.trailer-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.trailer-modal-card {
+  width: 100%;
+  max-width: 960px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.trailer-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.trailer-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.btn-close-modal {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  transition: color 0.2s ease;
+}
+
+.btn-close-modal:hover {
+  color: var(--text-primary);
+}
+
+.trailer-iframe-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.trailer-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* 📱 Responsive Mobile Rules for Movie Detail */
+@media (max-width: 768px) {
+  .detail-hero-card {
+    padding: 24px 18px;
+    border-radius: 20px;
+  }
+
+  .detail-content-layout {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 20px;
+  }
+
+  .detail-poster-wrapper {
+    width: 180px;
+    min-width: 180px;
+    border-radius: 16px;
+  }
+
+  .detail-title {
+    font-size: 28px;
+    letter-spacing: -0.5px;
+  }
+
+  .detail-tags-row,
+  .detail-director-box,
+  .detail-cast-tags,
+  .detail-actions-row {
+    justify-content: center;
+  }
+
+  .btn-play-trailer {
+    padding: 10px 20px;
+    font-size: 13px;
+  }
+}

@@ -71,7 +71,7 @@ flowchart LR
     Features["Feature Store<br/>• User Context (Bias, Activity)<br/>• Item Stats (Popularity, Vote Avg)<br/>• Cross Interaction (Genre Overlap, iALS Score)"]
     
     subgraph Models ["GBDT Ranking Engines"]
-        LGBM["LightGBM LambdaRanker<br/>• Histogram-based Binning<br/>• Listwise Virtual Gradient ($\lambda$-gradient)<br/>• Evaluated @ NDCG@10"]
+        LGBM["LightGBM LambdaRanker<br/>• Histogram-based Binning<br/>• Listwise Virtual Gradient (Lambda Gradient)<br/>• Evaluated @ NDCG@10"]
         CatB["CatBoost Ranker / Regressor<br/>• Symmetric Oblivious Trees<br/>• Ordered Categorical Encoding<br/>• Optuna Hyperparameter Optimization"]
     end
 

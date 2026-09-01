@@ -1,20 +1,26 @@
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
 def get_llm(
-    model_name="gemini-2.5-flash", 
+    model_name=None, 
     temperature=0.3,
-    max_tokens=5000
-) -> ChatGoogleGenerativeAI:
-    google_api_key = os.getenv("GOOGLE_API_KEY")
-    if not google_api_key:
-        raise ValueError("ERROR: GOOGLE_API_KEY environment variable is not configured.")
+    max_tokens=4096
+) -> ChatOpenAI:
+    api_key = os.getenv("ZHIPUAI_API_KEY") or os.getenv("ZAI_API_KEY")
+    if not api_key:
+        raise ValueError("ERROR: ZHIPUAI_API_KEY environment variable is not configured.")
     
-    return ChatGoogleGenerativeAI(
-        model=model_name,
-        api_key=google_api_key,
+    base_url = os.getenv("ZHIPUAI_BASE_URL") or os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4/")
+    model = model_name or os.getenv("ZHIPUAI_MODEL") or os.getenv("ZAI_MODEL", "glm-4.7")
+    
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
         temperature=temperature,
-        max_tokens=max_tokens
+        max_tokens=max_tokens,
+        max_retries=1,
+        timeout=4.0,
     )
 
 from .detect_intent import detect_intent_node

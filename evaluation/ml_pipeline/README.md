@@ -12,20 +12,20 @@ Hệ thống sử dụng kiến trúc **3-Stage Recommendation Engine**:
 graph TD
     Data[Dữ liệu Simulator & Catalog Phim] --> Prep[01. Chuẩn bị dữ liệu & Chia LOO]
     
-    subgraph STAGE 1: RETRIEVAL - Lọc Thô
+    subgraph S1 ["STAGE 1: RETRIEVAL - Lọc Thô"]
         Prep -->|Implicit Feedback| ALS[iALS Collaborative Filtering]
         Prep -->|Movie Metadata Soup| CB[TF-IDF Content-Based]
         ALS -->|Top 100 Candidates| Union[Gộp ứng viên ~200-250 phim]
         CB -->|Top 100 Candidates| Union
     end
     
-    subgraph STAGE 2: RANKING - Xếp Hạng Chi Tiết
+    subgraph S2 ["STAGE 2: RANKING - Xếp Hạng Chi Tiết"]
         Union --> FE[Trích xuất Đặc trưng - Feature Engineering]
         FE --> LGBM[LightGBM LambdaRanker]
         LGBM -->|Chấm điểm xếp hạng| Sorted[Danh sách ứng viên đã xếp hạng]
     end
     
-    subgraph STAGE 3: RE-RANKING - Đa Dạng Hóa
+    subgraph S3 ["STAGE 3: RE-RANKING - Đa Dạng Hóa"]
         Sorted --> MMR[Maximal Marginal Relevance - MMR]
         MMR -->|Đa dạng thể loại| Recs[Danh sách Đề xuất Top-10 Cuối cùng]
     end

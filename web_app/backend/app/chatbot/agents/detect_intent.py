@@ -8,7 +8,8 @@ def detect_intent_node(state: GraphState) -> dict:
 
     prompt = INTENT_PROMPT
     llm = get_llm().with_structured_output(
-        IntentOutput
+        IntentOutput,
+        method="function_calling"
     )
     chain = prompt | llm
     intent_output = chain.invoke({"history": messages})

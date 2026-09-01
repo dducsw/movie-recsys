@@ -11,6 +11,14 @@ import numpy as np
 
 from app.models.movie import MovieModel
 from app.services.cache import recsys_cache
+from app.services.metrics import (
+    track_stage_latency,
+    RECSYS_REQUESTS_TOTAL,
+    RECSYS_CACHE_HITS,
+    RECSYS_CACHE_MISSES,
+    RECSYS_CANDIDATES_COUNT,
+)
+from app.services.feature_store import FeatureStoreService
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +256,9 @@ class RecsysService:
         movies_data = MovieModel.get_by_ids(cand_ids)
         movie_dict = {m["movieId"]: m for m in movies_data}
 
+        # Retrieve online features from Feast Feature Store (Redis)
+        feast_features = FeatureStoreService.get_online_movie_features(cand_ids)
+
         ranker = get_ranker_model()
         feature_rows = []
         valid_candidates = []
@@ -262,15 +273,20 @@ class RecsysService:
             movie_genres = set(genres_str.split("|")) if genres_str else set()
             genre_overlap = len(target_genres.intersection(movie_genres))
 
-            # Extract release year
-            rel_date = str(movie.get("release_date") or "2010")
-            try:
-                release_year = int(rel_date[:4])
-            except ValueError:
-                release_year = 2010
+            # Prefer Feast online store features, fallback to DB metadata
+            online_f = feast_features.get(m_id, {})
+            pop = float(online_f.get("popularity") or movie.get("popularity", 0.0) or 0.0)
+            vote_avg = float(online_f.get("vote_average") or movie.get("vote_average", 0.0) or 0.0)
+            
+            if "release_year" in online_f and online_f["release_year"]:
+                release_year = int(online_f["release_year"])
+            else:
+                rel_date = str(movie.get("release_date") or "2010")
+                try:
+                    release_year = int(rel_date[:4])
+                except ValueError:
+                    release_year = 2010
 
-            pop = float(movie.get("popularity", 0.0) or 0.0)
-            vote_avg = float(movie.get("vote_average", 0.0) or 0.0)
             retrieval_score = float(cand.get("retrieval_score", 0.0))
 
             feat = {
@@ -357,22 +373,30 @@ class RecsysService:
         cache_key = f"similar:{movie_id}:{limit}"
         cached = recsys_cache.get(cache_key)
         if cached is not None:
+            RECSYS_CACHE_HITS.labels(cache_type="similar_l1").inc()
             return cached
 
+        RECSYS_CACHE_MISSES.labels(cache_type="similar_l1").inc()
         target_movie = MovieModel.get_by_id(movie_id)
         target_genres = set(target_movie["genres"].split("|")) if target_movie and target_movie.get("genres") else set()
 
         # Stage 1: Retrieval
-        raw_candidates = cls._stage_1_retrieval_similar(movie_id, limit=80)
+        with track_stage_latency("stage_1_retrieval_similar"):
+            raw_candidates = cls._stage_1_retrieval_similar(movie_id, limit=80)
+        RECSYS_CANDIDATES_COUNT.labels(stage="stage_1_retrieval").observe(len(raw_candidates))
 
         # Stage 2: Ranking
-        ranked_candidates = cls._stage_2_ranking(raw_candidates, target_genres, liked_count=1)
+        with track_stage_latency("stage_2_ranking"):
+            ranked_candidates = cls._stage_2_ranking(raw_candidates, target_genres, liked_count=1)
+        RECSYS_CANDIDATES_COUNT.labels(stage="stage_2_ranking").observe(len(ranked_candidates))
 
         # Remove target movie if present
         filtered_ranked = [m for m in ranked_candidates if m["movieId"] != movie_id]
 
         # Stage 3: Re-ranking (MMR)
-        final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=0.75)
+        with track_stage_latency("stage_3_mmr_reranking"):
+            final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=0.75)
+        RECSYS_CANDIDATES_COUNT.labels(stage="stage_3_reranking").observe(len(final_results))
 
         res = [{
             "movieId": m["movieId"],
@@ -384,6 +408,7 @@ class RecsysService:
             "poster_url": m["poster_url"]
         } for m in final_results]
         recsys_cache.set(cache_key, res, ttl_seconds=300)
+        RECSYS_REQUESTS_TOTAL.labels(endpoint="similar_movies", status="success").inc()
         return res
 
     @classmethod
@@ -396,8 +421,10 @@ class RecsysService:
         cache_key = f"personalized:{','.join(map(str, sorted_ids))}:{limit}"
         cached = recsys_cache.get(cache_key)
         if cached is not None:
+            RECSYS_CACHE_HITS.labels(cache_type="personalized_l1").inc()
             return cached
 
+        RECSYS_CACHE_MISSES.labels(cache_type="personalized_l1").inc()
         liked_movies = MovieModel.get_by_ids(liked_movie_ids)
         target_genres = set()
         for m in liked_movies:
@@ -405,17 +432,23 @@ class RecsysService:
                 target_genres.update(m["genres"].split("|"))
 
         # Stage 1: Retrieval
-        raw_candidates = cls._stage_1_retrieval_personalized(liked_movie_ids, limit=100)
+        with track_stage_latency("stage_1_retrieval_personalized"):
+            raw_candidates = cls._stage_1_retrieval_personalized(liked_movie_ids, limit=100)
+        RECSYS_CANDIDATES_COUNT.labels(stage="stage_1_retrieval").observe(len(raw_candidates))
 
         # Stage 2: Ranking
-        ranked_candidates = cls._stage_2_ranking(raw_candidates, target_genres, liked_count=len(liked_movie_ids))
+        with track_stage_latency("stage_2_ranking"):
+            ranked_candidates = cls._stage_2_ranking(raw_candidates, target_genres, liked_count=len(liked_movie_ids))
+        RECSYS_CANDIDATES_COUNT.labels(stage="stage_2_ranking").observe(len(ranked_candidates))
 
         # Filter out already liked movies
         liked_set = set(liked_movie_ids)
         filtered_ranked = [m for m in ranked_candidates if m["movieId"] not in liked_set]
 
         # Stage 3: Re-ranking (MMR)
-        final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=0.7)
+        with track_stage_latency("stage_3_mmr_reranking"):
+            final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=0.7)
+        RECSYS_CANDIDATES_COUNT.labels(stage="stage_3_reranking").observe(len(final_results))
 
         res = [{
             "movieId": m["movieId"],
@@ -427,4 +460,5 @@ class RecsysService:
             "poster_url": m["poster_url"]
         } for m in final_results]
         recsys_cache.set(cache_key, res, ttl_seconds=180)
+        RECSYS_REQUESTS_TOTAL.labels(endpoint="personalized_recommendations", status="success").inc()
         return res

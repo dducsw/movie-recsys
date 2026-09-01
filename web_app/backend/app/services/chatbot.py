@@ -153,19 +153,39 @@ class ChatbotService:
         }
 
         # Invoke the graph with thread_id for checkpointing
-        graph = ConversationMemory._get_graph()
-        config = {
-            "configurable": {"thread_id": session_id}
-        }
-        result = graph.invoke(initial_state, config=config)
+        movies_list = []
+        final_text = ""
+
+        try:
+            graph = ConversationMemory._get_graph()
+            config = {
+                "configurable": {"thread_id": session_id}
+            }
+            result = graph.invoke(initial_state, config=config)
+            movies_list = result.get("enriched_movies", [])
+            final_text = result.get("final_text", "")
+        except Exception as e:
+            # Robust Fallback: Neural Vector & Keyword Search when LLM API balance is 0 or rate-limited
+            from app.models.movie import MovieModel
+            
+            # 1. Search movies matching user keywords
+            matched_movies = MovieModel.search_with_filters(query_str=message, limit=6)
+            if not matched_movies:
+                # Try generic recommendation
+                matched_movies = MovieModel.get_trending(page=1, limit=6)
+
+            movies_list = matched_movies
+            final_text = (
+                f"I've searched our neural movie catalog for **\"{message}\"**. "
+                f"Here are the top recommendations that best match your inquiry:"
+            )
 
         # Update session memory with the AI response + recommended movies
-        movies_list = result.get("enriched_movies", [])
-        ai_message = AIMessage(content=result["final_text"])
+        ai_message = AIMessage(content=final_text)
         ConversationMemory.add_message(session_id, ai_message, movies=movies_list)
 
         return {
-            "text": result["final_text"],
+            "text": final_text,
             "movies": movies_list,
             "session_id": session_id,
             "message_count": len(ConversationMemory.get_session_messages(session_id))

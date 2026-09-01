@@ -99,9 +99,9 @@ graph TD
 ```mermaid
 flowchart TD
     UserArrival{"User Status"}
-    UserArrival -->|New User (Zero History)| CS_User["Cold-Start Strategy<br/>1. TMDB Global Popularity Prior<br/>2. Interactive Genre Chips Onboarding<br/>3. Real-time In-Session Epsilon-Greedy Exploration"]
-    UserArrival -->|New Movie (Zero Interactions)| CS_Item["New Item Strategy<br/>1. Dense Synopsis Embedding via Qdrant<br/>2. Content TF-IDF Soup (Cast/Director/Genres)<br/>3. Exploration Slot Injection (10% Traffic)"]
-    UserArrival -->|Active User (>5 Events)| Warm["Personalized 3-Stage Engine<br/>iALS + Vector ANN + LightGBM + MMR"]
+    UserArrival -->|"New User (Zero History)"| CS_User["Cold-Start Strategy<br/>1. TMDB Global Popularity Prior<br/>2. Interactive Genre Chips Onboarding<br/>3. Real-time In-Session Epsilon-Greedy Exploration"]
+    UserArrival -->|"New Movie (Zero Interactions)"| CS_Item["New Item Strategy<br/>1. Dense Synopsis Embedding via Qdrant<br/>2. Content TF-IDF Soup (Cast/Director/Genres)<br/>3. Exploration Slot Injection (10% Traffic)"]
+    UserArrival -->|"Active User (> 5 Events)"| Warm["Personalized 3-Stage Engine<br/>iALS + Vector ANN + LightGBM + MMR"]
 ```
 
 ---

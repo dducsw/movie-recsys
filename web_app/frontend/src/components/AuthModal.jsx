@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { X, Lock, Mail, User, LogIn, UserPlus } from 'lucide-react';
 import { API_BASE_URL } from '../api/client';
 import './AuthModal.css';
 
@@ -31,14 +32,16 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || 'Thao tác thất bại');
+        throw new Error(data.detail || 'Authentication failed');
       }
 
       // Save token
       localStorage.setItem('auth_token', data.access_token);
       localStorage.setItem('user_info', JSON.stringify(data.user));
 
-      onAuthSuccess(data.user, !isLogin);
+      if (onAuthSuccess) {
+        onAuthSuccess(data.user, !isLogin);
+      }
       onClose();
     } catch (err) {
       setError(err.message);
@@ -50,7 +53,9 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   return (
     <div className="auth-modal-overlay" onClick={onClose}>
       <div className="auth-modal-card" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="auth-modal-close">✕</button>
+        <button onClick={onClose} className="auth-modal-close">
+          <X className="w-4 h-4" />
+        </button>
 
         <h2 className="auth-modal-title">
           {isLogin ? 'Sign In to MovieNex' : 'Create a MovieNex Account'}
@@ -58,77 +63,72 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         <p className="auth-modal-subtitle">
           {isLogin
             ? 'Sign in to access personalized movie recommendations in real-time'
-            : 'Join MovieNex to discover curated movies with AI recommendations'}
+            : 'Join to track watched movies and receive AI recommendations'}
         </p>
 
-        {error && <div className="auth-error-box">{error}</div>}
+        {error && <div className="auth-modal-error">{error}</div>}
 
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className="auth-modal-form">
           {!isLogin && (
-            <div className="auth-form-group">
-              <label className="auth-form-label">Username</label>
+            <div className="auth-input-group">
+              <User className="auth-input-icon" />
               <input
                 type="text"
-                required
+                placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. alex123"
-                className="auth-form-input"
+                required
+                className="auth-input"
               />
             </div>
           )}
 
-          <div className="auth-form-group">
-            <label className="auth-form-label">Email</label>
+          <div className="auth-input-group">
+            <Mail className="auth-input-icon" />
             <input
               type="email"
-              required
+              placeholder="Email Address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
-              className="auth-form-input"
+              required
+              className="auth-input"
             />
           </div>
 
-          <div className="auth-form-group">
-            <label className="auth-form-label">Password</label>
+          <div className="auth-input-group">
+            <Lock className="auth-input-icon" />
             <input
               type="password"
-              required
+              placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="auth-form-input"
+              required
+              className="auth-input"
             />
           </div>
 
-          <button type="submit" disabled={loading} className="btn-auth-submit">
-            {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Create Account'}
+          <button 
+            type="submit" 
+            className="auth-submit-btn" 
+            disabled={loading}
+          >
+            {isLogin ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+            <span>{loading ? 'Processing...' : isLogin ? 'Sign In' : 'Register Account'}</span>
           </button>
         </form>
 
-        <div className="auth-switch-prompt">
-          {isLogin ? (
-            <p>
-              Don't have an account?{' '}
-              <button
-                onClick={() => { setIsLogin(false); setError(''); }}
-                className="auth-switch-btn"
-              >
-                Sign up now
-              </button>
-            </p>
-          ) : (
-            <p>
-              Already have an account?{' '}
-              <button
-                onClick={() => { setIsLogin(true); setError(''); }}
-                className="auth-switch-btn"
-              >
-                Sign in
-              </button>
-            </p>
-          )}
+        <div className="auth-toggle-mode">
+          {isLogin ? "Don't have an account? " : "Already have an account? "}
+          <button
+            type="button"
+            className="auth-toggle-btn"
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError('');
+            }}
+          >
+            {isLogin ? 'Sign Up' : 'Sign In'}
+          </button>
         </div>
       </div>
     </div>

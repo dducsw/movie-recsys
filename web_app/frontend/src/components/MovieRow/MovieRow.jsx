@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import MovieCard from '../MovieCard/MovieCard';
 import './MovieRow.css';
 
@@ -8,10 +9,7 @@ function MovieRow({
   onMovieClick, 
   onSeeAll, 
   badge = null,
-  likedMovies = [],
-  movieRatings = {},
-  onToggleLike,
-  onRateMovie
+  source = 'row'
 }) {
   const rowRef = useRef(null);
 
@@ -38,28 +36,31 @@ function MovieRow({
         <div className="streamix-row-controls">
           {onSeeAll && (
             <button className="streamix-see-all-btn" onClick={onSeeAll}>
-              See All
+              <span>See All</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           )}
           <div className="streamix-arrow-group">
-            <button className="streamix-arrow-btn" onClick={() => scroll('left')} title="Scroll left">‹</button>
-            <button className="streamix-arrow-btn" onClick={() => scroll('right')} title="Scroll right">›</button>
+            <button className="streamix-arrow-btn" onClick={() => scroll('left')} title="Scroll left">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button className="streamix-arrow-btn" onClick={() => scroll('right')} title="Scroll right">
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
 
       <div className="streamix-cards-track" ref={rowRef}>
-        {movies.map((movie) => {
+        {movies.map((movie, idx) => {
           const mid = movie.movieId || movie.id;
           return (
-            <div key={mid} className="streamix-card-wrapper">
+            <div key={mid || idx} className="streamix-card-wrapper">
               <MovieCard
                 movie={movie}
-                onClick={() => onMovieClick && onMovieClick(mid)}
-                isLiked={likedMovies.includes(mid)}
-                onToggleLike={onToggleLike}
-                userRating={movieRatings[mid] || 0}
-                onRateMovie={onRateMovie}
+                source={source}
+                position={idx}
+                onClick={onMovieClick ? () => onMovieClick(mid) : null}
               />
             </div>
           );

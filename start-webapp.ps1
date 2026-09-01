@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # --- Services cần cho webapp ---
-$WebappServices = @("postgres", "redis", "qdrant", "seaweedfs")
+$WebappServices = @("postgres", "redis", "qdrant", "seaweedfs", "prometheus")
 
 if ($Down) {
     Write-Host "`n[*] Stopping webapp services..." -ForegroundColor Yellow

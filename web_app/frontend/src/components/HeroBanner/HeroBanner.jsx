@@ -1,118 +1,169 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Play, 
+  Plus,
+  Check,
+  Info, 
+  TrendingUp, 
+  ChevronLeft, 
+  ChevronRight, 
+  Star,
+  Sparkles,
+  Volume2
+} from 'lucide-react';
+import { useWatchlist } from '../../context/WatchlistContext';
 import './HeroBanner.css';
 
 function HeroBanner({ 
   movie, 
-  nextMovie, 
-  onWatchNow, 
-  onToggleWatchlist, 
-  isInWatchlist, 
+  currentIndex = 0,
+  totalSlides = 5,
   onNextSlide, 
-  onPrevSlide,
-  onOpenDetail
+  onPrevSlide 
 }) {
-  const title = movie?.title || "Elio";
-  const genres = movie?.genres ? movie.genres.split('|').slice(0, 2) : ["Family", "Adventure"];
-  const vote = movie?.vote_average ? Number(movie.vote_average).toFixed(1) : "8.8";
-  const overview = movie?.overview || "An underdog with an active imagination finds himself inadvertently beamed up to the Communiverse, an interplanetary organization with representatives from galaxies far and wide.";
-  const backdrop = movie?.poster_url && !movie.poster_url.includes('placeholder')
-    ? movie.poster_url
-    : "https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=1200";
+  const navigate = useNavigate();
+  const { isLiked, toggleLike } = useWatchlist();
 
-  const nextBackdrop = nextMovie?.poster_url && !nextMovie.poster_url.includes('placeholder')
-    ? nextMovie.poster_url
-    : "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?q=80&w=600";
+  // Auto slide every 7 seconds
+  useEffect(() => {
+    if (!onNextSlide) return;
+    const interval = setInterval(() => {
+      onNextSlide();
+    }, 7000);
+    return () => clearInterval(interval);
+  }, [onNextSlide, currentIndex]);
+
+  if (!movie) return null;
+
+  const movieId = movie.movieId || movie.id;
+  const liked = isLiked(movieId);
+
+  const title = movie.title || "Featured Cinematic Masterpiece";
+  const genres = movie.genres ? movie.genres.split('|').slice(0, 3) : ["Sci-Fi", "Adventure", "Action"];
+  const vote = movie.vote_average ? (Number(movie.vote_average) / 2).toFixed(1) : "4.3";
+  const year = movie.release_date ? movie.release_date.split('-')[0] : "2026";
+  const overview = movie.overview || "Experience an extraordinary cinematic journey with breathtaking visual fidelity and mind-bending storytelling.";
+  
+  const backdrop = movie.poster_url && !movie.poster_url.includes('placeholder')
+    ? movie.poster_url
+    : "https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=1600";
 
   return (
-    <div className="streamix-hero-wrapper">
-      {/* Main Large Hero Card */}
-      <div className="streamix-hero-card">
-        <div 
-          className="hero-bg-media" 
-          style={{ backgroundImage: `url(${backdrop})` }}
-        />
-        <div className="hero-vignette" />
+    <div className="cinematic-billboard-wrapper">
+      {/* Full-Bleed Edge-to-Edge Backdrop */}
+      <div 
+        className="billboard-media-bg" 
+        style={{ backgroundImage: `url(${backdrop})` }}
+      />
 
-        {/* Prev Slide Arrow Button */}
-        {onPrevSlide && (
-          <button 
-            className="hero-prev-arrow" 
-            onClick={(e) => { e.stopPropagation(); onPrevSlide(); }} 
-            title="Previous Movie"
-          >
-            ‹
-          </button>
-        )}
+      {/* Multi-Directional Gradient Overlay */}
+      <div className="billboard-gradient-left" />
+      <div className="billboard-gradient-bottom" />
 
-        <div className="hero-banner-body">
-          {/* Minimalist Transparent Trending Badge */}
-          <div className="hero-top-badges">
-            <span className="badge-trending">
-              <span className="trending-pulsing-dot" />
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="trending-badge-icon">
-                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                <polyline points="17 6 23 6 23 12" />
-              </svg>
-              <span>Trending Now</span>
+      {/* Billboard Content */}
+      <div className="billboard-content-container">
+        <div className="billboard-info-block">
+          {/* Top Badges */}
+          <div className="billboard-badges-row">
+            <span className="badge-trending-live">
+              <span className="live-dot" />
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>#1 IN MOVIES TODAY</span>
+            </span>
+
+            <span className="badge-ai-match">
+              <Sparkles className="w-3 h-3 text-cyan-400" />
+              <span>98% MATCH FOR YOU</span>
             </span>
           </div>
 
-          {/* Genre Chips */}
-          <div className="hero-genre-tags">
-            {genres.map((g) => (
-              <span key={g} className="hero-genre-pill">{g}</span>
-            ))}
-            <span className="hero-rating-pill">★ {vote}</span>
+          {/* Title */}
+          <h1 className="billboard-title">{title}</h1>
+
+          {/* Sub-row: Rating, Year, Genres */}
+          <div className="billboard-meta-row">
+            <span className="billboard-rating-pill">
+              <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+              <span>{vote}</span>
+            </span>
+            <span className="meta-dot">•</span>
+            <span className="billboard-year-tag">{year}</span>
+            <span className="meta-dot">•</span>
+            <div className="billboard-genre-list">
+              {genres.map((g) => (
+                <span key={g} className="billboard-genre-tag">{g}</span>
+              ))}
+            </div>
           </div>
 
-          {/* Title & Description */}
-          <h1 className="hero-main-title">{title}</h1>
-          <p className="hero-main-desc">{overview}</p>
+          {/* Synopsis */}
+          <p className="billboard-overview">{overview}</p>
 
-          {/* Action Buttons */}
-          <div className="hero-cta-group">
-            <button className="btn-play-now" onClick={() => onWatchNow && onWatchNow(movie)}>
-              <svg viewBox="0 0 24 24" fill="currentColor" className="cta-icon">
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-              Watch Now
+          {/* CTA Action Buttons */}
+          <div className="billboard-actions-row">
+            <button 
+              className="btn-billboard-play" 
+              onClick={() => navigate(`/movie/${movieId}`)}
+            >
+              <Play className="w-5 h-5 fill-current" />
+              <span>Watch Now</span>
             </button>
 
             <button 
-              className={`btn-icon-action ${isInWatchlist ? 'active' : ''}`}
-              onClick={() => onToggleWatchlist && onToggleWatchlist(movie?.movieId || movie?.id)}
-              title={isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
+              className={`btn-billboard-glass ${liked ? 'active' : ''}`}
+              onClick={() => toggleLike(movieId, movie)}
+              title={liked ? "In Your Watchlist" : "Add to Watchlist"}
             >
-              <svg viewBox="0 0 24 24" fill={isInWatchlist ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.2" className="cta-icon">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-              </svg>
+              {liked ? <Check className="w-4 h-4 text-cyan-400" /> : <Plus className="w-4 h-4" />}
+              <span>{liked ? 'Watchlist' : 'Add to List'}</span>
             </button>
 
             <button 
-              className="btn-icon-action" 
-              onClick={() => onOpenDetail && onOpenDetail(movie?.movieId || movie?.id)}
-              title="More Details"
+              className="btn-billboard-glass" 
+              onClick={() => navigate(`/movie/${movieId}`)}
+              title="More Info"
             >
-              •••
+              <Info className="w-4 h-4" />
+              <span>Details</span>
             </button>
+          </div>
+        </div>
+
+        {/* Bottom Right Carousel Dock (Dots + Arrows) */}
+        <div className="billboard-carousel-dock">
+          <div className="billboard-slide-dots">
+            {Array.from({ length: totalSlides }).map((_, idx) => (
+              <span 
+                key={idx} 
+                className={`slide-dot ${idx === currentIndex ? 'active' : ''}`}
+              />
+            ))}
+          </div>
+
+          <div className="billboard-arrow-group">
+            {onPrevSlide && (
+              <button 
+                className="billboard-arrow-btn" 
+                onClick={(e) => { e.stopPropagation(); onPrevSlide(); }} 
+                title="Previous Slide"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
+
+            {onNextSlide && (
+              <button 
+                className="billboard-arrow-btn" 
+                onClick={(e) => { e.stopPropagation(); onNextSlide(); }} 
+                title="Next Slide"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Peek Next Slide Preview */}
-      {nextMovie && (
-        <div className="streamix-hero-peek" onClick={onNextSlide}>
-          <img 
-            src={nextBackdrop} 
-            alt={nextMovie.title || "Next"} 
-            className="peek-poster-img" 
-          />
-          <div className="peek-overlay" />
-          <button className="peek-next-arrow" onClick={(e) => { e.stopPropagation(); onNextSlide(); }} title="Next Slide">
-            ›
-          </button>
-        </div>
-      )}
     </div>
   );
 }

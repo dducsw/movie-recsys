@@ -49,6 +49,13 @@ def run_batch_pipeline():
     export_to_redis(similarities, movie_meta)
     export_to_qdrant(movie_meta)
 
+    # Synchronize Features with Feast Feature Store
+    try:
+        from pipeline.feature_store.materialize import run_materialization
+        run_materialization()
+    except Exception as e:
+        logger.warning(f"Skipping Feast materialization: {e}")
+
     logger.info("Batch Feature Pipeline completed successfully!")
 
 

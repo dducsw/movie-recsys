@@ -1,0 +1,109 @@
+.watchlist-page-container {
+  padding: 100px 54px 60px 54px;
+  max-width: 1600px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.watchlist-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.watchlist-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.watchlist-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.6px;
+}
+
+.watchlist-badge {
+  font-size: 11.5px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  color: var(--accent-cyan);
+}
+
+.watchlist-subtitle {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.watchlist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 24px 18px;
+}
+
+.watchlist-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+  gap: 14px;
+}
+
+.watchlist-empty-icon {
+  width: 56px;
+  height: 56px;
+  color: var(--text-muted);
+}
+
+.watchlist-empty-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.watchlist-empty-desc {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  max-width: 440px;
+  line-height: 1.5;
+}
+
+.btn-explore-now {
+  background: var(--accent-gradient);
+  border: none;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 700;
+  padding: 12px 26px;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: var(--accent-glow-subtle);
+  transition: all 0.2s ease;
+  margin-top: 8px;
+}
+
+.btn-explore-now:hover {
+  background: var(--accent-gradient-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--accent-glow);
+}
+
+/* 📱 Responsive Mobile */
+@media (max-width: 768px) {
+  .watchlist-page-container {
+    padding: 80px 20px 40px 20px;
+  }
+
+  .watchlist-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px 12px;
+  }
+}

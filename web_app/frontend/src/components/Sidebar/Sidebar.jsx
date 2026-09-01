@@ -1,150 +1,159 @@
 import React from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { 
+  Play, 
+  Home, 
+  Compass, 
+  Layers, 
+  Bookmark, 
+  Sparkles, 
+  Bot, 
+  Moon, 
+  Sun, 
+  LogIn, 
+  LogOut, 
+  User 
+} from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import './Sidebar.css';
 
-function Sidebar({ 
-  view, 
-  setView, 
-  allType, 
-  handleSeeAll, 
-  setSelectedMovieId, 
-  handleClearSearch, 
-  darkMode, 
-  setDarkMode,
-  user,
-  onOpenAuthModal
-}) {
+function Sidebar() {
+  const { darkMode, toggleTheme } = useTheme();
+  const { user, openAuthModal, logout } = useAuth();
+  const navigate = useNavigate();
+
   return (
     <aside className="cinemax-sidebar">
-      {/* Brand Logo with Play Icon */}
+      {/* Brand Logo */}
       <div 
-        className="sidebar-brand-box" 
-        onClick={() => { setView('home'); handleClearSearch(); setSelectedMovieId(null); }}
+        className="sidebar-brand-box cursor-pointer" 
+        onClick={() => navigate('/')}
       >
         <div className="brand-logo-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="6 4 20 12 6 20 6 4" />
-          </svg>
+          <Play className="w-5 h-5 fill-current" />
         </div>
         <span className="brand-name">Movie<span className="brand-accent">Nex</span></span>
       </div>
 
       <nav className="sidebar-nav-container">
-        {/* Main Group */}
+        {/* Main Navigation */}
         <div className="nav-group">
-          <button 
-            className={`nav-item-btn ${view === 'home' && !allType ? 'active' : ''}`}
-            onClick={() => { setView('home'); handleClearSearch(); setSelectedMovieId(null); }}
+          <NavLink 
+            to="/" 
+            end
+            className={({ isActive }) => `nav-item-btn ${isActive ? 'active' : ''}`}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-icon">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
+            <Home className="nav-icon w-5 h-5" />
             <span>Home</span>
-          </button>
+          </NavLink>
 
-          <button 
-            className={`nav-item-btn ${view === 'all' && allType === 'trending' ? 'active' : ''}`}
-            onClick={() => handleSeeAll('trending')}
+          <NavLink 
+            to="/explore" 
+            className={({ isActive }) => `nav-item-btn ${isActive ? 'active' : ''}`}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-icon">
-              <circle cx="12" cy="12" r="10" />
-              <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
-            </svg>
+            <Compass className="nav-icon w-5 h-5" />
             <span>Explore</span>
-          </button>
+          </NavLink>
 
-          <button 
-            className={`nav-item-btn ${view === 'all' && allType === 'genre' ? 'active' : ''}`}
-            onClick={() => {
-              setView('home');
-              const el = document.getElementById('genres-section');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }}
+          <NavLink 
+            to="/genres" 
+            className={({ isActive }) => `nav-item-btn ${isActive ? 'active' : ''}`}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-icon">
-              <polygon points="12 2 2 7 12 12 22 7 12 2" />
-              <polyline points="2 17 12 22 22 17" />
-              <polyline points="2 12 12 17 22 12" />
-            </svg>
+            <Layers className="nav-icon w-5 h-5" />
             <span>Genres</span>
-          </button>
+          </NavLink>
 
-          <button 
-            className={`nav-item-btn ${view === 'watchlist' ? 'active' : ''}`}
-            onClick={() => {
+          <NavLink 
+            to="/watchlist" 
+            className={({ isActive }) => `nav-item-btn ${isActive ? 'active' : ''}`}
+            onClick={(e) => {
               if (!user) {
-                onOpenAuthModal();
-              } else {
-                setView('watchlist');
-                handleClearSearch();
-                setSelectedMovieId(null);
+                e.preventDefault();
+                openAuthModal();
               }
             }}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-icon">
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-            </svg>
+            <Bookmark className="nav-icon w-5 h-5" />
             <span>Favourites</span>
-          </button>
+          </NavLink>
         </div>
 
         <div className="sidebar-divider" />
 
-        {/* Secondary Group */}
+        {/* AI & Features Navigation */}
         <div className="nav-group">
-          <button 
-            className={`nav-item-btn ${view === 'all' && allType === 'recs' ? 'active' : ''}`}
-            onClick={() => handleSeeAll('recs')}
+          <NavLink 
+            to="/ai-assistant" 
+            className={({ isActive }) => `nav-item-btn special-ai-btn ${isActive ? 'active' : ''}`}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-icon">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            <span>For You (AI)</span>
-          </button>
-
-          <button 
-            className={`nav-item-btn ${view === 'all' && allType === 'latest' ? 'active' : ''}`}
-            onClick={() => handleSeeAll('latest')}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-icon">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span>Recently Added</span>
-          </button>
-
-          <button 
-            className={`nav-item-btn ${view === 'chatbot' ? 'active' : ''}`}
-            onClick={() => { setView('chatbot'); handleClearSearch(); setSelectedMovieId(null); }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-icon">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            <span>AI Assistant</span>
-          </button>
-        </div>
-
-        <div className="sidebar-divider" />
-
-        {/* Bottom Preferences */}
-        <div className="nav-group bottom-pref">
-          <div className="theme-toggle-row" onClick={() => setDarkMode(!darkMode)}>
-            <div className="toggle-left">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-icon">
-                {darkMode ? (
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                ) : (
-                  <circle cx="12" cy="12" r="5" />
-                )}
-              </svg>
-              <span>Dark Mode</span>
+            <Bot className="nav-icon w-5 h-5 text-indigo-400" />
+            <div className="flex items-center gap-1.5">
+              <span>AI Assistant</span>
+              <Sparkles className="w-3.5 h-3.5 text-yellow-400 animate-pulse" />
             </div>
-            <div className={`switch-pill ${darkMode ? 'on' : 'off'}`}>
-              <div className="switch-dot" />
-            </div>
-          </div>
+          </NavLink>
         </div>
       </nav>
+
+      {/* Footer / Account & Theme Toggle */}
+      <div className="sidebar-footer">
+        {/* Theme Toggle Button */}
+        <button 
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {darkMode ? (
+            <>
+              <Sun className="nav-icon w-5 h-5 text-amber-400" />
+              <span>Light Mode</span>
+            </>
+          ) : (
+            <>
+              <Moon className="nav-icon w-5 h-5 text-indigo-400" />
+              <span>Dark Mode</span>
+            </>
+          )}
+        </button>
+
+        <div className="sidebar-divider" />
+
+        {/* Auth / Profile Area */}
+        {user ? (
+          <div className="user-profile-widget">
+            <div className="flex items-center gap-3">
+              <div className="user-avatar-circle">
+                {user.avatar ? (
+                  <img src={user.avatar} alt={user.name} className="w-full h-full rounded-full object-cover" />
+                ) : (
+                  <User className="w-5 h-5" />
+                )}
+              </div>
+              <div className="user-text-info overflow-hidden">
+                <span className="user-display-name truncate block">{user.name || user.username}</span>
+                <span className="user-role-badge">Member</span>
+              </div>
+            </div>
+            <button 
+              className="logout-icon-btn hover:text-red-400 transition-colors mt-2" 
+              onClick={logout} 
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-xs">Sign Out</span>
+            </button>
+          </div>
+        ) : (
+          <button 
+            className="login-action-btn flex items-center justify-center gap-2"
+            onClick={openAuthModal}
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Sign In</span>
+          </button>
+        )}
+      </div>
     </aside>
   );
 }

@@ -1,0 +1,15 @@
+project: movie_recsys
+registry: data/registry.db
+provider: local
+offline_store:
+  type: postgres
+  host: localhost
+  port: 5435
+  database: movie_db
+  user: postgres
+  password: mysecretpassword
+  db_schema: public
+  sslmode: disable
+online_store:
+  type: redis
+  connection_string: localhost:6379

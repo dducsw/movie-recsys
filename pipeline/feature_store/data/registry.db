@@ -1,0 +1,68 @@
+
+y
+Y
+movie_id4Unique identifier for each movie item in the catalog"movieIdJmovie_recsys
+çÛÔ°²…ñ”ÛÔÀñœë
+j
+J
+user_id'Unique identifier for each user profile"userIdJmovie_recsys
+çÛÔ°¥ñ”ÛÔÀñœë
+C
+#
+__dummy"
+__dummy_idJmovie_recsys
+çÛÔ°¥ñ”ÛÔÀñœë1"$85fca5f6-db60-461c-bd24-a3f5d3f36039*”ÛÔ à¶Â2÷
+¶
+
+user_statsmovie_recsysuser_id"
+user_activity"
+	user_bias2€ç„:Ğevent_timestamp*created_timestamp‚–
+“{"name": "user_stats_source", "query": "\n        SELECT \n            COALESCE(user_id, 0)::int8 AS \"userId\",\n            COUNT(*)::float4 AS user_activity,\n            (AVG(rating) - 3.5)::float4 AS user_bias,\n            NOW() AS event_timestamp,\n            NOW() AS created_timestamp\n        FROM user_ratings\n        WHERE user_id IS NOT NULL\n        GROUP BY user_id\n    ", "table": ""}ŠZfeast.infra.offline_stores.contrib.postgres_offline_store.postgres_source.PostgreSQLSource¢user_stats_source’çÛÔˆ¸ÀÇ"”ÛÔ¸¤…é@b
+
+userId’latest<
+çÛÔøıäğ”ÛÔˆ¤Ÿ
+”ÀÑ¶à¿şı”ÛÔà¿şı02û
+œ
+movie_statsmovie_recsysmovie_id"
+
+popularity"
+vote_average"
+
+vote_count"
+release_year2€ç„:‘event_timestamp*created_timestamp‚×
+Ô{"name": "movie_stats_source", "query": "\n        SELECT \n            movieid AS \"movieId\",\n            popularity::float4 AS popularity,\n            vote_average::float4 AS vote_average,\n            COALESCE(vote_count, 0)::int8 AS vote_count,\n            COALESCE(NULLIF(SUBSTRING(release_date, 1, 4), ''), '2010')::int8 AS release_year,\n            NOW() AS event_timestamp,\n            NOW() AS created_timestamp\n        FROM movies\n    ", "table": ""}ŠZfeast.infra.offline_stores.contrib.postgres_offline_store.postgres_source.PostgreSQLSource¢movie_stats_source’”ÛÔ¸ÚÃ{"”ÛÔÈ©è@b
+movieId’latestZ
+çÛÔàèÄğ”ÛÔ à¶Â
+ö¿Ñ¶ĞšöÛÔĞš
+”ÀÑ¶à¿şı”ÛÔà¿şı0b¡event_timestamp*created_timestamp‚×
+Ô{"name": "movie_stats_source", "query": "\n        SELECT \n            movieid AS \"movieId\",\n            popularity::float4 AS popularity,\n            vote_average::float4 AS vote_average,\n            COALESCE(vote_count, 0)::int8 AS vote_count,\n            COALESCE(NULLIF(SUBSTRING(release_date, 1, 4), ''), '2010')::int8 AS release_year,\n            NOW() AS event_timestamp,\n            NOW() AS created_timestamp\n        FROM movies\n    ", "table": ""}ŠZfeast.infra.offline_stores.contrib.postgres_offline_store.postgres_source.PostgreSQLSource¢movie_stats_sourceªmovie_recsys’çÛÔˆ¸ÀÇ"öÛÔ˜Ñîƒbßevent_timestamp*created_timestamp‚–
+“{"name": "user_stats_source", "query": "\n        SELECT \n            COALESCE(user_id, 0)::int8 AS \"userId\",\n            COUNT(*)::float4 AS user_activity,\n            (AVG(rating) - 3.5)::float4 AS user_bias,\n            NOW() AS event_timestamp,\n            NOW() AS created_timestamp\n        FROM user_ratings\n        WHERE user_id IS NOT NULL\n        GROUP BY user_id\n    ", "table": ""}ŠZfeast.infra.offline_stores.contrib.postgres_offline_store.postgres_source.PostgreSQLSource¢user_stats_sourceªmovie_recsys’çÛÔˆ¸ÀÇ"”ÛÔ¸¤…éz4
+movie_recsys$7d8c1d09-743b-476d-9939-a9cf7faf9941Š.
+
+movie_recsys
+çÛÔèĞßîçÛÔèĞßî’‘
+’
+movie_statsmovie_recsys"feature_view*²
+‘
+movie_statsmovie_recsysmovie_id"
+
+popularity"
+vote_average"
+
+vote_count"
+release_year2€ç„:†event_timestamp*created_timestamp‚Ë
+È{"name": "movie_stats_source", "query": "\n        SELECT \n            movieid AS \"movieId\",\n            popularity::float4 AS popularity,\n            vote_average::float4 AS vote_average,\n            COALESCE(vote_count, 0)::int8 AS vote_count,\n            COALESCE(EXTRACT(YEAR FROM release_date), 2010)::int8 AS release_year,\n            NOW() AS event_timestamp,\n            NOW() AS created_timestamp\n        FROM movies\n    ", "table": ""}ŠZfeast.infra.offline_stores.contrib.postgres_offline_store.postgres_source.PostgreSQLSource¢movie_stats_source’çÛÔˆ¸ÀÇ"çÛÔàèÄğ@b
+movieId’latest
+çÛÔàèÄğçÛÔàèÄğ2çÛÔøıäğB$3e9afd83-be3c-468c-8f25-ee87e0c1a864
+ù
+
+user_statsmovie_recsys"feature_view*š
+ù
+
+user_statsmovie_recsysuser_id"
+user_activity"
+	user_bias2€ç„:“event_timestamp*created_timestamp‚Ù
+Ö{"name": "user_stats_source", "query": "\n        SELECT \n            userid AS \"userId\",\n            COUNT(*)::float4 AS user_activity,\n            (AVG(rating) - 3.5)::float4 AS user_bias,\n            NOW() AS event_timestamp,\n            NOW() AS created_timestamp\n        FROM ratings\n        GROUP BY userid\n    ", "table": ""}ŠZfeast.infra.offline_stores.contrib.postgres_offline_store.postgres_source.PostgreSQLSource¢user_stats_source’çÛÔˆ¸ÀÇ"çÛÔÈš½î@b
+
+userId’latest
+çÛÔøıäğçÛÔøıäğ2çÛÔ°²…ñB$a9485e88-c492-4706-8242-f5d315879a7b

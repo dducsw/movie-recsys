@@ -1,152 +1,270 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { 
+  Search, 
+  SlidersHorizontal, 
+  X, 
+  User, 
+  LogIn, 
+  LogOut, 
+  Bookmark, 
+  Sparkles, 
+  Play, 
+  Sun, 
+  Moon,
+  Compass,
+  Film,
+  Menu
+} from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import SearchFilterModal from './SearchFilterModal';
 import './TopNav.css';
 
-function TopNav({ 
-  searchQuery, 
-  setSearchQuery, 
-  handleSearch, 
-  handleClearSearch, 
-  user, 
-  onLogout, 
-  onOpenAuthModal,
-  setView,
-  selectedStatus = 'all',
-  setSelectedStatus,
-  selectedYear = 'all',
-  setSelectedYear,
-  selectedGenre = 'all',
-  setSelectedGenre,
+export default function TopNav({
+  searchQuery = '',
+  setSearchQuery,
+  onOpenAuth,
+  activeFilters = {},
   onApplyFilters,
   onResetFilters
 }) {
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
-  const hasActiveFilters = 
-    selectedStatus !== 'all' || 
-    selectedYear !== 'all' || 
-    selectedGenre !== 'all';
+  const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      handleSearch();
+  // Detect scroll to transition from transparent to frosted glass
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 40) {
+        setScrolled(true);
+      } else {
+        setScrolled(false);
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/explore?query=${encodeURIComponent(searchQuery.trim())}`);
+      setMobileMenuOpen(false);
     }
   };
 
-  const handleModalApply = () => {
-    setIsFilterModalOpen(false);
-    if (onApplyFilters) {
-      onApplyFilters();
+  const handleGenresClick = (e) => {
+    e.preventDefault();
+    setMobileMenuOpen(false);
+    if (location.pathname !== '/') {
+      navigate('/explore');
+    } else {
+      const el = document.getElementById('genres-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
-  const handleModalReset = () => {
-    if (onResetFilters) {
-      onResetFilters();
-    }
-  };
+  const hasActiveFilters = Boolean(
+    activeFilters.genre || activeFilters.year || activeFilters.status
+  );
 
   return (
-    <header className="streamix-topnav">
-      {/* 1. Sleek Search Box with Embedded Filter Icon Button */}
-      <div className="streamix-search-dock">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="search-dock-icon">
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input
-          type="text"
-          className="search-dock-input"
-          placeholder="Search movies by title, genre, or keyword..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-        
-        {searchQuery && (
-          <button className="search-dock-clear" onClick={handleClearSearch} title="Clear search">
-            ✕
-          </button>
-        )}
-
-        {/* Filter Toggle Button on Right Corner of Search Bar */}
-        <button
-          className={`search-filter-btn ${hasActiveFilters ? 'active' : ''}`}
-          onClick={() => setIsFilterModalOpen(true)}
-          title="Filter by Year, Genre, Status"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="filter-icon-svg">
-            <line x1="4" y1="21" x2="4" y2="14" />
-            <line x1="4" y1="10" x2="4" y2="3" />
-            <line x1="12" y1="21" x2="12" y2="12" />
-            <line x1="12" y1="8" x2="12" y2="3" />
-            <line x1="20" y1="21" x2="20" y2="16" />
-            <line x1="20" y1="12" x2="20" y2="3" />
-            <line x1="1" y1="14" x2="7" y2="14" />
-            <line x1="9" y1="8" x2="15" y2="8" />
-            <line x1="17" y1="16" x2="23" y2="16" />
-          </svg>
-          {hasActiveFilters && <span className="filter-active-dot" />}
-        </button>
-      </div>
-
-      {/* 2. Right Icons: Notification & Profile */}
-      <div className="streamix-nav-right">
-        <button 
-          className="nav-round-icon-btn" 
-          onClick={() => alert("Notification: 3 new personalized movie recommendations ready for you!")}
-          title="Notifications"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-          </svg>
-          <span className="round-badge-dot" />
-        </button>
-
-        {user ? (
-          <div className="nav-user-dock" onClick={() => setShowUserDropdown(!showUserDropdown)}>
-            <div className="user-round-avatar">
-              {(user.username || 'U')[0].toUpperCase()}
+    <>
+      <header className={`streamix-topnav ${scrolled ? 'scrolled' : 'transparent'}`}>
+        {/* Left: Brand Logo & Nav Links */}
+        <div className="streamix-nav-left">
+          <div className="streamix-brand" onClick={() => navigate('/')}>
+            <div className="brand-logo-icon">
+              <Play className="w-4 h-4 fill-current" />
             </div>
-
-            {showUserDropdown && (
-              <div className="user-popup-card">
-                <div className="user-popup-info">
-                  <span className="popup-name">{user.username}</span>
-                  <span className="popup-email">{user.email || 'Free Member'}</span>
-                </div>
-                <hr className="popup-divider" />
-                <button className="popup-item" onClick={() => setView('watchlist')}>My Favourites</button>
-                <button className="popup-item" onClick={() => setView('chatbot')}>AI Assistant</button>
-                <hr className="popup-divider" />
-                <button className="popup-item logout" onClick={onLogout}>Sign Out</button>
-              </div>
-            )}
+            <span className="brand-name">
+              Movie<span className="brand-accent">Nex</span>
+            </span>
           </div>
-        ) : (
-          <button className="btn-signin-round" onClick={onOpenAuthModal}>
-            Sign In
-          </button>
-        )}
-      </div>
 
-      {/* Filter Modal Overlay */}
+          {/* Desktop Navigation Links */}
+          <nav className="streamix-nav-links">
+            <NavLink 
+              to="/" 
+              className={({ isActive }) => `nav-link-item ${isActive ? 'active' : ''}`}
+            >
+              Home
+            </NavLink>
+
+            <NavLink 
+              to="/explore" 
+              className={({ isActive }) => `nav-link-item ${isActive ? 'active' : ''}`}
+            >
+              Explore
+            </NavLink>
+
+            <a 
+              href="#genres" 
+              onClick={handleGenresClick} 
+              className="nav-link-item"
+            >
+              Genres
+            </a>
+
+            <NavLink 
+              to="/watchlist" 
+              className={({ isActive }) => `nav-link-item ${isActive ? 'active' : ''}`}
+            >
+              Favourites
+            </NavLink>
+
+            <NavLink 
+              to="/chatbot" 
+              className={({ isActive }) => `nav-link-item special-ai ${isActive ? 'active' : ''}`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>AI Assistant</span>
+            </NavLink>
+          </nav>
+        </div>
+
+        {/* Right: Search Dock, Theme, Auth */}
+        <div className="streamix-nav-right">
+          {/* Search Dock */}
+          <form className="streamix-search-dock" onSubmit={handleSearchSubmit}>
+            <Search className="search-dock-icon" />
+            <input
+              type="text"
+              placeholder="Search movies, cast, genres..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery && setSearchQuery(e.target.value)}
+              className="search-dock-input"
+            />
+
+            {searchQuery && (
+              <button
+                type="button"
+                className="search-dock-clear"
+                onClick={() => setSearchQuery && setSearchQuery('')}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              className={`search-filter-btn ${hasActiveFilters ? 'active' : ''}`}
+              onClick={() => setFilterModalOpen(true)}
+              title="Search Filters"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              {hasActiveFilters && <span className="filter-active-dot" />}
+            </button>
+          </form>
+
+          {/* Theme Toggle Button */}
+          <button 
+            className="nav-round-icon-btn" 
+            onClick={toggleTheme} 
+            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-500" />}
+          </button>
+
+          {/* User Profile / Auth */}
+          {user ? (
+            <div className="nav-user-dock">
+              <div 
+                className="user-round-avatar"
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                title={user.username}
+              >
+                {user.username ? user.username[0].toUpperCase() : 'U'}
+              </div>
+
+              {userMenuOpen && (
+                <div className="user-popup-card" onClick={() => setUserMenuOpen(false)}>
+                  <div className="user-popup-info">
+                    <span className="popup-name">{user.username}</span>
+                    <span className="popup-email">{user.email}</span>
+                  </div>
+                  <div className="popup-divider" />
+                  
+                  <button className="popup-item" onClick={() => navigate('/watchlist')}>
+                    <Bookmark className="w-4 h-4" />
+                    <span>My Watchlist</span>
+                  </button>
+
+                  <button className="popup-item logout" onClick={logout}>
+                    <LogOut className="w-4 h-4" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button className="btn-signin-round" onClick={onOpenAuth}>
+              <LogIn className="w-4 h-4" />
+              <span>Sign In</span>
+            </button>
+          )}
+
+          {/* Mobile Hamburger Toggle */}
+          <button 
+            className="mobile-hamburger-btn" 
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            title="Menu"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile Drawer Menu */}
+      {mobileMenuOpen && (
+        <div className="mobile-nav-drawer" onClick={() => setMobileMenuOpen(false)}>
+          <div className="mobile-drawer-card" onClick={(e) => e.stopPropagation()}>
+            <NavLink to="/" className="mobile-nav-item" onClick={() => setMobileMenuOpen(false)}>
+              <Film className="w-4 h-4" />
+              <span>Home</span>
+            </NavLink>
+            <NavLink to="/explore" className="mobile-nav-item" onClick={() => setMobileMenuOpen(false)}>
+              <Compass className="w-4 h-4" />
+              <span>Explore</span>
+            </NavLink>
+            <a href="#genres" className="mobile-nav-item" onClick={handleGenresClick}>
+              <SlidersHorizontal className="w-4 h-4" />
+              <span>Genres</span>
+            </a>
+            <NavLink to="/watchlist" className="mobile-nav-item" onClick={() => setMobileMenuOpen(false)}>
+              <Bookmark className="w-4 h-4" />
+              <span>Favourites</span>
+            </NavLink>
+            <NavLink to="/chatbot" className="mobile-nav-item special-ai" onClick={() => setMobileMenuOpen(false)}>
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+              <span>AI Assistant</span>
+            </NavLink>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Criteria Filter Modal */}
       <SearchFilterModal
-        isOpen={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
-        selectedStatus={selectedStatus}
-        setSelectedStatus={setSelectedStatus}
-        selectedYear={selectedYear}
-        setSelectedYear={setSelectedYear}
-        selectedGenre={selectedGenre}
-        setSelectedGenre={setSelectedGenre}
-        onApplyFilters={handleModalApply}
-        onResetFilters={handleModalReset}
+        isOpen={filterModalOpen}
+        onClose={() => setFilterModalOpen(false)}
+        activeFilters={activeFilters}
+        onApply={(filters) => {
+          if (onApplyFilters) onApplyFilters(filters);
+          setFilterModalOpen(false);
+          navigate('/explore');
+        }}
+        onReset={() => {
+          if (onResetFilters) onResetFilters();
+          setFilterModalOpen(false);
+        }}
       />
-    </header>
+    </>
   );
 }
-
-export default TopNav;

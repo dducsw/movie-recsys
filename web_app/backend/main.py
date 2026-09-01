@@ -54,6 +54,26 @@ app.include_router(events_router)
 app.include_router(auth_router)
 app.include_router(onboarding_router)
 
+# Prometheus Telemetry & Metrics Instrumentation
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator(
+        should_group_status_codes=False,
+        should_ignore_untemplated=True,
+        should_instrument_requests_inprogress=True,
+        excluded_handlers=["/metrics", "/docs", "/openapi.json"]
+    ).instrument(app)
+except Exception as e:
+    print(f"[Warning] Instrumentator setup encounter: {e}")
+
+from fastapi import Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+@app.get("/metrics")
+def metrics_endpoint():
+    """Prometheus telemetry & metrics exposition endpoint."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Movie Recommender System API! Go to /docs for API documentation."}
