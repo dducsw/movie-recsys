@@ -61,6 +61,14 @@ class FeatureStoreService:
         if not store:
             return {}
 
+        # Quick circuit-breaker: verify Redis is reachable before invoking Feast to avoid long socket timeouts
+        try:
+            from app.services.recsys import get_redis_client
+            if not get_redis_client():
+                return {}
+        except Exception:
+            return {}
+
         try:
             entity_rows = [{"movieId": mid} for mid in movie_ids]
             features_to_fetch = [

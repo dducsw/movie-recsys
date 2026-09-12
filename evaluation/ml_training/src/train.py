@@ -273,6 +273,8 @@ def main():
     )
 
     # Save artifacts (save both, but note the best one)
+    ml_training_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    target_path = os.path.join(ml_training_dir, "models.joblib")
     joblib.dump({
         "lgbm": lgb_model, "lgbm_cols": lgb_cols, 
         "lgb_category_maps": lgb_category_maps,  # Saved for recommend.py
@@ -280,8 +282,8 @@ def main():
         "user_feats": user_feats, "movie_feats": movie_feats,
         "config": CFG,
         "best_model": best_model_name
-    }, "models.joblib")
-    print(">>> Saved models.joblib")
+    }, target_path)
+    print(f">>> Saved models.joblib to {target_path}")
 
 if __name__ == "__main__":
     main()

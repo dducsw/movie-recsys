@@ -46,10 +46,9 @@ def load_and_split_data():
     df_movies["genres"] = df_movies["genres"].fillna("(no genres listed)")
     df_movies["popularity"] = pd.to_numeric(df_movies.get("popularity", 1.0), errors="coerce").fillna(1.0)
     df_movies["vote_average"] = pd.to_numeric(df_movies.get("vote_average", 5.0), errors="coerce").fillna(5.0)
-
-    ratings_path = os.path.join(REPO_ROOT, "data", "simulator", "sim_ratings.csv")
+    ratings_path = os.path.join(REPO_ROOT, "data", "ml-latest-small", "ratings.csv")
     if not os.path.exists(ratings_path):
-        ratings_path = os.path.join(REPO_ROOT, "data", "ml-latest-small", "ratings.csv")
+        ratings_path = os.path.join(REPO_ROOT, "data", "simulator", "sim_ratings.csv")
 
     df_ratings = pd.read_csv(ratings_path)
     if "movieid" in df_ratings.columns:
@@ -109,16 +108,77 @@ def train_retrieval_models(df_movies, train_ratings):
     return vectorizer, tfidf_matrix, als_map
 
 
+RANKING_FEATURES = [
+    "popularity",
+    "vote_average",
+    "genre_overlap",
+    "release_year",
+    "user_activity",
+    "user_bias",
+    "als_score",
+    "cb_score"
+]
+
+
 # ── Step 3: Ranking Model (LightGBM LambdaRank) Training ───────────────────────
 
-def train_ranking_model(df_movies, train_ratings):
-    """Build pairwise/listwise ranking features and train LightGBM Ranker."""
-    logger.info("--- [STAGE 2] Training LightGBM LambdaRanker ---")
+def _extract_movie_release_year(row):
+    if "release_date" in row and pd.notna(row["release_date"]):
+        s = str(row["release_date"]).strip()
+        if len(s) >= 4 and s[:4].isdigit():
+            return int(s[:4])
+    import re
+    title = str(row.get("title", ""))
+    m = re.search(r'\((\d{4})\)', title)
+    if m:
+        return int(m.group(1))
+    return 2010
 
-    movie_meta = df_movies.set_index("movieId")[["popularity", "vote_average"]].to_dict("index")
 
-    # Feature engineering for training pairs
-    X = []
+def train_ranking_model(df_movies, train_ratings, als_map=None):
+    """Build pairwise/listwise ranking features with 8 standard columns matching serving schema."""
+    logger.info("--- [STAGE 2] Training LightGBM LambdaRanker (8 Features) ---")
+
+    if "release_year" not in df_movies.columns:
+        df_movies["release_year"] = [_extract_movie_release_year(r) for _, r in df_movies.iterrows()]
+
+    movie_meta = {}
+    for _, r in df_movies.iterrows():
+        mid = int(r["movieId"])
+        g_str = str(r.get("genres", "") or "")
+        g_set = set(g_str.split("|")) if g_str else set()
+        movie_meta[mid] = {
+            "popularity": float(r.get("popularity", 1.0)),
+            "vote_average": float(r.get("vote_average", 5.0)),
+            "release_year": float(r.get("release_year", 2010)),
+            "genres": g_set,
+            "als_vec": als_map.get(mid) if als_map else None
+        }
+
+    global_avg_rating = float(train_ratings["rating"].mean())
+
+    # Precompute user profiles
+    user_profiles = {}
+    for uid, g in train_ratings.groupby("userId"):
+        u_activity = float(min(len(g), 20))
+        u_bias = float(g["rating"].mean() - global_avg_rating)
+        liked_mids = g[g["rating"] >= 3.0]["movieId"].values
+        u_genres = set()
+        u_als_vecs = []
+        for mid in liked_mids:
+            if mid in movie_meta:
+                u_genres.update(movie_meta[mid]["genres"])
+                if movie_meta[mid]["als_vec"] is not None:
+                    u_als_vecs.append(movie_meta[mid]["als_vec"])
+        avg_als_vec = np.mean(u_als_vecs, axis=0) if u_als_vecs else None
+        user_profiles[uid] = {
+            "activity": u_activity,
+            "bias": u_bias,
+            "genres": u_genres,
+            "als_vec": avg_als_vec
+        }
+
+    feature_rows = []
     y = []
     groups = []
 
@@ -127,21 +187,46 @@ def train_ranking_model(df_movies, train_ratings):
         if g_len < 2:
             continue
         groups.append(g_len)
-        for _, row in g.iterrows():
-            m_id = row["movieId"]
-            meta = movie_meta.get(m_id, {"popularity": 1.0, "vote_average": 5.0})
-            pop = float(meta.get("popularity", 1.0))
-            vote = float(meta.get("vote_average", 5.0))
-            rating = float(row["rating"])
+        u_prof = user_profiles.get(uid, {"activity": 1.0, "bias": 0.0, "genres": set(), "als_vec": None})
 
-            # Feature vector: [popularity, vote_average, user_rating_proxy]
-            features = [pop, vote, np.log1p(pop), vote / 10.0]
-            X.append(features)
-            # Relevance label: rating mapped to integer relevance (0-4)
+        for _, row in g.iterrows():
+            m_id = int(row["movieId"])
+            meta = movie_meta.get(m_id, {
+                "popularity": 1.0,
+                "vote_average": 5.0,
+                "release_year": 2010.0,
+                "genres": set(),
+                "als_vec": None
+            })
+
+            genre_overlap = float(len(u_prof["genres"].intersection(meta["genres"])))
+            cb_score = float(genre_overlap * 2.0)
+
+            # ALS score as dot product between user ALS vector and movie ALS vector
+            als_score = 0.0
+            if u_prof["als_vec"] is not None and meta["als_vec"] is not None:
+                try:
+                    als_score = float(np.dot(u_prof["als_vec"], meta["als_vec"]))
+                except Exception:
+                    als_score = 0.0
+
+            feat = {
+                "popularity": meta["popularity"],
+                "vote_average": meta["vote_average"],
+                "genre_overlap": genre_overlap,
+                "release_year": meta["release_year"],
+                "user_activity": u_prof["activity"],
+                "user_bias": u_prof["bias"],
+                "als_score": als_score,
+                "cb_score": cb_score
+            }
+            feature_rows.append(feat)
+
+            rating = float(row["rating"])
             relevance = int(min(max(round(rating - 1), 0), 4))
             y.append(relevance)
 
-    X = np.array(X, dtype=np.float32)
+    X = pd.DataFrame(feature_rows)[RANKING_FEATURES].astype(np.float32)
     y = np.array(y, dtype=np.int32)
 
     ranker = lgb.LGBMRanker(
@@ -161,29 +246,66 @@ def train_ranking_model(df_movies, train_ratings):
     model_path = os.path.join(MODELS_DIR, "lgb_ranker.pkl")
     with open(model_path, "wb") as f:
         pickle.dump(ranker, f)
-    logger.info(f"Saved LightGBM Ranker to {model_path}.")
+    logger.info(f"Saved LightGBM Ranker (8 features) to {model_path}.")
 
     return ranker
 
 
 # ── Step 4: Metric Evaluation & Quality Gate ───────────────────────────────────
 
-def evaluate_pipeline(ranker, df_movies, test_ratings, k=10):
-    """Evaluate Hit-Ratio@K, NDCG@K, Diversity, and inference latency."""
+def evaluate_pipeline(ranker, df_movies, test_ratings, train_ratings, als_map=None, k=10):
+    """Evaluate Hit-Ratio@K, NDCG@K, Diversity, and inference latency using the 8-feature schema."""
     logger.info("--- [STAGE 3] Evaluating End-to-End Metrics & Quality Gate ---")
 
-    movie_meta = df_movies.set_index("movieId")[["popularity", "vote_average", "genres"]].to_dict("index")
+    if "release_year" not in df_movies.columns:
+        df_movies["release_year"] = [_extract_movie_release_year(r) for _, r in df_movies.iterrows()]
+
+    movie_meta = {}
+    for _, r in df_movies.iterrows():
+        mid = int(r["movieId"])
+        g_str = str(r.get("genres", "") or "")
+        g_set = set(g_str.split("|")) if g_str else set()
+        movie_meta[mid] = {
+            "popularity": float(r.get("popularity", 1.0)),
+            "vote_average": float(r.get("vote_average", 5.0)),
+            "release_year": float(r.get("release_year", 2010)),
+            "genres": g_set,
+            "als_vec": als_map.get(mid) if als_map else None
+        }
+
+    global_avg_rating = float(train_ratings["rating"].mean())
+    user_profiles = {}
+    for uid, g in train_ratings.groupby("userId"):
+        u_activity = float(min(len(g), 20))
+        u_bias = float(g["rating"].mean() - global_avg_rating)
+        liked_mids = g[g["rating"] >= 3.0]["movieId"].values
+        u_genres = set()
+        u_als_vecs = []
+        for mid in liked_mids:
+            if mid in movie_meta:
+                u_genres.update(movie_meta[mid]["genres"])
+                if movie_meta[mid]["als_vec"] is not None:
+                    u_als_vecs.append(movie_meta[mid]["als_vec"])
+        avg_als_vec = np.mean(u_als_vecs, axis=0) if u_als_vecs else None
+        user_profiles[uid] = {
+            "activity": u_activity,
+            "bias": u_bias,
+            "genres": u_genres,
+            "als_vec": avg_als_vec
+        }
 
     hr_list = []
     ndcg_list = []
     latencies = []
 
     for _, test_row in test_ratings.head(200).iterrows():
-        gt_movie = test_row["movieId"]
+        gt_movie = int(test_row["movieId"])
+        uid = test_row["userId"]
+        u_prof = user_profiles.get(uid, {"activity": 1.0, "bias": 0.0, "genres": set(), "als_vec": None})
 
         # 99 negative samples + 1 ground truth
         candidates = [gt_movie]
-        all_other_movies = [m for m in df_movies["movieId"].values if m != gt_movie]
+        all_other_movies = [int(m) for m in df_movies["movieId"].values if int(m) != gt_movie]
         neg_samples = np.random.choice(all_other_movies, size=min(99, len(all_other_movies)), replace=False)
         candidates.extend(neg_samples)
 
@@ -191,12 +313,35 @@ def evaluate_pipeline(ranker, df_movies, test_ratings, k=10):
         t0 = time.perf_counter()
         c_features = []
         for cid in candidates:
-            meta = movie_meta.get(cid, {"popularity": 1.0, "vote_average": 5.0})
-            pop = float(meta.get("popularity", 1.0))
-            vote = float(meta.get("vote_average", 5.0))
-            c_features.append([pop, vote, np.log1p(pop), vote / 10.0])
+            meta = movie_meta.get(cid, {
+                "popularity": 1.0,
+                "vote_average": 5.0,
+                "release_year": 2010.0,
+                "genres": set(),
+                "als_vec": None
+            })
+            genre_overlap = float(len(u_prof["genres"].intersection(meta["genres"])))
+            cb_score = float(genre_overlap * 2.0)
+            als_score = 0.0
+            if u_prof["als_vec"] is not None and meta["als_vec"] is not None:
+                try:
+                    als_score = float(np.dot(u_prof["als_vec"], meta["als_vec"]))
+                except Exception:
+                    als_score = 0.0
 
-        scores = ranker.predict(np.array(c_features, dtype=np.float32))
+            c_features.append({
+                "popularity": meta["popularity"],
+                "vote_average": meta["vote_average"],
+                "genre_overlap": genre_overlap,
+                "release_year": meta["release_year"],
+                "user_activity": u_prof["activity"],
+                "user_bias": u_prof["bias"],
+                "als_score": als_score,
+                "cb_score": cb_score
+            })
+
+        c_df = pd.DataFrame(c_features)[RANKING_FEATURES].astype(np.float32)
+        scores = ranker.predict(c_df)
         t1 = time.perf_counter()
         latencies.append((t1 - t0) * 1000.0)
 
@@ -268,7 +413,7 @@ def run_pipeline():
     df_movies, train_ratings, test_ratings = load_and_split_data()
 
     # 2. Train Retrieval models
-    train_retrieval_models(df_movies, train_ratings)
+    vectorizer, tfidf_matrix, als_map = train_retrieval_models(df_movies, train_ratings)
 
     # 3. Train Ranking model
     params = {
@@ -278,10 +423,10 @@ def run_pipeline():
         "min_child_samples": 5,
         "objective": "lambdarank"
     }
-    ranker = train_ranking_model(df_movies, train_ratings)
+    ranker = train_ranking_model(df_movies, train_ratings, als_map=als_map)
 
     # 4. Evaluate & Quality Gate
-    metrics = evaluate_pipeline(ranker, df_movies, test_ratings, k=10)
+    metrics = evaluate_pipeline(ranker, df_movies, test_ratings, train_ratings, als_map=als_map, k=10)
 
     # 5. MLflow Tracking
     log_to_mlflow(ranker, metrics, params)
