@@ -32,12 +32,19 @@ _ranker_model = None
 def get_redis_client():
     global _redis_client
     if _redis_client is not None:
-        return _redis_client
+        return _redis_client if _redis_client is not False else None
     try:
         import redis
-        host = os.getenv("REDIS_HOST", "localhost")
+        host = os.getenv("REDIS_HOST", "127.0.0.1")
         port = int(os.getenv("REDIS_PORT", 6379))
-        client = redis.Redis(host=host, port=port, db=0, decode_responses=True, socket_timeout=1.0)
+        client = redis.Redis(
+            host=host, 
+            port=port, 
+            db=0, 
+            decode_responses=True, 
+            socket_timeout=0.1,
+            socket_connect_timeout=0.1
+        )
         client.ping()
         _redis_client = client
         logger.info("Connected to Redis online feature store.")
