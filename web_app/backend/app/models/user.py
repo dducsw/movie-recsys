@@ -52,9 +52,34 @@ def init_db_tables():
             );
         """)
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS movie_comments (
+                id SERIAL PRIMARY KEY,
+                movie_id INTEGER NOT NULL,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                parent_id INTEGER REFERENCES movie_comments(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_movie_comments_movie_id ON movie_comments(movie_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_movie_comments_parent_id ON movie_comments(parent_id);")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS comment_likes (
+                id SERIAL PRIMARY KEY,
+                comment_id INTEGER REFERENCES movie_comments(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(comment_id, user_id)
+            );
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_comment_likes_comment_id ON comment_likes(comment_id);")
+
         conn.commit()
         cur.close()
-        logger.info("Successfully initialized PostgreSQL User tables.")
+        logger.info("Successfully initialized PostgreSQL User and Comment tables.")
     except Exception as e:
         logger.error(f"Failed to initialize user DB tables: {e}")
         if conn:
@@ -88,8 +113,36 @@ class UserModel:
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            query = "SELECT * FROM users WHERE email = %s;"
-            cur.execute(query, (email,))
+            query = "SELECT * FROM users WHERE LOWER(email) = LOWER(%s);"
+            cur.execute(query, (email.strip(),))
+            row = cur.fetchone()
+            return dict(row) if row else None
+        finally:
+            cur.close()
+            conn.close()
+
+    @staticmethod
+    def get_by_username(username: str) -> Optional[Dict[str, Any]]:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            query = "SELECT * FROM users WHERE LOWER(username) = LOWER(%s);"
+            cur.execute(query, (username.strip(),))
+            row = cur.fetchone()
+            return dict(row) if row else None
+        finally:
+            cur.close()
+            conn.close()
+
+    @staticmethod
+    def get_by_identifier(identifier: str) -> Optional[Dict[str, Any]]:
+        """Find user by either email or username."""
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            ident = identifier.strip().lower()
+            query = "SELECT * FROM users WHERE LOWER(email) = %s OR LOWER(username) = %s LIMIT 1;"
+            cur.execute(query, (ident, ident))
             row = cur.fetchone()
             return dict(row) if row else None
         finally:

@@ -19,6 +19,7 @@ from app.services.metrics import (
     RECSYS_CANDIDATES_COUNT,
 )
 from app.services.feature_store import FeatureStoreService
+from app.services.ml_training_service import MLTrainingModelService
 
 logger = logging.getLogger(__name__)
 
@@ -247,8 +248,14 @@ class RecsysService:
         return list(candidates.values())
 
     @staticmethod
-    def _stage_2_ranking(candidates: List[Dict[str, Any]], target_genres: set, liked_count: int = 1) -> List[Dict[str, Any]]:
-        """Stage 2: Score candidates using LightGBM LambdaRanker model feature matrix."""
+    def _stage_2_ranking(
+        candidates: List[Dict[str, Any]],
+        target_genres: set,
+        liked_count: int = 1,
+        user_id: Optional[int] = None,
+        liked_movie_ids: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """Stage 2: Score candidates using ml_training CatBoost/LightGBM model or LambdaRanker fallback."""
         if not candidates:
             return []
 
@@ -256,7 +263,29 @@ class RecsysService:
         movies_data = MovieModel.get_by_ids(cand_ids)
         movie_dict = {m["movieId"]: m for m in movies_data}
 
-        # Retrieve online features from Feast Feature Store (Redis)
+        # 1. Primary: Score candidates using CatBoost + LightGBM ensemble from ml_training
+        try:
+            ml_scores = MLTrainingModelService.score_candidates(
+                candidate_ids=cand_ids,
+                user_id=user_id,
+                liked_movie_ids=liked_movie_ids,
+                target_genres=target_genres
+            )
+            if ml_scores:
+                valid_candidates = []
+                for cand in candidates:
+                    m_id = cand["movieId"]
+                    if m_id in movie_dict:
+                        movie = dict(movie_dict[m_id])
+                        movie["rank_score"] = float(ml_scores.get(m_id, 0.0))
+                        valid_candidates.append(movie)
+                if valid_candidates:
+                    valid_candidates.sort(key=lambda x: (x.get("rank_score", 0.0), x.get("popularity", 0.0) or 0.0), reverse=True)
+                    return valid_candidates
+        except Exception as e:
+            logger.warning(f"ml_training scoring encountered error: {e}. Continuing with fallback...")
+
+        # 2. Fallback: Retrieve online features from Feast Feature Store (Redis) + LightGBM ranker
         feast_features = FeatureStoreService.get_online_movie_features(cand_ids)
 
         ranker = get_ranker_model()
@@ -309,7 +338,6 @@ class RecsysService:
         if ranker is not False and len(feature_rows) > 0:
             try:
                 feat_df = pd.DataFrame(feature_rows)
-                # Feature order matching ranker model
                 cols = ['popularity', 'vote_average', 'genre_overlap', 'release_year', 'user_activity', 'user_bias', 'als_score', 'cb_score']
                 feat_df = feat_df[cols]
                 scores = ranker.predict(feat_df)
@@ -321,12 +349,10 @@ class RecsysService:
                     score = (feat["genre_overlap"] * 10.0) + (feat["als_score"] * 5.0) + (feat["vote_average"] * 0.5)
                     valid_candidates[idx]["rank_score"] = score
         else:
-            # Fallback heuristic score
             for idx, feat in enumerate(feature_rows):
                 score = (feat["genre_overlap"] * 10.0) + (feat["als_score"] * 5.0) + (feat["vote_average"] * 0.5)
                 valid_candidates[idx]["rank_score"] = score
 
-        # Sort descending by rank score
         valid_candidates.sort(key=lambda x: (x.get("rank_score", 0.0), x.get("popularity", 0.0) or 0.0), reverse=True)
         return valid_candidates
 
@@ -412,13 +438,20 @@ class RecsysService:
         return res
 
     @classmethod
-    def get_personalized_recommendations(cls, liked_movie_ids: List[int], limit: int = 20) -> List[Dict[str, Any]]:
+    def get_personalized_recommendations(
+        cls,
+        liked_movie_ids: List[int],
+        limit: int = 20,
+        user_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """Public API: 3-Stage Recommendation for Personalized User Feed."""
         if not liked_movie_ids:
+            if user_id:
+                return cls.get_user_recommendations(user_id, limit=limit)
             return MovieModel.get_trending(page=1, limit=limit)
 
         sorted_ids = sorted(liked_movie_ids)
-        cache_key = f"personalized:{','.join(map(str, sorted_ids))}:{limit}"
+        cache_key = f"personalized:{user_id or 0}:{','.join(map(str, sorted_ids))}:{limit}"
         cached = recsys_cache.get(cache_key)
         if cached is not None:
             RECSYS_CACHE_HITS.labels(cache_type="personalized_l1").inc()
@@ -436,9 +469,15 @@ class RecsysService:
             raw_candidates = cls._stage_1_retrieval_personalized(liked_movie_ids, limit=100)
         RECSYS_CANDIDATES_COUNT.labels(stage="stage_1_retrieval").observe(len(raw_candidates))
 
-        # Stage 2: Ranking
+        # Stage 2: Ranking with ML Training Model
         with track_stage_latency("stage_2_ranking"):
-            ranked_candidates = cls._stage_2_ranking(raw_candidates, target_genres, liked_count=len(liked_movie_ids))
+            ranked_candidates = cls._stage_2_ranking(
+                raw_candidates,
+                target_genres,
+                liked_count=len(liked_movie_ids),
+                user_id=user_id,
+                liked_movie_ids=liked_movie_ids
+            )
         RECSYS_CANDIDATES_COUNT.labels(stage="stage_2_ranking").observe(len(ranked_candidates))
 
         # Filter out already liked movies
@@ -462,3 +501,22 @@ class RecsysService:
         recsys_cache.set(cache_key, res, ttl_seconds=180)
         RECSYS_REQUESTS_TOTAL.labels(endpoint="personalized_recommendations", status="success").inc()
         return res
+
+    @classmethod
+    def get_user_recommendations(cls, user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+        """Direct recommendations using CatBoost + LightGBM model from ml_training."""
+        cache_key = f"user_ml_recs:{user_id}:{limit}"
+        cached = recsys_cache.get(cache_key)
+        if cached is not None:
+            RECSYS_CACHE_HITS.labels(cache_type="user_ml_recs").inc()
+            return cached
+
+        RECSYS_CACHE_MISSES.labels(cache_type="user_ml_recs").inc()
+        recs = MLTrainingModelService.recommend_for_user(user_id=user_id, top_k=limit)
+        if not recs:
+            recs = MovieModel.get_trending(page=1, limit=limit)
+
+        recsys_cache.set(cache_key, recs, ttl_seconds=300)
+        RECSYS_REQUESTS_TOTAL.labels(endpoint="user_recommendations", status="success").inc()
+        return recs
+

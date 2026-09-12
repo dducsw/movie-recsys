@@ -18,6 +18,7 @@ from app import (
     events_router,
     auth_router,
     onboarding_router,
+    comment_router,
     init_db_tables
 )
 
@@ -53,6 +54,8 @@ app.include_router(chatbot_router)
 app.include_router(events_router)
 app.include_router(auth_router)
 app.include_router(onboarding_router)
+app.include_router(comment_router)
+
 
 # Prometheus Telemetry & Metrics Instrumentation
 try:
@@ -67,12 +70,19 @@ except Exception as e:
     print(f"[Warning] Instrumentator setup encounter: {e}")
 
 from fastapi import Response
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+try:
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+except ImportError:
+    generate_latest = None
+    CONTENT_TYPE_LATEST = "text/plain"
 
 @app.get("/metrics")
 def metrics_endpoint():
     """Prometheus telemetry & metrics exposition endpoint."""
-    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    if generate_latest is not None:
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return Response(content="# Prometheus telemetry disabled\n", media_type="text/plain")
+
 
 @app.get("/")
 def read_root():

@@ -6,6 +6,39 @@
   position: relative;
 }
 
+.backend-offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(245, 158, 11, 0.15);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  font-size: 0.85rem;
+  padding: 8px 16px;
+  z-index: 50;
+  backdrop-filter: blur(8px);
+}
+
+.btn-retry-backend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245, 158, 11, 0.25);
+  color: #fff;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-retry-backend:hover {
+  background: rgba(245, 158, 11, 0.45);
+}
+
 .home-genres-dock {
   padding: 10px 54px 20px 54px;
 }

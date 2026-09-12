@@ -1,33 +1,86 @@
-import time
-import threading
+import os
+import json
+import logging
 from typing import Any, Optional
 
-class SimpleTTLCache:
-    """Thread-safe in-memory TTL cache fallback for RecSys results."""
-    def __init__(self, default_ttl_seconds: int = 300):
-        self._cache = {}
-        self._lock = threading.Lock()
-        self._default_ttl = default_ttl_seconds
+logger = logging.getLogger(__name__)
 
+_redis_client = None
+
+
+def get_cache_client():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client if _redis_client is not False else None
+
+    try:
+        import redis
+        host = os.getenv("REDIS_HOST", "localhost")
+        port = int(os.getenv("REDIS_PORT", 6379))
+        client = redis.Redis(
+            host=host,
+            port=port,
+            db=1,  # use db 1 for app object caching
+            decode_responses=True,
+            socket_timeout=0.5,
+            socket_connect_timeout=0.5
+        )
+        client.ping()
+        _redis_client = client
+        logger.info(f"Connected to Redis Cache at {host}:{port}")
+    except Exception as e:
+        logger.warning(f"Redis Cache unavailable ({e}), caching disabled.")
+        _redis_client = False
+
+    return _redis_client if _redis_client is not False else None
+
+
+def cache_get(key: str) -> Optional[Any]:
+    client = get_cache_client()
+    if not client:
+        return None
+    try:
+        val = client.get(key)
+        if val:
+            return json.loads(val)
+    except Exception as e:
+        logger.debug(f"Cache get error for {key}: {e}")
+    return None
+
+
+def cache_set(key: str, value: Any, ttl_seconds: int = 300) -> bool:
+    client = get_cache_client()
+    if not client:
+        return False
+    try:
+        client.setex(key, ttl_seconds, json.dumps(value, default=str))
+        return True
+    except Exception as e:
+        logger.debug(f"Cache set error for {key}: {e}")
+    return False
+
+
+def cache_delete(key: str) -> bool:
+    client = get_cache_client()
+    if not client:
+        return False
+    try:
+        client.delete(key)
+        return True
+    except Exception:
+        return False
+
+
+class RecsysCacheWrapper:
+    """Wrapper providing .get() and .set() interface matching recsys service usage."""
     def get(self, key: str) -> Optional[Any]:
-        with self._lock:
-            item = self._cache.get(key)
-            if not item:
-                return None
-            val, expire_time = item
-            if time.time() > expire_time:
-                del self._cache[key]
-                return None
-            return val
+        return cache_get(key)
 
-    def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None):
-        ttl = ttl_seconds if ttl_seconds is not None else self._default_ttl
-        expire_time = time.time() + ttl
-        with self._lock:
-            self._cache[key] = (value, expire_time)
+    def set(self, key: str, value: Any, ttl_seconds: int = 300) -> bool:
+        return cache_set(key, value, ttl_seconds=ttl_seconds)
 
-    def clear(self):
-        with self._lock:
-            self._cache.clear()
+    def delete(self, key: str) -> bool:
+        return cache_delete(key)
 
-recsys_cache = SimpleTTLCache(default_ttl_seconds=300)
+
+recsys_cache = RecsysCacheWrapper()
