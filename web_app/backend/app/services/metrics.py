@@ -2,14 +2,34 @@
 web_app/backend/app/services/metrics.py
 ---------------------------------------
 Prometheus metrics registry and telemetry collectors for MovieNex RecSys.
+Includes robust no-op mock fallback if prometheus_client is not installed.
 """
 
 import time
 from contextlib import contextmanager
 import logging
-from prometheus_client import Counter, Histogram
 
 logger = logging.getLogger(__name__)
+
+try:
+    from prometheus_client import Counter, Histogram
+    HAS_PROMETHEUS = True
+except ImportError:
+    HAS_PROMETHEUS = False
+    logger.info("prometheus_client not installed. Using lightweight telemetry fallbacks.")
+
+    class _MockMetric:
+        def __init__(self, *args, **kwargs):
+            pass
+        def labels(self, *args, **kwargs):
+            return self
+        def inc(self, *args, **kwargs):
+            pass
+        def observe(self, *args, **kwargs):
+            pass
+
+    Counter = _MockMetric
+    Histogram = _MockMetric
 
 # Request Counter
 RECSYS_REQUESTS_TOTAL = Counter(
@@ -22,8 +42,7 @@ RECSYS_REQUESTS_TOTAL = Counter(
 RECSYS_STAGE_LATENCY_SECONDS = Histogram(
     "recsys_stage_latency_seconds",
     "Execution latency in seconds for recommendation pipeline stages",
-    ["stage"],
-    buckets=(0.001, 0.005, 0.010, 0.020, 0.050, 0.100, 0.250, 0.500, 1.0)
+    ["stage"]
 )
 
 # Cache Hit & Miss Counters
@@ -43,8 +62,7 @@ RECSYS_CACHE_MISSES = Counter(
 RECSYS_CANDIDATES_COUNT = Histogram(
     "recsys_candidates_count",
     "Number of candidates processed at each stage",
-    ["stage"],
-    buckets=(1, 5, 10, 20, 50, 80, 100, 150, 200, 300)
+    ["stage"]
 )
 
 

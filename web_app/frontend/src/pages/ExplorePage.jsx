@@ -108,29 +108,63 @@ export default function ExplorePage() {
         </div>
       )}
 
-      {/* Pagination */}
-      {movies.length >= 20 && (
-        <div className="explore-pagination">
-          <button
-            className="btn-explore-page"
-            onClick={() => handlePageChange(Math.max(1, pageParam - 1))}
-            disabled={pageParam <= 1}
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span>Previous</span>
-          </button>
-          
-          <span className="explore-page-tag">
-            Page {pageParam}
-          </span>
+      {/* Centered Modern Pagination Dock */}
+      {(movies.length >= 20 || pageParam > 1) && (
+        <div className="explore-pagination-wrapper">
+          <div className="explore-pagination-dock">
+            <button
+              className="explore-nav-btn"
+              onClick={() => handlePageChange(Math.max(1, pageParam - 1))}
+              disabled={pageParam <= 1}
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Trang trước</span>
+            </button>
 
-          <button
-            className="btn-explore-page"
-            onClick={() => handlePageChange(pageParam + 1)}
-          >
-            <span>Next</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
+            {pageParam > 2 && (
+              <button
+                className="explore-page-num-btn"
+                onClick={() => handlePageChange(1)}
+              >
+                1
+              </button>
+            )}
+
+            {pageParam > 3 && <span className="explore-dots">...</span>}
+
+            {pageParam > 1 && (
+              <button
+                className="explore-page-num-btn"
+                onClick={() => handlePageChange(pageParam - 1)}
+              >
+                {pageParam - 1}
+              </button>
+            )}
+
+            <span className="explore-page-active-pill">
+              {pageParam}
+            </span>
+
+            {movies.length >= 20 && (
+              <button
+                className="explore-page-num-btn"
+                onClick={() => handlePageChange(pageParam + 1)}
+              >
+                {pageParam + 1}
+              </button>
+            )}
+
+            <button
+              className="explore-nav-btn next-btn"
+              onClick={() => handlePageChange(pageParam + 1)}
+              disabled={movies.length < 20}
+              title="Next Page"
+            >
+              <span>Trang sau</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
     </div>

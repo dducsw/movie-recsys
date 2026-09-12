@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { X, Lock, Mail, User, LogIn, UserPlus } from 'lucide-react';
+import { X, Lock, Mail, User, LogIn, UserPlus, Sparkles } from 'lucide-react';
 import { API_BASE_URL } from '../api/client';
 import './AuthModal.css';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState(''); // Email or Username for login
+  const [email, setEmail] = useState('');           // Email for register
+  const [username, setUsername] = useState('');     // Optional username for register
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,8 +21,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
     const endpoint = isLogin ? '/auth/login' : '/auth/register';
     const payload = isLogin
-      ? { email, password }
-      : { username, email, password };
+      ? { identifier: identifier.trim(), password }
+      : { email: email.trim().toLowerCase(), password, username: username.trim() || undefined };
 
     try {
       const res = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -32,10 +33,10 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || 'Authentication failed');
+        throw new Error(data.detail || 'Xác thực thất bại. Vui lòng thử lại.');
       }
 
-      // Save token
+      // Save token and user info
       localStorage.setItem('auth_token', data.access_token);
       localStorage.setItem('user_info', JSON.stringify(data.user));
 
@@ -53,56 +54,80 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   return (
     <div className="auth-modal-overlay" onClick={onClose}>
       <div className="auth-modal-card" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="auth-modal-close">
+        <button onClick={onClose} className="auth-modal-close" aria-label="Đóng">
           <X className="w-4 h-4" />
         </button>
 
-        <h2 className="auth-modal-title">
-          {isLogin ? 'Sign In to MovieNex' : 'Create a MovieNex Account'}
-        </h2>
-        <p className="auth-modal-subtitle">
-          {isLogin
-            ? 'Sign in to access personalized movie recommendations in real-time'
-            : 'Join to track watched movies and receive AI recommendations'}
-        </p>
+        <div className="auth-modal-header">
+          <h2 className="auth-modal-title">
+            {isLogin ? 'Đăng Nhập MovieNex' : 'Đăng Ký Tài Khoản'}
+          </h2>
+          <p className="auth-modal-subtitle">
+            {isLogin
+              ? 'Đăng nhập để trải nghiệm hệ thống gợi ý phim cá nhân hóa thời gian thực'
+              : 'Đăng ký nhanh chóng bằng Email để lưu phim yêu thích & nhận gợi ý AI'}
+          </p>
+        </div>
 
-        {error && <div className="auth-modal-error">{error}</div>}
+        {error && (
+          <div className="auth-modal-error">
+            <span>{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="auth-modal-form">
-          {!isLogin && (
+          {isLogin ? (
+            /* Login Mode: Email or Username */
             <div className="auth-input-group">
-              <User className="auth-input-icon" />
+              <Mail className="auth-input-icon" />
               <input
                 type="text"
-                placeholder="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Email hoặc Tên người dùng"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
                 className="auth-input"
+                autoFocus
               />
             </div>
-          )}
+          ) : (
+            /* Register Mode: Email required, Username optional */
+            <>
+              <div className="auth-input-group">
+                <Mail className="auth-input-icon" />
+                <input
+                  type="email"
+                  placeholder="Địa chỉ Email (Bắt buộc)"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="auth-input"
+                  autoFocus
+                />
+              </div>
 
-          <div className="auth-input-group">
-            <Mail className="auth-input-icon" />
-            <input
-              type="email"
-              placeholder="Email Address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="auth-input"
-            />
-          </div>
+              <div className="auth-input-group">
+                <User className="auth-input-icon" />
+                <input
+                  type="text"
+                  placeholder="Tên hiển thị (Tùy chọn, để trống sẽ tự tạo)"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="auth-input"
+                />
+              </div>
+            </>
+          )}
 
           <div className="auth-input-group">
             <Lock className="auth-input-icon" />
             <input
               type="password"
-              placeholder="Password"
+              placeholder="Mật khẩu (Tối thiểu 6 ký tự)"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              minLength={6}
               className="auth-input"
             />
           </div>
@@ -113,12 +138,12 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
             disabled={loading}
           >
             {isLogin ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-            <span>{loading ? 'Processing...' : isLogin ? 'Sign In' : 'Register Account'}</span>
+            <span>{loading ? 'Đang xử lý...' : isLogin ? 'Đăng Nhập' : 'Đăng Ký Bằng Email'}</span>
           </button>
         </form>
 
         <div className="auth-toggle-mode">
-          {isLogin ? "Don't have an account? " : "Already have an account? "}
+          {isLogin ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? '}
           <button
             type="button"
             className="auth-toggle-btn"
@@ -127,7 +152,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
               setError('');
             }}
           >
-            {isLogin ? 'Sign Up' : 'Sign In'}
+            {isLogin ? 'Đăng Ký Ngay' : 'Đăng Nhập'}
           </button>
         </div>
       </div>

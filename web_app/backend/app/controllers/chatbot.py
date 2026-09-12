@@ -5,6 +5,9 @@ from app.services.chatbot import ChatbotService
 from app.services.event_producer import emit, EventType
 from app.services.session import get_session_id
 
+from app.services.auth_service import get_current_user_optional
+from app.models.user import UserModel
+
 router = APIRouter(prefix="/api/chatbot", tags=["Chatbot"])
 
 class ChatRequest(BaseModel):
@@ -25,18 +28,32 @@ class ClearResponse(BaseModel):
     session_id: str
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional)
+):
     """
-    Send a message and get AI response with movie recommendation.
+    Send a message and get personalized AI response with movie recommendations.
     """
+    user_id = current_user["id"] if current_user else None
+    user_liked_ids = []
+    if user_id:
+        try:
+            watchlist = UserModel.get_user_watchlist(user_id)
+            user_liked_ids = [w["movie_id"] for w in watchlist]
+        except Exception:
+            pass
+
     try:
         result = ChatbotService.get_reply(
             message=request.message,
-            session_id=request.session_id
+            session_id=request.session_id,
+            user_id=user_id,
+            user_liked_ids=user_liked_ids
         )
         emit(
             EventType.CHATBOT_MESSAGE,
-            user_id=request.session_id or "anonymous",
+            user_id=str(user_id) if user_id else (request.session_id or "anonymous"),
             extra={
                 "message_len": len(request.message),
                 "result_movie_count": len(result.get("movies", [])),

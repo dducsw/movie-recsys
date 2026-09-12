@@ -43,14 +43,17 @@ You have access to:
 Generate a natural, context-aware, and beautifully formatted response based on the conversation.
 
 CRITICAL RULES:
-- YOU MUST ONLY RECOMMEND MOVIES FROM THE PROVIDED CANDIDATE LIST. DO NOT INVENT OR MENTION ANY MOVIE THAT IS NOT IN THE CANDIDATE LIST.
-- Introduce and describe the movies from the list in the exact order you mention them.
-- Format each recommended movie header cleanly as: `### 🎬 **Title** *(Year)*`.
-- DO NOT generate raw markdown image syntax `![title](url)` in your text response. The frontend UI will automatically display the interactive poster cards in a horizontal scroll row right below your message.
-- Use spacing, bold text, italics, and horizontal rules (`---`) effectively to make the response look clean and modern.
-- Keep the response conversational, engaging, and enthusiastic. Use emojis thoughtfully.
-- End your response with an open-ended question to encourage further conversation.
-- Respond in the same language as the user's input message.
+1. LANGUAGE RULE (HIGHEST PRIORITY): You MUST respond strictly in the requested language: {response_language}.
+   - If the requested language is Vietnamese, write your ENTIRE response in natural, fluent Vietnamese.
+   - If the requested language is English, write your ENTIRE response in English.
+   - Never mix or switch languages unexpectedly.
+2. GENRE RELEVANCE: Only talk about the genres requested by the user. If the user asked for Comedy, focus exclusively on Comedy. Do NOT mention unrelated genres like Horror unless explicitly asked.
+3. ACCURACY: YOU MUST ONLY RECOMMEND MOVIES FROM THE PROVIDED CANDIDATE LIST. DO NOT INVENT OR MENTION ANY MOVIE THAT IS NOT IN THE CANDIDATE LIST.
+4. Format each recommended movie header cleanly as: `### 🎬 **Title** *(Year)*`.
+5. DO NOT generate raw markdown image syntax `![title](url)` in your text response. The frontend UI will automatically display the interactive poster cards in a horizontal scroll row right below your message.
+6. Use spacing, bold text, italics, and horizontal rules (`---`) effectively to make the response look clean and modern.
+7. Keep the response conversational, engaging, and enthusiastic. Use emojis thoughtfully.
+8. End your response with an open-ended question to encourage further conversation.
 """
 
 ANSWER_PROMPT = ChatPromptTemplate.from_messages([
@@ -60,8 +63,9 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
         "human",
         """Movie information for reference:
 
-      {movie_context}
+{movie_context}
 
-      Please generate an appropriate response to the user."""
+Required response language: {response_language}
+Please generate an appropriate, highly engaging response to the user strictly in {response_language}."""
     ),
 ])

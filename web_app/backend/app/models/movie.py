@@ -1,4 +1,5 @@
 from app.config.db import get_db_connection
+from app.services.cache import cache_get, cache_set
 from fastapi import HTTPException
 from typing import List, Dict, Any
 import os
@@ -8,6 +9,11 @@ import requests
 class MovieModel:
     @staticmethod
     def get_trending(page: int, limit: int) -> List[Dict[str, Any]]:
+        cache_key = f"movies:trending:{page}:{limit}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         conn = get_db_connection()
         cur = conn.cursor()
         offset = (page - 1) * limit
@@ -45,7 +51,9 @@ class MovieModel:
                 ORDER BY m.popularity DESC
             """
             cur.execute(query, (limit, offset))
-            return cur.fetchall()
+            rows = [dict(r) for r in cur.fetchall()]
+            cache_set(cache_key, rows, ttl_seconds=300)
+            return rows
         except Exception as e:
             print(f"[Error] Failed to fetch trending movies: {e}")
             raise HTTPException(status_code=500, detail="Failed to fetch data from movies table.")
@@ -55,6 +63,11 @@ class MovieModel:
 
     @staticmethod
     def get_latest(page: int, limit: int) -> List[Dict[str, Any]]:
+        cache_key = f"movies:latest:{page}:{limit}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         conn = get_db_connection()
         cur = conn.cursor()
         offset = (page - 1) * limit
@@ -93,7 +106,9 @@ class MovieModel:
                 ORDER BY m.release_date DESC, m.popularity DESC
             """
             cur.execute(query, (limit, offset))
-            return cur.fetchall()
+            rows = [dict(r) for r in cur.fetchall()]
+            cache_set(cache_key, rows, ttl_seconds=300)
+            return rows
         except Exception as e:
             print(f"[Error] Failed to fetch latest movies: {e}")
             raise HTTPException(status_code=500, detail="Failed to fetch data from movies table.")
@@ -103,11 +118,18 @@ class MovieModel:
 
     @staticmethod
     def get_total_count() -> int:
+        cache_key = "movies:total_count"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         conn = get_db_connection()
         cur = conn.cursor()
         try:
             cur.execute('SELECT COUNT(*) FROM movies')
-            return cur.fetchone()['count']
+            count = cur.fetchone()['count']
+            cache_set(cache_key, count, ttl_seconds=3600)
+            return count
         except Exception as e:
             print(f"[Error] Failed to get movies count: {e}")
             raise HTTPException(status_code=500, detail="Failed to count movies table.")
@@ -127,6 +149,11 @@ class MovieModel:
         status: str = None,
         limit: int = 30
     ) -> List[Dict[str, Any]]:
+        cache_key = f"movies:search:{query_str.strip().lower()}:{genre}:{year}:{status}:{limit}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         conn = get_db_connection()
         cur = conn.cursor()
         try:
@@ -231,7 +258,9 @@ class MovieModel:
                 ORDER BY m.popularity DESC
             """
             cur.execute(sql_query, tuple(params))
-            return cur.fetchall()
+            rows = [dict(r) for r in cur.fetchall()]
+            cache_set(cache_key, rows, ttl_seconds=180)
+            return rows
         except Exception as e:
             print(f"[Error] Search with filters failed: {e}")
             raise HTTPException(status_code=500, detail="Failed to execute search query with filters.")
@@ -241,6 +270,11 @@ class MovieModel:
 
     @staticmethod
     def get_by_id(movie_id: int) -> Dict[str, Any]:
+        cache_key = f"movie:detail:{movie_id}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         conn = get_db_connection()
         cur = conn.cursor()
         try:
@@ -275,78 +309,43 @@ class MovieModel:
             movie = cur.fetchone()
             if not movie:
                 raise HTTPException(status_code=404, detail="Movie not found.")
+            movie = dict(movie)
             
-            # If trailer_url is missing or is a fallback search link, attempt to fetch real trailer from TMDB
+            # Fast non-blocking trailer resolution
             trailer_url = movie.get("trailer_url")
-            if not trailer_url or "search_query=" in trailer_url:
-                try:
-                    api_key = os.getenv("TMDB_API_KEY")
-                    if api_key:
-                        url = f"https://api.themoviedb.org/3/movie/{movie_id}/videos"
-                        res = requests.get(url, params={"api_key": api_key}, timeout=3.0)
-                        
-                        if res.status_code != 200 or not res.json().get("results"):
-                            raw_title = movie.get("title", "")
-                            clean_title = re.sub(r'\s*\(\d{4}\)', '', raw_title).strip()
-                            rel_date = str(movie.get("release_date") or "")
-                            year = rel_date[:4] if len(rel_date) >= 4 else ""
-                            search_params = {"api_key": api_key, "query": clean_title}
-                            if year.isdigit():
-                                search_params["year"] = year
-                            s_res = requests.get("https://api.themoviedb.org/3/search/movie", params=search_params, timeout=3.0)
-                            if s_res.status_code == 200 and s_res.json().get("results"):
-                                tmdb_id = s_res.json()["results"][0]["id"]
-                                res = requests.get(f"https://api.themoviedb.org/3/movie/{tmdb_id}/videos", params={"api_key": api_key}, timeout=3.0)
-
-                        youtube_key = None
+            if not trailer_url:
+                title = movie.get("title", "")
+                year = ""
+                r_date = str(movie.get("release_date") or "")
+                if r_date:
+                    year = r_date.split("-")[0]
+                search_q = f"{title} {year} official trailer".replace(" ", "+")
+                resolved_url = f"https://www.youtube.com/results?search_query={search_q}"
+                
+                api_key = os.getenv("TMDB_API_KEY")
+                if api_key:
+                    try:
+                        res = requests.get(
+                            f"https://api.themoviedb.org/3/movie/{movie_id}/videos",
+                            params={"api_key": api_key},
+                            timeout=0.8
+                        )
                         if res.status_code == 200:
-                            videos_data = res.json().get("results", [])
-                            # 1. Search for official trailers on YouTube
-                            for video in videos_data:
-                                if video.get("site") == "YouTube" and video.get("type") == "Trailer" and video.get("official"):
-                                    youtube_key = video.get("key")
+                            for video in res.json().get("results", []):
+                                if video.get("site") == "YouTube" and video.get("type") == "Trailer":
+                                    resolved_url = f"https://www.youtube.com/embed/{video.get('key')}"
                                     break
-                            # 2. Fallback to any trailer on YouTube
-                            if not youtube_key:
-                                for video in videos_data:
-                                    if video.get("site") == "YouTube" and video.get("type") == "Trailer":
-                                        youtube_key = video.get("key")
-                                        break
-                            # 3. Fallback to any video on YouTube
-                            if not youtube_key:
-                                for video in videos_data:
-                                    if video.get("site") == "YouTube":
-                                        youtube_key = video.get("key")
-                                        break
+                    except Exception:
+                        pass
 
-                        if youtube_key:
-                            embed_url = f"https://www.youtube.com/embed/{youtube_key}"
-                            movie["trailer_url"] = embed_url
-                            # Save resolved trailer_url to DB for instant zero-latency future lookups
-                            try:
-                                cur.execute("UPDATE movies SET trailer_url = %s WHERE movieid = %s", (embed_url, movie_id))
-                                conn.commit()
-                            except Exception as save_err:
-                                print(f"[Warning] Failed to cache trailer_url to DB: {save_err}")
-                        else:
-                            # Fallback search link
-                            title = movie.get("title", "")
-                            year = ""
-                            r_date = movie.get("release_date", "")
-                            if r_date:
-                                year = r_date.split("-")[0]
-                            search_q = f"{title} {year} official trailer".replace(" ", "+")
-                            movie["trailer_url"] = f"https://www.youtube.com/results?search_query={search_q}"
-                except Exception as ex:
-                    print(f"[Warning] Failed to fetch trailer URL: {ex}")
-                    title = movie.get("title", "")
-                    year = ""
-                    r_date = movie.get("release_date", "")
-                    if r_date:
-                        year = r_date.split("-")[0]
-                    search_q = f"{title} {year} official trailer".replace(" ", "+")
-                    movie["trailer_url"] = f"https://www.youtube.com/results?search_query={search_q}"
-                    
+                movie["trailer_url"] = resolved_url
+                try:
+                    cur.execute("UPDATE movies SET trailer_url = %s WHERE movieid = %s", (resolved_url, movie_id))
+                    conn.commit()
+                except Exception:
+                    pass
+
+            cache_set(cache_key, movie, ttl_seconds=3600)
             return movie
         except HTTPException:
             raise

@@ -40,7 +40,8 @@ def get_personalized_recommendations(
         except Exception as e:
             print(f"[Warning] Could not fetch user preferences: {e}")
 
-    recommendations = RecsysService.get_personalized_recommendations(liked_ids)
+    user_id_int = current_user["id"] if current_user else None
+    recommendations = RecsysService.get_personalized_recommendations(liked_ids, user_id=user_id_int)
     background_tasks.add_task(
         emit,
         EventType.RECOMMENDATION_REQUEST,
@@ -70,4 +71,17 @@ def get_movie_recommendations(
         extra={"limit": limit},
     )
     return {"results": similar_movies}
+
+
+@router.get("/recommendations/user/{user_id}", response_model=RecommendationResponse)
+def get_user_ml_recommendations(
+    user_id: int,
+    limit: int = Query(default=20, ge=1, le=50)
+):
+    """
+    Gợi ý cá nhân hóa trực tiếp từ mô hình CatBoost/LightGBM (evaluation/ml_training).
+    """
+    recs = RecsysService.get_user_recommendations(user_id=user_id, limit=limit)
+    return {"results": recs}
+
 

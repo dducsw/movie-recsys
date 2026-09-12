@@ -12,6 +12,7 @@ import {
   Clapperboard
 } from 'lucide-react';
 import MovieRow from '../components/MovieRow/MovieRow';
+import CommentSection from '../components/CommentSection/CommentSection';
 import { API_BASE_URL } from '../api/client';
 import { useWatchlist } from '../context/WatchlistContext';
 import './MovieDetailPage.css';
@@ -289,6 +290,12 @@ export default function MovieDetailPage() {
           source="similar_movies"
         />
       )}
+
+      {/* Facebook-style Public Audience Comments */}
+      <CommentSection 
+        movieId={movieId} 
+        movieTitle={movie.title} 
+      />
     </div>
   );
 }

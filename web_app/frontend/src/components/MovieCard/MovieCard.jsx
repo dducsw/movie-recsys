@@ -64,6 +64,7 @@ function MovieCard({
           src={posterSrc}
           alt={movie.title}
           loading="lazy"
+          decoding="async"
           onError={(e) => {
             e.target.onerror = null;
             e.target.src = 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300';

@@ -1,5 +1,5 @@
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from app.chatbot import build_chatbot_graph, IntentOutput, GraphState
 
 # ---------------------------------------------------------------------------
@@ -117,17 +117,18 @@ class ChatbotService:
     @staticmethod
     def get_reply(
         message: str,
-        session_id: str = "default"
+        session_id: str = "default",
+        user_id: Optional[int] = None,
+        user_liked_ids: Optional[List[int]] = None
     ) -> Dict[str, Any]:
         """
-        Get chatbot reply with conversation memory.
+        Get chatbot reply with conversation memory and user context.
 
         Args:
             message: User's input message
-            session_id: Unique identifier for the conversation  session
-
-        Returns:
-            Dict with "text" (reply) and "movies" (enriched movie list)
+            session_id: Unique identifier for the conversation session
+            user_id: Optional authenticated user ID
+            user_liked_ids: Optional list of movie IDs liked/watched by user
         """
         # Add the new user message
         user_message = HumanMessage(content=message)
@@ -136,19 +137,14 @@ class ChatbotService:
         # Get existing conversation history for this session
         history = ConversationMemory.get_session_messages(session_id)
 
-        # Build initial state with full history
-        intent_output: IntentOutput = {
-            "intent": "",
-            "target_title": "",
-            "genres": [],
-        }
-
         initial_state: GraphState = {
             "messages": history,
-            "intent_output": intent_output,
+            "intent_output": None,
             "candidate_movies": [],
             "enriched_movies": [],
             "matched_movie": None,
+            "user_id": user_id,
+            "user_liked_ids": user_liked_ids or [],
             "final_text": ""
         }
 
