@@ -35,7 +35,7 @@ Write-Host "[OK] Infra ready." -ForegroundColor Green
 
 # 2. Start backend (FastAPI)
 Write-Host "`n[2/3] Starting backend (FastAPI)..." -ForegroundColor Cyan
-$backendDir = "$ProjectRoot\web_app\backend"
+$backendDir = "$ProjectRoot\apps\api"
 
 # Tạo venv nếu chưa có
 if (-not (Test-Path "$backendDir\.venv\Scripts\Activate.ps1")) {
@@ -59,7 +59,7 @@ Write-Host "[OK] Backend started (PID: $($backendJob.Id)) -> http://localhost:80
 
 # 3. Start frontend (Vite dev server)
 Write-Host "`n[3/3] Starting frontend (Vite)..." -ForegroundColor Cyan
-$frontendDir = "$ProjectRoot\web_app\frontend"
+$frontendDir = "$ProjectRoot\apps\web"
 
 if (-not (Test-Path "$frontendDir\node_modules")) {
     Write-Host "[*] Installing npm dependencies..." -ForegroundColor Gray

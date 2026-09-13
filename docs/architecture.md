@@ -1,27 +1,27 @@
-# MovieNex System & Infrastructure Architecture
+# System & Infrastructure Architecture
 
-This document provides the architectural specification for **MovieNex**, an industrial-grade, full-stack movie recommendation and streaming platform. The architecture is engineered to satisfy low-latency online inference SLAs ($\le 50\,\text{ms}$ p95), resilient real-time interaction ingestion, multi-modal vector search, and scalable offline/nearline model lifecycle management.
+This document describes the architecture of **MovieNex**, an end-to-end movie recommendation and streaming platform. The architecture is designed to handle low-latency online inference ($\le 50\,\text{ms}$ p95), real-time user interaction tracking, vector similarity search, and continuous model training.
 
 ---
 
 ## 1. High-Level System Architecture
 
-MovieNex implements a **Hybrid Lambda/Kappa-inspired Recommender Architecture** that decouples heavy offline batch training from low-latency online inference and nearline event streaming.
+MovieNex separates offline batch training, nearline stream processing, and online serving:
 
 ```mermaid
 flowchart TD
-    subgraph ClientTier ["1. Client & Presentation Layer"]
+    subgraph ClientTier ["1. Client Layer"]
         SPA["MovieNex Web Client<br/>(React 18 + Vite + Tailwind CSS)"]
-        Tracker["Interaction & Telemetry Tracker<br/>(Impressions, Clicks, Dwell Time, Ratings)"]
+        Tracker["Interaction Tracker<br/>(Clicks, Dwell Time, Ratings)"]
         SPA --- Tracker
     end
 
-    subgraph APITier ["2. API Gateway & Serving Layer"]
-        Gateway["FastAPI Gateway<br/>(Asynchronous ASGI, Pydantic v2, Uvicorn)"]
-        AuthSvc["Auth & Session Controller<br/>(JWT + Session State)"]
-        RecSvc["Recommendation Service Controller<br/>(3-Stage Orchestration)"]
-        ChatAgent["Conversational AI Agent<br/>(LangChain + LangGraph + Gemini API)"]
-        EventProducer["Telemetry & Event Producer<br/>(Async Kafka Ingestion)"]
+    subgraph APITier ["2. API & Serving Layer"]
+        Gateway["FastAPI Gateway<br/>(Uvicorn ASGI, Pydantic v2)"]
+        AuthSvc["Auth Controller<br/>(JWT + Session State)"]
+        RecSvc["Recommendation Controller<br/>(3-Stage Orchestration)"]
+        ChatAgent["Conversational Assistant<br/>(LangGraph + Gemini API)"]
+        EventProducer["Telemetry Producer<br/>(Async Event Ingestion)"]
 
         Gateway --> AuthSvc
         Gateway --> RecSvc
@@ -29,34 +29,31 @@ flowchart TD
         Gateway --> EventProducer
     end
 
-    subgraph EngineTier ["3. 3-Stage Recommendation Engine (Online Inference)"]
+    subgraph EngineTier ["3. 3-Stage Recommendation Engine"]
         direction TB
-        Retrieval["Stage 1: Multi-Channel Candidate Retrieval<br/>• Vector ANN Search (Qdrant)<br/>• Implicit ALS Candidate Pool<br/>• Content-Based TF-IDF Metadata Search"]
-        Ranking["Stage 2: Scoring & Feature Ranking<br/>• LightGBM LambdaRanker<br/>• Real-time Feature Assembler"]
-        Reranking["Stage 3: Business Logic & Re-ranking<br/>• Maximal Marginal Relevance (MMR)<br/>• Freshness Boost & De-duplication"]
+        Retrieval["Stage 1: Multi-Channel Retrieval<br/>• Vector Search (Qdrant)<br/>• Implicit ALS Latent Factors<br/>• Content-Based TF-IDF"]
+        Ranking["Stage 2: Scoring & Ranking<br/>• LightGBM LambdaRanker<br/>• Tabular Feature Assembler"]
+        Reranking["Stage 3: Diversity & Re-ranking<br/>• Maximal Marginal Relevance (MMR)<br/>• Watched Title Removal"]
 
         Retrieval -->|Top ~200 Candidates| Ranking
         Ranking -->|Ranked Scores| Reranking
     end
 
-    subgraph DataTier ["4. Storage, Caching & Vector Tier"]
-        Postgres[("PostgreSQL 15<br/>• Relational DB<br/>• User Profiles & Movie Catalog")]
-        Redis[("Redis 7 In-Memory<br/>• Sub-ms Feature Store<br/>• Real-time Session Cache")]
-        Qdrant[("Qdrant Vector DB<br/>• Dense Movie Embeddings<br/>• HNSW Vector Index")]
-        S3[("SeaweedFS S3 Storage<br/>• Model Binaries & Encoders<br/>• Feature Dumps & Datasets")]
-        MLflow["MLflow Server<br/>• Experiment Tracking<br/>• Model Registry & Lineage"]
+    subgraph DataTier ["4. Storage & Feature Layer"]
+        Postgres[("PostgreSQL 15<br/>Catalog, Users & Ratings")]
+        Redis[("Redis 7<br/>Online Feature Cache & Session")]
+        Qdrant[("Qdrant Vector DB<br/>Dense Movie Embeddings")]
+        S3[("SeaweedFS S3<br/>Model Artifacts & Datasets")]
+        MLflow["MLflow Server<br/>Experiment Registry & Lineage"]
     end
 
-    subgraph AsyncTier ["5. Streaming & Batch MLOps Tier"]
-        Kafka{{Apache Kafka Message Bus<br/>• Interaction Event Stream<br/>• Real-time Log Ingestion}}
-        StreamWorker["Nearline Stream Processor<br/>• Real-time Sliding-Window Trending<br/>• User Real-time Interaction Vector"]
-        BatchTrainer["Batch Training Pipeline<br/>• Spark / Scikit-Learn / LightGBM<br/>• LOO Evaluation & S3 Export"]
+    subgraph AsyncTier ["5. Streaming & Continuous Training"]
+        Kafka{{Message Bus<br/>Interaction Stream}}
+        StreamWorker["Stream Processor<br/>Trending Windows & User Signals"]
+        BatchTrainer["Continuous Training Pipeline<br/>LOO Split, Evaluation, Model Export"]
     end
 
-    %% Client to API
-    ClientTier -->|"HTTPS / REST API & SSE"| APITier
-
-    %% Serving Interactions
+    ClientTier -->|"HTTP / REST API"| APITier
     RecSvc --> EngineTier
     EngineTier <--> Redis
     EngineTier <--> Qdrant
@@ -65,99 +62,62 @@ flowchart TD
     ChatAgent <--> Redis
     ChatAgent <--> Qdrant
 
-    %% Telemetry & Streaming
     EventProducer -->|"Publish Events"| Kafka
     Kafka --> StreamWorker
-    StreamWorker -->|"Update Real-time Signals"| Redis
-    StreamWorker -->|"Persist Interactions"| Postgres
+    StreamWorker -->|"Update Signals"| Redis
+    StreamWorker -->|"Persist Data"| Postgres
 
-    %% Batch Training
-    Postgres -.->|"Batch Extract"| BatchTrainer
-    BatchTrainer -->|"Log Runs & Metrics"| MLflow
-    BatchTrainer -->|"Deploy Artifacts"| S3
-    BatchTrainer -->|"Sync Vector Index"| Qdrant
+    Postgres -.->|"Extract Data"| BatchTrainer
+    BatchTrainer -->|"Metrics & Registry"| MLflow
+    BatchTrainer -->|"Export Models"| S3
+    BatchTrainer -->|"Sync Embeddings"| Qdrant
 ```
 
 ---
 
-## 2. End-to-End Online Serving Flow
+## 2. Online Serving Flow & Latency Budget
 
-The online recommendation path is optimized for sub-50ms execution. The sequence below details the dynamic execution flow when a user requests their personalized discovery feed:
+The table below breaks down the serving path for personalized recommendations (`GET /api/recommendations/for-you`):
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Client Browser
-    participant API as FastAPI Gateway
-    participant Cache as Redis (Feature Store)
-    participant Qdrant as Qdrant Vector DB
-    participant S3 as SeaweedFS / Model Memory
-    participant LGBM as LightGBM Ranker
-    participant MMR as MMR Re-ranker
-
-    User->>API: GET /api/recommendations/for-you?user_id=1024&top_k=10
-    
-    rect rgb(245, 247, 250)
-        note over API,Cache: Step 1: Session & Feature Retrieval (< 5ms)
-        API->>Cache: Fetch User Real-time History, Activity Count & Bias
-        Cache-->>API: User Context & Recent Interaction Vectors
-    end
-
-    rect rgb(240, 248, 255)
-        note over API,Qdrant: Step 2: Multi-Channel Retrieval Pool (~15ms)
-        par Implicit ALS Pool
-            API->>Cache: Retrieve Top-100 ALS Precomputed Candidates
-        and Dense Vector Similarity
-            API->>Qdrant: Approximate Nearest Neighbor (HNSW) on User Preference Centroid
-            Qdrant-->>API: Top-100 Semantic Similarity Candidates
-        and Content-Based TF-IDF
-            API->>Cache: Retrieve Metadata-matched Candidates (Director, Genres)
-        end
-        API->>API: Merge & Deduplicate Candidate Sets (Total ~200-250 items)
-    end
-
-    rect rgb(245, 255, 245)
-        note over API,LGBM: Step 3: Online Feature Assembly & Ranking (~15ms)
-        API->>Cache: Multi-get Item Features (Popularity, Vote Avg, Genres, Release Year)
-        API->>API: Compute Cross-Features (Genre Overlap, Retrieval Channel Scores)
-        API->>LGBM: Execute Batch Prediction (LightGBM C-API / In-Memory Inference)
-        LGBM-->>API: Pointwise / Pairwise Relevance Scores
-    end
-
-    rect rgb(255, 250, 240)
-        note over API,MMR: Step 4: Diversity Re-ranking & Deduplication (~5ms)
-        API->>MMR: Compute Maximal Marginal Relevance (Lambda = 0.7)
-        MMR-->>API: Top-K Diverse & High-Scoring Item IDs
-    end
-
-    API->>Cache: Hydrate Movie Metadata (Titles, Posters, Genres)
-    API-->>User: 200 OK (JSON Feed + Telemetry Session Token)
-```
+| Step | Action | Latency Target | Description |
+| :--- | :--- | :--- | :--- |
+| **1. Session & Context** | Fetch user state | $< 5\,\text{ms}$ | Retrieve recent interaction history, user activity, and rating bias from Redis. |
+| **2. Multi-Channel Retrieval** | Generate candidates | $< 15\,\text{ms}$ | Query Implicit ALS factors, TF-IDF metadata index, and Qdrant vector index. Merge into ~200 unique candidates. |
+| **3. Heavy Ranking** | Feature assembly & score | $< 15\,\text{ms}$ | Assemble 8 tabular features (`features.py`) and score candidates via LightGBM LambdaRanker in memory. |
+| **4. Diversity Re-ranking** | Apply MMR | $< 5\,\text{ms}$ | Re-rank top candidates using MMR ($\lambda = 0.7$) to balance accuracy and genre diversity. |
+| **5. Response Hydration** | Format & return | $< 5\,\text{ms}$ | Hydrate movie metadata (posters, genres, titles) from cache/DB and return JSON response. |
+| **Total** | End-to-End SLA | **$\le 50\,\text{ms}$** | Full request-response cycle. |
 
 ---
 
 ## 3. Storage & Infrastructure Matrix
 
-| Subsystem | Technology | Storage Type | SLA / Latency | Primary Responsibility |
+| Subsystem | Technology | Storage Type | Read Latency | Primary Responsibility |
 | :--- | :--- | :--- | :--- | :--- |
-| **Relational Database** | PostgreSQL 15 (Alpine) | Persistent Block Store | $< 10\,\text{ms}$ | Source of truth for users, credentials, movie metadata, and explicit ratings. |
-| **Online Feature Store** | Redis 7 (In-Memory) | In-Memory Key-Value | $< 1\,\text{ms}$ | Real-time sliding window telemetry, user preference vectors, session state, fast candidate cache. |
-| **Vector Search Engine** | Qdrant | Vector Index (HNSW) | $< 15\,\text{ms}$ | High-dimensional dense embeddings of movie synopsis and plot vectors for semantic retrieval. |
-| **Object Store** | SeaweedFS (S3 API) | Distributed Object Store | $< 25\,\text{ms}$ | Serialized machine learning models (`.joblib`, `.json`), TF-IDF matrices, and training datasets. |
-| **Experiment Platform** | MLflow Server | SQLite / Postgres backend | N/A (Offline) | Model lineage, metric comparisons ($HR@K$, $NDCG@K$), hyperparameter logging, and model registry. |
-| **Message Broker** | Apache Kafka (KRaft) | Distributed Commit Log | $< 5\,\text{ms}$ | High-throughput streaming ingestion of impression, click, and dwell-time events. |
+| **Relational Database** | PostgreSQL 15 | Disk-backed Relational | $< 10\,\text{ms}$ | Persistent storage for user credentials, movie catalog, and explicit ratings. |
+| **Online Feature Store** | Redis 7 | In-Memory Key-Value | $< 1\,\text{ms}$ | Sub-millisecond feature lookup, recent interaction cache, and session state. |
+| **Vector Database** | Qdrant | Vector Index (HNSW) | $< 15\,\text{ms}$ | Dense embeddings of movie synopses for semantic similarity searches. |
+| **Artifact Store** | SeaweedFS (S3) | Object Storage | $< 25\,\text{ms}$ | Storage for trained model files (`lgb_ranker.pkl`, TF-IDF matrices). |
+| **ML Platform** | MLflow | Database + S3 | N/A (Offline) | Experiment tracking, parameter logging, and model registry. |
+| **Message Broker** | Kafka / Redis Stream | Append-only Log | $< 5\,\text{ms}$ | Ingests real-time user clicks, ratings, and impression events. |
 
 ---
 
-## 4. Fault Tolerance & Reliability Design
+## 4. Fault Tolerance & Fallback Strategies
 
-1. **Graceful Degradation (Fallback Hierarchy)**:
-   - If **Qdrant** is unreachable $\rightarrow$ Fallback to cached ALS offline candidate lists.
-   - If **LightGBM Model Inference** times out $\rightarrow$ Fallback to pure retrieval score sorting + MMR.
-   - If **Redis Feature Store** is degraded $\rightarrow$ Fallback to static global popularity rankings (`Trending Now`) served from PostgreSQL or static cache.
-2. **Cold-Start Resilience**:
-   - **New Users**: Onboarded via genre selection chips or instant contextual retrieval from initial exploratory clicks without requiring model retraining.
-   - **New Movies**: Immediately indexed into Qdrant vector space via metadata TF-IDF embeddings, enabling instant discovery without historical interaction logs.
-3. **Stateless Serving Nodes**:
-   - The FastAPI backend gateway is completely stateless; model artifacts are loaded in memory upon startup and hot-reloaded via background worker signals when new model versions are registered in MLflow.
+| Failure Scenario | Impact | Fallback Strategy |
+| :--- | :--- | :--- |
+| **Qdrant Unreachable** | Semantic vector channel unavailable | System falls back to Collaborative Filtering (ALS) and Content-Based TF-IDF candidate pools. |
+| **LightGBM Ranking Error** | Stage 2 model scoring fails | Heuristic ranking fallback using linear combination of retrieval score and popularity. |
+| **Redis Cache Down** | Online feature store unavailable | Fall back to direct database reads or global `Trending Now` recommendations. |
+| **Model Serving Memory Leak** | High memory usage during heavy traffic | Worker processes recycle automatically; model weights are kept immutable in process memory. |
 
+---
+
+## 5. Cold-Start Handling
+
+| Cold-Start Scenario | Strategy | Data Source |
+| :--- | :--- | :--- |
+| **New User (No ratings)** | Present onboarding genre selector chips; recommend high-popularity and high-rated movies filtered by selected genres. | Static catalog statistics in PostgreSQL / Redis. |
+| **New Movie (No ratings)** | Index immediately into Content-Based TF-IDF and Qdrant using title, genres, overview, and director. | Movie metadata crawled or loaded from TMDB. |
+| **Sparse User ($< 5$ ratings)** | Balance collaborative latent factor predictions with content-based genre overlap matching. | Hybrid candidate retrieval with dynamic fallback weights. |
