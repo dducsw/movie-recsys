@@ -23,7 +23,7 @@ echo -e "\033[1;32m[✓] Docker infra đã sẵn sàng.\033[0m"
 
 # 2. Khởi chạy Backend
 echo -e "\n\033[1;33m[2/3] Khởi chạy Backend FastAPI (port 8000)...\033[0m"
-cd "$PROJECT_ROOT/web_app/backend"
+cd "$PROJECT_ROOT/apps/api"
 "$PYTHON_EXEC" -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
 BACKEND_PID=$!
 echo -e "\033[1;32m[✓] Backend đã chạy (PID: $BACKEND_PID) -> http://localhost:8000\033[0m"
@@ -31,7 +31,7 @@ echo -e "\033[1;32m    Swagger API Docs: http://localhost:8000/docs\033[0m"
 
 # 3. Khởi chạy Frontend
 echo -e "\n\033[1;33m[3/3] Khởi chạy Frontend Vite (port 5173)...\033[0m"
-cd "$PROJECT_ROOT/web_app/frontend"
+cd "$PROJECT_ROOT/apps/web"
 if [ ! -d "node_modules" ]; then
     echo "Đang cài đặt dependencies npm..."
     npm install

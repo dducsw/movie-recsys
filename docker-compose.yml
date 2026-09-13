@@ -4,15 +4,15 @@ services:
     image: postgres:15-alpine
     container_name: movie-recsys-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: mysecretpassword
-      POSTGRES_DB: movie_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mysecretpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-movie_db}
     ports:
       - "5435:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d movie_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-movie_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,7 +33,7 @@ services:
 
   # 3. Vector Database (Candidate Retrieval / Embedding Search)
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.11.3
     container_name: movie-recsys-qdrant
     ports:
       - "6333:6333" # HTTP API & Web UI
@@ -43,7 +43,7 @@ services:
 
   # 4. Object Storage (SeaweedFS S3-compatible for Models & Large Data Artifacts)
   seaweedfs:
-    image: chrislusf/seaweedfs:latest
+    image: chrislusf/seaweedfs:3.59
     container_name: movie-recsys-seaweedfs
     command: "server -s3 -s3.port=8333"
     ports:
@@ -66,8 +66,8 @@ services:
       seaweedfs:
         condition: service_healthy
     environment:
-      - AWS_ACCESS_KEY_ID=seaweedfskey
-      - AWS_SECRET_ACCESS_KEY=seaweedfssecret
+      - AWS_ACCESS_KEY_ID=${SEAWEEDFS_ACCESS_KEY:-seaweedfskey}
+      - AWS_SECRET_ACCESS_KEY=${SEAWEEDFS_SECRET_KEY:-seaweedfssecret}
       - AWS_EC2_METADATA_DISABLED=true
     entrypoint: >
       /bin/sh -c "
@@ -91,13 +91,13 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - AWS_ACCESS_KEY_ID=seaweedfskey
-      - AWS_SECRET_ACCESS_KEY=seaweedfssecret
+      - AWS_ACCESS_KEY_ID=${SEAWEEDFS_ACCESS_KEY:-seaweedfskey}
+      - AWS_SECRET_ACCESS_KEY=${SEAWEEDFS_SECRET_KEY:-seaweedfssecret}
       - MLFLOW_S3_ENDPOINT_URL=http://seaweedfs:8333
       - MLFLOW_S3_IGNORE_TLS=true
     command: >
       mlflow server
-      --backend-store-uri postgresql://postgres:mysecretpassword@postgres:5432/mlflow_db
+      --backend-store-uri postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-mysecretpassword}@postgres:5432/mlflow_db
       --default-artifact-root s3://mlflow/
       --host 0.0.0.0
       --port 5000
@@ -106,7 +106,7 @@ services:
   backend:
     profiles: ["app"]
     build:
-      context: ./web_app/backend
+      context: ./apps/api
       dockerfile: Dockerfile
     container_name: movie-recsys-backend
     depends_on:
@@ -129,7 +129,7 @@ services:
   frontend:
     profiles: ["app"]
     build:
-      context: ./web_app/frontend
+      context: ./apps/web
       dockerfile: Dockerfile
     container_name: movie-recsys-frontend
     depends_on:
@@ -139,7 +139,7 @@ services:
 
   # 8. Prometheus Telemetry & Metrics Scraper
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.54.1
     container_name: movie-recsys-prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"

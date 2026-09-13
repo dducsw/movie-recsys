@@ -1,34 +1,33 @@
 # Production Deployment & MLOps Infrastructure
 
-This document specifies the containerized deployment topology, CI/CD automation, model registry workflow, and telemetry observability stack for the **MovieNex** recommendation platform.
+This document describes the container setup, continuous training lifecycle, environment configuration, and monitoring procedures for **MovieNex**.
 
 ---
 
-## 1. Containerized Service Topology
+## 1. Container Topology
 
-MovieNex is orchestrated via Docker Compose for local/staging environments and designed for seamless transition to Kubernetes (EKS/GKE).
+The application stack is managed using Docker Compose:
 
 ```mermaid
 flowchart TD
-    subgraph Ingress ["Edge & Gateway Tier"]
-        Nginx["Nginx Reverse Proxy / Load Balancer<br/>(Port: 80 / 443)"]
+    subgraph Ingress ["Edge & Gateway"]
+        Nginx["Nginx Reverse Proxy<br/>(Optional Port: 80)"]
     end
 
-    subgraph AppCluster ["Application Services (Profile: app)"]
-        Frontend["movie-recsys-frontend<br/>(React 18 + Vite static build on Nginx :5173)"]
-        Backend["movie-recsys-backend<br/>(FastAPI + Uvicorn Workers :8000)"]
+    subgraph AppCluster ["Application Services"]
+        Frontend["movie-recsys-web<br/>(React 18 + Vite :5173)"]
+        Backend["movie-recsys-api<br/>(FastAPI + Uvicorn :8000)"]
     end
 
-    subgraph DataCluster ["Data & Vector Infrastructure"]
+    subgraph DataCluster ["Data & Vector Services"]
         Postgres[("movie-recsys-db<br/>(PostgreSQL 15 :5435)")]
-        Redis[("movie-recsys-redis<br/>(Redis 7 Alpine :6379)")]
-        Qdrant[("movie-recsys-qdrant<br/>(Vector Engine :6333 / :6334)")]
+        Redis[("movie-recsys-redis<br/>(Redis 7 :6379)")]
+        Qdrant[("movie-recsys-qdrant<br/>(Vector DB :6333)")]
     end
 
-    subgraph MLOpsCluster ["Model & Storage Infrastructure"]
-        SeaweedFS[("movie-recsys-seaweedfs<br/>(S3 API :8333 / Filer :8888)")]
-        S3Init["seaweedfs-init<br/>(Auto Bucket Initializer)"]
-        MLflow["movie-recsys-mlflow<br/>(Tracking & Registry :5000)"]
+    subgraph MLOpsCluster ["Storage & Model Tracking"]
+        SeaweedFS[("movie-recsys-seaweedfs<br/>(S3 API :8333)")]
+        MLflow["movie-recsys-mlflow<br/>(MLflow Registry :5000)"]
     end
 
     Nginx --> Frontend
@@ -37,118 +36,103 @@ flowchart TD
     Backend <--> Redis
     Backend <--> Qdrant
     Backend <--> SeaweedFS
-    
     MLflow <--> Postgres
     MLflow <--> SeaweedFS
-    S3Init -->|Creates Buckets| SeaweedFS
 ```
+
+### Services Summary
+
+| Service | Container Name | Port | Description |
+| :--- | :--- | :--- | :--- |
+| **API Gateway** | `movie-recsys-api` | `8000` | FastAPI backend for recommendation inference, auth, and chatbot. |
+| **Web Frontend** | `movie-recsys-web` | `5173` | React application serving the movie streaming interface. |
+| **Relational DB** | `movie-recsys-db` | `5435` | PostgreSQL database storing users, ratings, and catalog metadata. |
+| **Feature Store / Cache** | `movie-recsys-redis` | `6379` | In-memory store for session caching and feature retrieval. |
+| **Vector DB** | `movie-recsys-qdrant` | `6333` | Qdrant vector database for plot synopsis embedding search. |
+| **Object Storage** | `movie-recsys-seaweedfs` | `8333` | S3-compatible storage for trained models and data dumps. |
+| **ML Tracking** | `movie-recsys-mlflow` | `5000` | MLflow tracking server and model registry. |
 
 ---
 
-## 2. CI/CD & Model Promotion Lifecycle
+## 2. Continuous Training (CT) Lifecycle
+
+The continuous training workflow updates and validates ranking models before publishing:
 
 ```mermaid
 flowchart LR
-    subgraph Training ["1. Offline Training"]
-        Data[("Feature Store & DB")] --> Train["Batch Pipeline<br/>(train_pipeline.py)"]
-        Train --> Eval["LOO Evaluation<br/>(HR@10 & NDCG@10)"]
+    subgraph Step1 ["1. Data & Retraining"]
+        Data[("Catalog & Ratings")] --> CT["CT Pipeline<br/>(train_pipeline.py)"]
+        CT --> Fit["Train Retrieval & LightGBM"]
     end
 
-    subgraph Governance ["2. Registry & Validation"]
-        Eval --> Gate{"Pass Quality Gate?<br/>NDCG@10 > Baseline"}
-        Gate -->|Yes| Register["MLflow Model Registry<br/>(Promote to 'Staging')"]
-        Gate -->|No| Alert["Alert ML Engineer<br/>(Slack/Webhook)"]
+    subgraph Step2 ["2. Quality Gate"]
+        Fit --> Gate{"Latency & Metric Checks<br/>Latency < 30ms"}
+        Gate -->|Passed| Log["Log to MLflow Registry"]
+        Gate -->|Failed| Block["Halt & Alert"]
     end
 
-    subgraph Release ["3. Zero-Downtime Deployment"]
-        Register --> S3Upload["Sync Binaries to SeaweedFS S3"]
-        S3Upload --> HotReload["Signal FastAPI Hot Reload<br/>(/api/admin/reload-model)"]
-        HotReload --> Serving["Active Live Traffic"]
+    subgraph Step3 ["3. Deployment"]
+        Log --> S3["Export Artifact to S3"]
+        S3 --> Serve["FastAPI Reloads Model"]
     end
 ```
+
+### Quality Gate SLA Thresholds
+
+| Metric | Target SLA | Action on Failure |
+| :--- | :--- | :--- |
+| **Average Latency** | $< 30.0\,\text{ms}$ per request | Pipeline execution halts; old model remains active. |
+| **NDCG@10** | Above baseline ($> 0.15$) | Prevents deployment of degraded models. |
+| **Feature Schema** | Exact 8 columns | Model cannot be saved if feature dimensions mismatch. |
 
 ---
 
-## 3. Environment Variables & Secret Configuration
+## 3. Environment Variables Configuration
 
-Production environments are configured via `.env` files:
+Configure your deployment secrets in `.env`:
 
-```bash
-# Core Database Configuration
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=mysecretpassword
-POSTGRES_DB=movie_db
-DB_HOST=postgres
-DB_PORT=5432
-
-# Redis Cache & Online Feature Store
-REDIS_HOST=redis
-REDIS_PORT=6379
-
-# Qdrant Vector Engine
-QDRANT_HOST=qdrant
-QDRANT_PORT=6333
-
-# Object Storage (SeaweedFS S3-Compatible)
-AWS_ACCESS_KEY_ID=seaweedfskey
-AWS_SECRET_ACCESS_KEY=seaweedfssecret
-SEAWEEDFS_FILER_URL=http://seaweedfs:8888
-MLFLOW_S3_ENDPOINT_URL=http://seaweedfs:8333
-
-# External APIs & LLM Providers
-TMDB_API_KEY=your_tmdb_api_key
-GEMINI_API_KEY=your_gemini_api_key
-```
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `POSTGRES_USER` | `postgres` | Database admin user. |
+| `POSTGRES_PASSWORD` | `mysecretpassword` | Database password. |
+| `POSTGRES_DB` | `movie_db` | Primary database name. |
+| `DB_HOST` | `postgres` | Host address of the database. |
+| `DB_PORT` | `5432` | PostgreSQL internal network port. |
+| `REDIS_HOST` | `redis` | Redis service hostname. |
+| `REDIS_PORT` | `6379` | Redis connection port. |
+| `QDRANT_HOST` | `qdrant` | Qdrant vector search hostname. |
+| `QDRANT_PORT` | `6333` | Qdrant HTTP API port. |
+| `MLFLOW_TRACKING_URI` | `http://localhost:5000` | MLflow server endpoint. |
+| `TMDB_API_KEY` | *(Secret)* | The Movie Database API key for posters and metadata. |
+| `GEMINI_API_KEY` | *(Secret)* | Google Gemini API key for conversational AI assistant. |
 
 ---
 
-## 4. Production Runbook
+## 4. Runbook & Common Operations
 
-### 4.1. Starting the Entire Infrastructure
+### 4.1. Starting Infrastructure Services
 ```bash
-# Launch storage, cache, vector DB, and MLflow
-docker compose up -d postgres redis qdrant seaweedfs seaweedfs-init mlflow
-
-# Launch full application stack (including Frontend & Backend)
-docker compose --profile app up -d
+# Start storage, vector database, and MLflow
+make infra
+# or: docker compose up -d
 ```
 
-### 4.2. Healthcheck & Diagnostic Verification
+### 4.2. Health Verification Commands
+
+| Component | Healthcheck Command | Expected Response |
+| :--- | :--- | :--- |
+| **PostgreSQL** | `docker exec -it movie-recsys-db pg_isready -U postgres -d movie_db` | `accepting connections` |
+| **Redis** | `docker exec -it movie-recsys-redis redis-cli ping` | `PONG` |
+| **Qdrant** | `curl -f http://localhost:6333/cluster/status` | HTTP 200 OK |
+| **FastAPI Backend** | `curl -f http://localhost:8000/api/health` | `{"status": "ok"}` |
+
+### 4.3. Triggering Continuous Training Manually
 ```bash
-# Verify PostgreSQL readiness
-docker exec -it movie-recsys-db pg_isready -U postgres -d movie_db
-
-# Check Redis responsiveness
-docker exec -it movie-recsys-redis redis-cli ping
-
-# Check Qdrant cluster telemetry
-curl -f http://localhost:6333/cluster/status
-
-# Check SeaweedFS cluster status
-curl -f http://localhost:9333/cluster/status
+make train
+# or: python pipelines/training/train_pipeline.py
 ```
 
----
-
-## 5. Monitoring & Observability Architecture
-
-```mermaid
-flowchart TD
-    App["FastAPI Serving Pods"] -->|Prometheus Metrics| Prom["Prometheus Server"]
-    App -->|Telemetry Logs| Kafka["Kafka Broker"]
-    Kafka --> ELK["OpenSearch / Elasticsearch"]
-    Prom --> Grafana["Grafana Dashboards"]
-    ELK --> Grafana
-
-    subgraph Dashboards ["Monitored Dimensions"]
-        D1["System: QPS, Latency p50/p95/p99, Error Rate"]
-        D2["ML: Pointwise Score Distribution, Prediction Drift"]
-        D3["Business: Click-Through Rate (CTR), Dwell Time"]
-    end
-
-    Grafana --> Dashboards
+### 4.4. Running Full Test Suite
+```bash
+make test
 ```
-
-1. **Service Metrics**: End-to-end inference latency, throughput (QPS), and cache hit ratios.
-2. **Data & Prediction Drift**: Monitored by logging candidate score distributions. Significant distribution drift triggers automated retraining pipelines.
-3. **Rollback Mechanism**: If online metric degradation is observed, FastAPI serving instances fall back to previous stable model versions directly from MLflow within $< 10$ seconds.

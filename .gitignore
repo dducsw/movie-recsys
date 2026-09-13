@@ -228,6 +228,7 @@ evaluation/ml_pipeline/catboost_info/
 catboost_info/
 *.pkl
 *.h5
+*.weights.h5
 *.csv
 # vscode
 .vscode/
@@ -238,3 +239,13 @@ catboost_info/
 models.joblib
 
 evaluation/ml_training/models.joblib
+pipelines/training/**/models.joblib
+pipelines/training/**/models/
+*.pt
+*.parquet
+
+# Raw data ignores
+data/crawler/*.csv
+data/ml-latest-small/*.csv
+.agents
+.codegraph
