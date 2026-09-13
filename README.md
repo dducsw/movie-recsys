@@ -1,7 +1,6 @@
 # MovieNex — End-to-End Movie Recommendation Platform
 
 <p align="center">
-  <a href="https://github.com/dducsw/movie-recsys/actions/workflows/ci.yml"><img src="https://github.com/dducsw/movie-recsys/actions/workflows/ci.yml/badge.svg" alt="CI Pipeline" /></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.12" /></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" /></a>
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" /></a>
