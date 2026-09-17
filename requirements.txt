@@ -1,0 +1,6 @@
+# Root requirements pointer for local development & testing
+-r apps/api/requirements.txt
+-e libs/recsys_core
+pytest>=7.0.0
+pytest-cov>=4.0.0
+ruff>=0.1.0

@@ -33,3 +33,22 @@ jobs:
           PYTHONPATH: apps/api:libs/recsys_core/src:pipelines/training:pipelines/training/ml_training/src
         run: |
           pytest apps/api/tests pipelines/training/tests libs/recsys_core/tests -v --durations=10 --cov=recsys_core --cov-report=term-missing
+
+  frontend:
+    name: Frontend Client Build & Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install & Build Frontend
+        working-directory: apps/web
+        run: |
+          npm install
+          npm run build

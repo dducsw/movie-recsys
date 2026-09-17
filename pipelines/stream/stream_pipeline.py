@@ -11,9 +11,11 @@ import sys
 import logging
 
 # Ensure project root is in sys.path when executed directly as a script
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
-from pipeline.feature.streaming.redis_stream_job import run_redis_streaming_consumer
+from pipelines.feature_store.feature.streaming.redis_stream_job import run_redis_streaming_consumer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("StreamingPipeline")

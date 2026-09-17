@@ -5,10 +5,14 @@
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_EXEC="/home/mercury/miniconda3/envs/ml-env/bin/python"
-
-if [ ! -f "$PYTHON_EXEC" ]; then
+if [ -n "$VIRTUAL_ENV" ] && [ -f "$VIRTUAL_ENV/bin/python" ]; then
+    PYTHON_EXEC="$VIRTUAL_ENV/bin/python"
+elif [ -f "/home/mercury/miniconda3/envs/ml-env/bin/python" ]; then
+    PYTHON_EXEC="/home/mercury/miniconda3/envs/ml-env/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
     PYTHON_EXEC="python3"
+else
+    PYTHON_EXEC="python"
 fi
 
 echo -e "\033[1;36m========================================================\033[0m"

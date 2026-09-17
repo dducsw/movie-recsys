@@ -21,6 +21,30 @@ from app.services.metrics import (
 from app.services.feature_store import FeatureStoreService
 from app.services.ml_training_service import MLTrainingModelService, get_user_bias
 
+try:
+    from recsys_core.reranking import maximal_marginal_relevance, calculate_user_lambda
+    from recsys_core.features import RANKING_FEATURES
+except ImportError:
+    import sys
+    _curr = os.path.dirname(os.path.abspath(__file__))
+    _root = _curr
+    while _root and not os.path.exists(os.path.join(_root, "libs")):
+        _parent = os.path.dirname(_root)
+        if _parent == _root:
+            break
+        _root = _parent
+    _core_src = os.path.join(_root, "libs", "recsys_core", "src")
+    if _core_src not in sys.path:
+        sys.path.insert(0, _core_src)
+    from recsys_core.reranking import maximal_marginal_relevance, calculate_user_lambda
+    from recsys_core.features import RANKING_FEATURES
+
+ALL_GENRES = [
+    "Action", "Adventure", "Animation", "Children", "Comedy", "Crime",
+    "Documentary", "Drama", "Fantasy", "Film-Noir", "Horror", "Musical",
+    "Mystery", "Romance", "Sci-Fi", "Thriller", "War", "Western", "IMAX"
+]
+
 logger = logging.getLogger(__name__)
 
 # Singletons with lazy initialization
@@ -359,7 +383,7 @@ class RecsysService:
         if ranker is not False and len(feature_rows) > 0:
             try:
                 feat_df = pd.DataFrame(feature_rows)
-                cols = ['popularity', 'vote_average', 'genre_overlap', 'release_year', 'user_activity', 'user_bias', 'als_score', 'cb_score']
+                cols = list(RANKING_FEATURES)
                 feat_df = feat_df[cols]
                 scores = ranker.predict(feat_df)
                 for idx, score in enumerate(scores):
@@ -379,40 +403,15 @@ class RecsysService:
 
     @staticmethod
     def _stage_3_mmr_reranking(ranked_movies: List[Dict[str, Any]], limit: int = 12, lmbda: float = 0.7) -> List[Dict[str, Any]]:
-        """Stage 3: Maximal Marginal Relevance (MMR) for candidate diversification."""
+        """Stage 3: Maximal Marginal Relevance (MMR) for candidate diversification using recsys_core."""
         if not ranked_movies:
             return []
-
-        if len(ranked_movies) <= limit:
-            return ranked_movies
-
-        selected = [ranked_movies[0]]
-        candidates = ranked_movies[1:].copy()
-
-        def genre_jaccard_sim(m1, m2):
-            g1 = set(m1["genres"].split("|")) if m1.get("genres") else set()
-            g2 = set(m2["genres"].split("|")) if m2.get("genres") else set()
-            if not g1 or not g2:
-                return 0.0
-            union = g1.union(g2)
-            return len(g1.intersection(g2)) / len(union)
-
-        while len(selected) < limit and candidates:
-            best_score = -float("inf")
-            best_idx = 0
-
-            for idx, cand in enumerate(candidates):
-                rel_score = cand.get("rank_score", 0.0)
-                max_sim = max(genre_jaccard_sim(cand, s) for s in selected)
-                mmr_score = (lmbda * rel_score) - ((1.0 - lmbda) * max_sim * 10.0)
-
-                if mmr_score > best_score:
-                    best_score = mmr_score
-                    best_idx = idx
-
-            selected.append(candidates.pop(best_idx))
-
-        return selected
+        return maximal_marginal_relevance(
+            candidates=ranked_movies,
+            limit=limit,
+            lmbda=lmbda,
+            relevance_key="rank_score"
+        )
 
     @classmethod
     def get_similar_movies(cls, movie_id: int, limit: int = 12) -> List[Dict[str, Any]]:
@@ -441,8 +440,9 @@ class RecsysService:
         filtered_ranked = [m for m in ranked_candidates if m["movieId"] != movie_id]
 
         # Stage 3: Re-ranking (MMR)
+        dyn_lambda = calculate_user_lambda(list(target_genres), ALL_GENRES) if target_genres else 0.7
         with track_stage_latency("stage_3_mmr_reranking"):
-            final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=0.75)
+            final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=dyn_lambda)
         RECSYS_CANDIDATES_COUNT.labels(stage="stage_3_reranking").observe(len(final_results))
 
         res = [{
@@ -506,8 +506,9 @@ class RecsysService:
         filtered_ranked = [m for m in ranked_candidates if m["movieId"] not in liked_set]
 
         # Stage 3: Re-ranking (MMR)
+        dyn_lambda = calculate_user_lambda(list(target_genres), ALL_GENRES) if target_genres else 0.7
         with track_stage_latency("stage_3_mmr_reranking"):
-            final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=0.7)
+            final_results = cls._stage_3_mmr_reranking(filtered_ranked, limit=limit, lmbda=dyn_lambda)
         RECSYS_CANDIDATES_COUNT.labels(stage="stage_3_reranking").observe(len(final_results))
 
         res = [{

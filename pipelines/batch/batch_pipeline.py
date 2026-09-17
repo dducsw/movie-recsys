@@ -12,12 +12,14 @@ import sys
 import logging
 
 # Ensure project root is in sys.path when executed directly as a script
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
-from pipeline.feature.batch.model import load_datasets, extract_genre_tfidf_features, train_als_model
-from pipeline.feature.batch.similarity import compute_item_similarity_matrix
-from pipeline.feature.batch.metrics import compute_offline_metrics
-from pipeline.feature.batch.exporter import export_to_redis, export_to_qdrant
+from pipelines.feature_store.feature.batch.model import load_datasets, extract_genre_tfidf_features, train_als_model
+from pipelines.feature_store.feature.batch.similarity import compute_item_similarity_matrix
+from pipelines.feature_store.feature.batch.metrics import compute_offline_metrics
+from pipelines.feature_store.feature.batch.exporter import export_to_redis, export_to_qdrant
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("BatchPipeline")
@@ -51,7 +53,7 @@ def run_batch_pipeline():
 
     # Synchronize Features with Feast Feature Store
     try:
-        from pipeline.feature_store.materialize import run_materialization
+        from pipelines.feature_store.feast_repo.materialize import run_materialization
         run_materialization()
     except Exception as e:
         logger.warning(f"Skipping Feast materialization: {e}")

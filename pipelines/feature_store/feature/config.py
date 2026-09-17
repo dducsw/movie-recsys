@@ -7,8 +7,10 @@ Central configuration settings and environment variables for batch and streaming
 import os
 
 # Data Paths
-PIPELINE_DIR = os.path.dirname(os.path.dirname(__file__))
-PROJECT_ROOT = os.path.dirname(PIPELINE_DIR)
+FEATURE_DIR = os.path.dirname(os.path.abspath(__file__))
+FEATURE_STORE_DIR = os.path.dirname(FEATURE_DIR)
+PIPELINES_DIR = os.path.dirname(FEATURE_STORE_DIR)
+PROJECT_ROOT = os.path.dirname(PIPELINES_DIR)
 DATA_DIR = os.getenv("DATA_DIR", os.path.join(PROJECT_ROOT, "data", "ml-latest-small"))
 
 MOVIES_CSV = os.path.join(DATA_DIR, "movies.csv")

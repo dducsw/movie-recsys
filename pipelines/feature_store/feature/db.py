@@ -6,7 +6,7 @@ Database connections and client initializers (Redis, Qdrant, PySpark with Delta 
 
 import logging
 from typing import Optional, Any
-from pipeline.feature.config import (
+from pipelines.feature_store.feature.config import (
     REDIS_HOST, REDIS_PORT,
     QDRANT_HOST, QDRANT_PORT, COLLECTION_NAME
 )

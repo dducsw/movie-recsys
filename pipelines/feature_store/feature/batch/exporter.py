@@ -8,8 +8,8 @@ import json
 import logging
 from typing import Dict, List, Any
 
-from pipeline.feature.config import COLLECTION_NAME
-from pipeline.feature.db import connect_redis, connect_qdrant
+from pipelines.feature_store.feature.config import COLLECTION_NAME
+from pipelines.feature_store.feature.db import connect_redis, connect_qdrant
 
 logger = logging.getLogger("BatchExporter")
 

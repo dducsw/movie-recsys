@@ -106,8 +106,8 @@ services:
   backend:
     profiles: ["app"]
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/api/Dockerfile
     container_name: movie-recsys-backend
     depends_on:
       postgres:

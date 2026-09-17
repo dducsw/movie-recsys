@@ -11,7 +11,9 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 # Ensure project root is in sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("FeastMaterialize")
@@ -21,7 +23,7 @@ def run_materialization():
     """Apply definitions and materialize features to Redis."""
     try:
         from feast import FeatureStore
-        from pipeline.feature_store.features import (
+        from pipelines.feature_store.feast_repo.features import (
             movie_entity, user_entity, movie_stats_view, user_stats_view
         )
         repo_path = os.path.dirname(os.path.abspath(__file__))

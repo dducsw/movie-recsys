@@ -8,11 +8,11 @@ from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5435")
-DB_NAME = os.getenv("DB_NAME", "movie_db")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "mysecretpassword")
+DB_HOST = os.getenv("DB_HOST") or os.getenv("POSTGRES_HOST") or "localhost"
+DB_PORT = os.getenv("DB_PORT") or os.getenv("POSTGRES_PORT") or "5435"
+DB_NAME = os.getenv("DB_NAME") or os.getenv("POSTGRES_DB") or "movie_db"
+DB_USER = os.getenv("DB_USER") or os.getenv("POSTGRES_USER") or "postgres"
+DB_PASSWORD = os.getenv("DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "mysecretpassword"
 
 _db_pool = None
 
