@@ -80,7 +80,7 @@ The application satisfies real-time serving latency constraints ($\le 50\,\text{
 
 | Layer | Primary Tech | Responsibility |
 | :--- | :--- | :--- |
-| **Web Client** | React 18, Vite, Tailwind CSS | User interface, personalized discovery shelves, user preference collection. |
+| **Web Client** | React 19, Vite, Vanilla CSS | User interface, personalized discovery shelves, user preference collection. |
 | **API Gateway** | FastAPI, Uvicorn, Pydantic v2 | Request routing, auth, telemetry ingestion, recommendation orchestration. |
 | **Stage 1: Retrieval** | Implicit ALS, TF-IDF, Qdrant | High-recall candidate generation ($200\text{--}250$ items) under $15\,\text{ms}$. |
 | **Stage 2: Ranking** | LightGBM (LambdaRank) | Listwise scoring across 8 standardized user, item, and cross features. |

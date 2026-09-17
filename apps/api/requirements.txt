@@ -11,6 +11,7 @@ python-dotenv>=1.0.0
 # Chatbot
 langchain-core==1.4.6
 langchain-openai>=0.1.0
+langchain-google-genai>=1.0.0
 langgraph>=1.2.2
 tavily-python>=0.7.26
 redis>=4.5.0

@@ -13,8 +13,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("SeaweedFSUploader")
 
 SEAWEEDFS_FILER = os.getenv("SEAWEEDFS_FILER_URL", "http://localhost:8888")
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODELS_DIR = os.path.join(REPO_ROOT, "evaluation", "ml_pipeline", "models")
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+_candidates = [
+    os.path.join(REPO_ROOT, "pipelines", "training", "ml_pipeline", "models"),
+    os.path.join(REPO_ROOT, "notebooks", "04_pipeline_prototypes", "models"),
+    os.path.join(REPO_ROOT, "models"),
+    os.path.join(REPO_ROOT, "pipelines", "training", "ml_training"),
+]
+MODELS_DIR = next((p for p in _candidates if os.path.exists(p)), _candidates[0])
 
 
 def upload_model_file(local_path: str, bucket: str = "recsys-data", prefix: str = "models"):
@@ -51,7 +58,7 @@ def upload_all_models():
         logger.error(f"Models directory not found at {MODELS_DIR}")
         return
 
-    model_files = [f for f in os.listdir(MODELS_DIR) if f.endswith((".pkl", ".json", ".pt", ".onnx"))]
+    model_files = [f for f in os.listdir(MODELS_DIR) if f.endswith((".pkl", ".json", ".pt", ".onnx", ".joblib"))]
     if not model_files:
         logger.warning("No model files found to upload.")
         return

@@ -81,21 +81,28 @@ def test_protected_routes_without_auth():
 
 # ── 3. ML Training & Ranking Integration Tests ─────────────────────────────────
 
-@pytest.mark.skipif(get_model_bundle() is None, reason="models.joblib not present in evaluation/ml_training")
+@pytest.mark.skipif(get_model_bundle() is None, reason="models.joblib not present in pipelines/training/ml_training")
 def test_ml_training_bundle_loaded():
-    """Verify that models.joblib in evaluation/ml_training is loaded properly."""
+    """Verify that models.joblib in pipelines/training/ml_training is loaded properly."""
     bundle = get_model_bundle()
-    assert bundle is not None, "Failed to load models.joblib from evaluation/ml_training"
+    assert bundle is not None, "Failed to load models.joblib from pipelines/training/ml_training"
     assert "catboost" in bundle or "lgbm" in bundle
     assert "movie_feats" in bundle
     assert "user_feats" in bundle
     assert len(bundle["movie_feats"]) > 1000
 
 
-@pytest.mark.skipif(get_model_bundle() is None, reason="models.joblib not present in evaluation/ml_training")
+@pytest.mark.skipif(get_model_bundle() is None, reason="models.joblib not present in pipelines/training/ml_training")
 def test_ml_training_candidate_scoring():
     """Verify that MLTrainingModelService scores candidates within SLA (< 50ms)."""
     candidate_ids = [1, 2, 3, 4, 5, 10, 20, 50, 100, 200]
+    # Warm-up run to initialize C++ structures / threadpool
+    MLTrainingModelService.score_candidates(
+        candidate_ids=candidate_ids,
+        user_id=1,
+        target_genres={"Action", "Sci-Fi"}
+    )
+
     t0 = time.perf_counter()
     scores = MLTrainingModelService.score_candidates(
         candidate_ids=candidate_ids,
@@ -111,7 +118,7 @@ def test_ml_training_candidate_scoring():
         assert isinstance(score, float)
 
 
-@pytest.mark.skipif(get_model_bundle() is None, reason="models.joblib not present in evaluation/ml_training")
+@pytest.mark.skipif(get_model_bundle() is None, reason="models.joblib not present in pipelines/training/ml_training")
 def test_ml_training_recommend_for_user():
     """Verify full-catalog recommendation for user."""
     top_recs = MLTrainingModelService.recommend_for_user(user_id=1, top_k=5)

@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from pipeline.feature.config import (
+from pipelines.feature_store.feature.config import (
     MOVIES_CSV, RATINGS_CSV,
     POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
 )

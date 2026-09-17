@@ -9,7 +9,7 @@ import time
 import logging
 from typing import Dict, Any
 
-from pipeline.feature.config import SCORE_WEIGHTS, REDIS_HOST, REDIS_PORT
+from pipelines.feature_store.feature.config import SCORE_WEIGHTS, REDIS_HOST, REDIS_PORT
 
 logger = logging.getLogger("StreamingProcessor")
 

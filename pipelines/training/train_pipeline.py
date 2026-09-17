@@ -397,10 +397,10 @@ def run_pipeline():
 
     # 6. Optional Sync to SeaweedFS
     try:
-        from pipeline.upload_models_to_seaweedfs import upload_all_models
+        from pipelines.batch.upload_models_to_seaweedfs import upload_all_models
         upload_all_models()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"SeaweedFS model sync skipped: {e}")
 
     duration = round(time.time() - start_time, 2)
     logger.info("==================================================")

@@ -11,7 +11,7 @@ from collections import defaultdict
 from typing import Dict, List, Any
 import pandas as pd
 
-from pipeline.feature.config import RATINGS_CSV
+from pipelines.feature_store.feature.config import RATINGS_CSV
 
 logger = logging.getLogger("BatchMetrics")
 

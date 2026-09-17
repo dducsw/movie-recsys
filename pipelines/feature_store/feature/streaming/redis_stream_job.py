@@ -11,11 +11,11 @@ import time
 import logging
 from typing import Optional
 
-from pipeline.feature.config import (
+from pipelines.feature_store.feature.config import (
     REDIS_HOST, REDIS_PORT, REDIS_STREAM_KEY, REDIS_CONSUMER_GROUP
 )
-from pipeline.feature.db import connect_redis
-from pipeline.feature.streaming.processor import process_event
+from pipelines.feature_store.feature.db import connect_redis
+from pipelines.feature_store.feature.streaming.processor import process_event
 
 logger = logging.getLogger("RedisStreamingJob")
 
