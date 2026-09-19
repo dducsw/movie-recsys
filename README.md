@@ -12,9 +12,9 @@
   <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" /></a>
 </p>
 
-MovieNex is an end-to-end movie recommendation platform designed around a standard 3-stage recommendation architecture: multi-channel candidate retrieval, gradient boosted decision tree ranking, and diversity-focused re-ranking. 
+MovieNex is an industry-grade, end-to-end movie recommendation and discovery platform. It is engineered around an industry-standard **3-Stage Recommendation Architecture** (Multi-Channel Candidate Retrieval $\rightarrow$ Gradient Boosted Decision Tree Ranking $\rightarrow$ Diversity-focused Re-ranking) and enhanced with a conversational **AI Assistant** capable of open-ended film discussions, plot interpretations, and schema-aware PostgreSQL Text-to-SQL querying.
 
-The project includes an online inference backend (FastAPI), a responsive web client (React), a shared core package (`recsys_core`) that prevents training-serving skew, an automated continuous training (CT) pipeline with MLflow tracking, and an intelligent conversational assistant powered by LangGraph with SQL database retrieval.
+The monorepo encompasses an online serving backend (**FastAPI**), an interactive web client (**React 19 + Vite**), a shared core ML package (`recsys_core`) that completely eliminates training-serving skew, and an automated continuous training (CT) pipeline with **MLflow** experiment tracking and **SeaweedFS** S3 artifact storage.
 
 ---
 
@@ -24,34 +24,33 @@ The project includes an online inference backend (FastAPI), a responsive web cli
 
 ---
 
-## 🧭 System Overview
+## ✨ Key Highlights
 
-The application satisfies real-time serving latency constraints ($\le 50\,\text{ms}$) while supporting offline continuous training:
-
-| Layer | Primary Tech | Responsibility |
-| :--- | :--- | :--- |
-| **Web Client** | React 19, Vite, Vanilla CSS | User interface, personalized discovery shelves, user preference collection. |
-| **API Gateway** | FastAPI, Uvicorn, Pydantic v2 | Request routing, auth, telemetry ingestion, recommendation orchestration. |
-| **Stage 1: Retrieval** | Implicit ALS, TF-IDF, Qdrant | High-recall candidate generation ($200\text{--}250$ items) under $15\,\text{ms}$. |
-| **Stage 2: Ranking** | LightGBM (LambdaRank) | Listwise scoring across 8 standardized user, item, and cross features. |
-| **Stage 3: Re-ranking** | Maximal Marginal Relevance (MMR) | Diversity optimization ($\lambda = 0.7$) to avoid genre-clustering filter bubbles. |
-| **Conversational AI** | LangGraph, Gemini / OpenRouter, SQL Retriever | Natural language chat assistant with PostgreSQL Text-to-SQL querying and movie card rendering. |
-| **Data & Cache** | PostgreSQL 15, Redis 7 | User catalog, relational interactions, sub-millisecond feature lookup. |
-| **Storage & Tracking** | SeaweedFS (S3), MLflow | Object storage for model binaries, metrics logging, and model registry. |
-| **Core Package** | `libs/recsys_core` | Shared feature extractors, ranking metrics, and re-ranking algorithms. |
+- **3-Stage RecSys Engine ($< 50\,\text{ms}$ p95 SLA):**
+  - **Stage 1 (Retrieval):** Combines Implicit ALS matrix factorization, TF-IDF content similarity, and dense vector embeddings indexed via **Qdrant HNSW** to generate $200\text{--}250$ high-recall candidates in $< 15\,\text{ms}$.
+  - **Stage 2 (Ranking):** Listwise scoring powered by **LightGBM LambdaRank** (`objective="lambdarank"`) across 8 standardized user, item, and cross interaction features in $< 10\,\text{ms}$.
+  - **Stage 3 (Re-ranking):** **Maximal Marginal Relevance (MMR)** with dynamic genre-entropy weighting ($\lambda = 0.7$) to eliminate filter bubbles while preserving top accuracy in $< 5\,\text{ms}$.
+- **Smart Conversational AI Concierge (LangGraph):**
+  - Built with a stateful LangGraph workflow supporting **Multi-Provider LLM orchestration** (Google Gemini 2.5 Flash, OpenRouter, ZhipuAI).
+  - **Schema-Aware Text-to-SQL Engine:** Converts natural language queries into safe PostgreSQL SELECT queries (with read-only guardrails, LIMIT clamping, and injection prevention) for querying directors, cast, release dates, ratings, and user watchlists.
+  - **Open-Ended Cinema Dialogue:** Responds to cinematic trivia, complex plot analyses, and ending explanations while streaming responsive movie card carousels directly to the frontend.
+- **Production-Ready MLOps & Continuous Training (CT):**
+  - Time-based Leave-One-Out (LOO) dataset splitting with uniform negative sampling.
+  - Strict metric quality gates ($HR@10$, $NDCG@10$, $ILD$, inference latency) before publishing model artifacts to MLflow Registry and SeaweedFS S3.
+  - Nearline streaming updates powered by **Redis Streams** for real-time trending and user preference adaptation.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ System Architecture
 
 ```mermaid
 flowchart TD
     subgraph ClientLayer ["Client Layer"]
-        UI["MovieNex Web Client<br/>(React + Vite)"]
+        UI["MovieNex Web Client<br/>(React 19 + Vite)"]
     end
 
     subgraph ServiceLayer ["API & Service Layer"]
-        API["FastAPI Backend Gateway"]
+        API["FastAPI Backend Gateway (Port 8000)"]
         Agent["Conversational Assistant<br/>(LangGraph + SQL Retriever + Gemini)"]
     end
 
@@ -64,19 +63,20 @@ flowchart TD
         R2 -->|Ranked Scores| R3
     end
 
-    subgraph DataStorage ["Data & Storage Layer"]
-        DB[("PostgreSQL<br/>Catalog & Accounts")]
-        Cache[("Redis<br/>Online Feature Store")]
-        VectorDB[("Qdrant<br/>Plot Vector Embeddings")]
-        S3[("SeaweedFS<br/>S3 Model Storage")]
-        MLflow["MLflow<br/>Experiment Tracking"]
+    subgraph DataStorage ["Data, Storage & MLOps Layer"]
+        DB[("PostgreSQL 15 (Port 5435)<br/>Relational Catalog & Accounts")]
+        Cache[("Redis 7 (Port 6379)<br/>Online Features & Chat History")]
+        VectorDB[("Qdrant (Port 6333)<br/>Dense Plot Vector Embeddings")]
+        S3[("SeaweedFS S3 (Port 8333)<br/>Model Registry & Artifact Storage")]
+        MLflow["MLflow (Port 5000)<br/>Experiment Tracking & Registry"]
+        Prometheus["Prometheus (Port 9090)<br/>Metrics & Telemetry"]
     end
 
     UI <-->|"REST API (HTTP/JSON)"| API
-    UI <-->|"Chat API"| API
+    UI <-->|"Chatbot Stream"| API
     API <--> Agent
-    API -->|"Trigger 3-Stage Recs"| R1
-    R3 -->|"Personalized Top-10"| API
+    API -->|"Trigger 3-Stage Pipeline"| R1
+    R3 -->|"Personalized Top-K"| API
 
     API <--> DB
     API <--> Cache
@@ -90,13 +90,164 @@ flowchart TD
 
 ---
 
-## 🎯 3-Stage Recommendation Pipeline
+## 🧭 System Overview & Component Responsibilities
 
-| Stage | Method / Algorithm | Key Inputs | SLA Budget | Output |
-| :--- | :--- | :--- | :--- | :--- |
-| **1. Candidate Retrieval** | • Implicit ALS (latent factors)<br/>• TF-IDF Cosine Similarity<br/>• Dense Vector Search (Qdrant) | User history, movie genre metadata, plot synopsis embeddings | $< 15\,\text{ms}$ | ~200 candidate IDs |
-| **2. Feature Ranking** | LightGBM LambdaRanker (`objective="lambdarank"`) | 8 standardized features:<br/>`popularity`, `vote_average`, `genre_overlap`, `release_year`, `user_activity`, `user_bias`, `als_score`, `cb_score` | $< 10\,\text{ms}$ | Scored & sorted candidates |
-| **3. Diversity Re-ranking** | Maximal Marginal Relevance (MMR) | Stage 2 scores, genre vectors, trade-off parameter $\lambda = 0.7$ | $< 5\,\text{ms}$ | Final top-10 recommendation list |
+| Layer / Service | Primary Technologies | Core Responsibilities |
+| :--- | :--- | :--- |
+| **Web Client** | React 19, Vite, Vanilla CSS | Interactive streaming UI, discovery carousels, responsive chat drawer, onboarding survey. |
+| **API Gateway** | FastAPI, Uvicorn, Pydantic v2 | Authentication (JWT), request routing, recommendation orchestration, event ingestion. |
+| **Stage 1: Retrieval** | Implicit ALS, TF-IDF, Qdrant | Candidate generation ($200\text{--}250$ items) in $< 15\,\text{ms}$ SLA budget. |
+| **Stage 2: Ranking** | LightGBM LambdaRank | Listwise scoring across 8 standardized user, item, and cross features in $< 10\,\text{ms}$. |
+| **Stage 3: Re-ranking** | Maximal Marginal Relevance (MMR) | Diversity balancing ($\lambda = 0.7$) to avoid genre clustering in $< 5\,\text{ms}$. |
+| **Conversational AI** | LangGraph, Gemini, SQL Retriever | General cinema QA, movie trivia, and read-only PostgreSQL Text-to-SQL querying. |
+| **Databases & Cache** | PostgreSQL 15, Redis 7, Qdrant | Catalog persistence, relational interactions, sub-millisecond feature lookup, vector search. |
+| **Storage & Tracking** | SeaweedFS (S3), MLflow 2.15 | S3-compatible model binary storage, experiment tracking, and model lifecycle management. |
+| **Core Library** | `libs/recsys_core` | Shared feature extractors, ranking metrics ($HR$, $NDCG$, $ILD$), and re-ranking algorithms. |
+
+---
+
+## 🚀 How to Run the Project
+
+### 1. Prerequisites
+Make sure the following tools are installed on your workstation:
+- **Docker & Docker Compose** (tested on Docker Engine 24+ or Docker Desktop with WSL 2)
+- **Python 3.10+** (tested on Python 3.12 / 3.13)
+- **Node.js 18+** and **npm**
+
+---
+
+### 2. Environment Configuration (`.env`)
+The project reads all configuration secrets and connection strings from a single `.env` file located at the **repository root**:
+
+```bash
+# Copy template from root
+cp .env.example .env
+```
+
+Open `.env` and configure your API keys and service credentials:
+```ini
+# --- AI Assistant (Chatbot) ---
+GOOGLE_API_KEY="your-gemini-api-key"        # Recommended: Gemini 2.5 Flash
+OPENROUTER_API_KEY="your-openrouter-key"    # Optional fallback
+TMDB_API_KEY="your-tmdb-api-key"            # For metadata crawling & posters
+
+# --- Relational Database (PostgreSQL) ---
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=mysecretpassword
+POSTGRES_DB=movie_db
+DB_HOST=127.0.0.1
+DB_PORT=5435
+
+# --- Cache & Feature Store (Redis) ---
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+
+# --- Vector Database (Qdrant) ---
+QDRANT_HOST=127.0.0.1
+QDRANT_PORT=6333
+```
+
+---
+
+### 3. Launch Core Infrastructure (Docker)
+Start PostgreSQL, Redis, Qdrant, SeaweedFS, MLflow, and Prometheus in detached mode:
+
+```bash
+make infra
+# or directly with docker compose:
+docker compose up -d
+```
+
+To verify that all containers are healthy:
+```bash
+docker compose ps
+```
+
+---
+
+### 4. Database Initialization *(First-time setup only)*
+If running on a fresh PostgreSQL database instance, load the curated movie dataset (~10,000 titles):
+
+```bash
+# Populate normalized relational tables (movies, directors, actors, genres, tags)
+python data/simulator/import_movies_to_db.py --csv_path data/crawler/movies_crawled.csv
+
+# (Optional) Generate realistic synthetic users and interaction history
+python data/simulator/generate_oltp_data.py --num_users 100
+```
+
+---
+
+### 5. Launch the Applications
+
+You can launch both Backend and Frontend using either the **1-Click Script** or **Manual Terminals**:
+
+#### Option A: 1-Click Startup *(Recommended)*
+- **On Linux / macOS:**
+  ```bash
+  chmod +x start-webapp.sh
+  ./start-webapp.sh
+  ```
+- **On Windows (PowerShell):**
+  ```powershell
+  .\start-webapp.ps1
+  ```
+*(Press `Ctrl + C` in the terminal to terminate all processes simultaneously).*
+
+#### Option B: Manual Step-by-Step Launch
+If you prefer running components in separate terminals for independent debugging:
+
+**Terminal 1 — Backend FastAPI Server:**
+```bash
+cd apps/api
+# Install requirements if not already done: pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+- API Base URL: `http://localhost:8000`
+- Interactive Swagger API Documentation: `http://localhost:8000/docs`
+
+**Terminal 2 — Frontend React Client:**
+```bash
+cd apps/web
+npm install   # Run once to install dependencies
+npm run dev
+```
+- Web Application: `http://localhost:5173`
+
+---
+
+### 6. Run Continuous Training (CT Pipeline)
+To execute the automated continuous training pipeline (offline data extraction, negative sampling, LightGBM LambdaRank training, quality gate evaluation, and MLflow logging):
+
+```bash
+make train
+# or: PYTHONPATH=apps/api:libs/recsys_core/src:pipelines/training python pipelines/training/train_pipeline.py
+```
+
+---
+
+### 7. Run Automated Tests & Validation
+Run the multi-layer test suite covering core math algorithms, training pipelines, API endpoints, and chatbot SQL retrieval:
+
+```bash
+make test
+```
+
+---
+
+## 🌐 Default Ports & Access Points
+
+| Service | Local URL | Port | Description |
+| :--- | :--- | :--- | :--- |
+| **MovieNex Web Client** | [http://localhost:5173](http://localhost:5173) | `5173` | React 19 streaming web app & AI Chatbot drawer |
+| **FastAPI Backend API** | [http://localhost:8000](http://localhost:8000) | `8000` | Online recommendation & chat serving gateway |
+| **Interactive Swagger Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) | `8000` | OpenAPI schema & endpoint playground |
+| **Qdrant Vector Dashboard** | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) | `6333` | Vector collection inspection and HNSW status |
+| **MLflow Tracking Server** | [http://localhost:5000](http://localhost:5000) | `5000` | Experiment runs, metric charts, and model registry |
+| **SeaweedFS S3 API** | [http://localhost:8333](http://localhost:8333) | `8333` | S3 object store for serialized model binaries |
+| **Prometheus Telemetry** | [http://localhost:9090](http://localhost:9090) | `9090` | API latency and system metrics scraper |
+| **PostgreSQL Database** | `localhost:5435` | `5435` | Primary relational database (`movie_db`) |
+| **Redis In-Memory Store** | `localhost:6379` | `6379` | Feature cache, session memory, and stream queues |
 
 ---
 
@@ -105,85 +256,53 @@ flowchart TD
 ```
 movie-recsys/
 ├── apps/
-│   ├── api/                        # FastAPI serving gateway (auth, recs, chatbot, SQL retriever)
-│   └── web/                        # React + Vite streaming user interface
+│   ├── api/                        # FastAPI serving gateway (MVC architecture, recs, chatbot, SQL retriever)
+│   │   ├── app/                    # Controllers, models, services, views, and chatbot agents
+│   │   ├── tests/                  # Integration tests and route contracts
+│   │   └── main.py                 # FastAPI application entrypoint with lifespan DB init
+│   └── web/                        # React 19 + Vite streaming client (Netflix-inspired theme)
+│       ├── src/                    # Components, pages, hooks, api clients, and styles
+│       └── package.json            # Web client dependencies and build scripts
 ├── libs/
-│   └── recsys_core/                # Shared core library (features, metrics, MMR, fusion)
+│   └── recsys_core/                # Monorepo shared core library (eliminates training-serving skew)
+│       ├── src/recsys_core/        # Feature transformers, ranking metrics (HR, NDCG, ILD), MMR, RRF
+│       └── tests/                  # Unit tests for core algorithms and mathematical validation
 ├── pipelines/
-│   ├── training/                   # Continuous training pipeline, configs, integration tests
-│   ├── feature_store/              # Feast feature definitions and materialization
-│   ├── batch/                      # Offline batch pipelines and artifact synchronization
-│   └── stream/                     # Nearline Redis stream processing
+│   ├── training/                   # 1-Click Continuous Training (CT) pipeline with MLflow logging
+│   ├── feature_store/              # Feast feature definitions and Redis materialization
+│   ├── batch/                      # Offline batch data pipelines and artifact synchronization
+│   └── stream/                     # Nearline Redis stream processing for real-time interactions
+├── data/
+│   ├── crawler/                    # TMDB metadata crawler scripts and raw datasets
+│   └── simulator/                  # Advanced OLTP user interaction simulator & database loaders
 ├── notebooks/
 │   ├── 01_eda/                     # Exploratory Data Analysis
-│   ├── 02_classical_ml/            # Classical benchmarks (SVD, ALS, NMF)
-│   ├── 03_deep_learning/           # Neural CF, Autoencoders, Sequential models
+│   ├── 02_classical_ml/            # Classical benchmarks (User/Item CF, SVD, SVD++, NMF, iALS)
+│   ├── 03_deep_learning/           # Neural CF, Autoencoders, and sequential models
 │   └── 04_pipeline_prototypes/     # 3-stage prototyping and comparison experiments
-├── docs/                           # Technical documentation and ADRs
+├── docs/                           # Architectural Decision Records (ADRs) and technical guides
 ├── assets/                         # Architecture diagrams and UI screenshots
-├── Makefile                        # Common developer commands
-└── docker-compose.yml              # Local infrastructure orchestration
+├── start-webapp.sh                 # 1-Click automated launch script for Linux / macOS
+├── start-webapp.ps1                # 1-Click automated launch script for Windows
+├── Makefile                        # Common developer targets (test, train, infra, lint)
+├── docker-compose.yml              # Local infrastructure container orchestration
+└── requirements.txt                # Python dependencies root pointer
 ```
 
 ---
 
-## ⚡ Quick Start
+## 🧪 Testing & Quality Assurance
 
-### 1. Prerequisites
-- Docker & Docker Compose
-- Python 3.10+ (tested on Python 3.12 / 3.13)
-- Node.js 18+ and npm
-
-### 2. Environment Configuration
-Create your environment file at the project root:
-```bash
-cp .env.example .env
-```
-Edit `.env` to configure your database secrets, LLM API keys (`GOOGLE_API_KEY`, `OPENROUTER_API_KEY`, or `ZHIPUAI_API_KEY`), and TMDB API Key.
-
-### 3. Launch Core Infrastructure
-```bash
-# Start PostgreSQL, Redis, Qdrant, SeaweedFS, and MLflow
-make infra
-# or: docker compose up -d
-```
-
-### 4. Run Tests & Validation
-```bash
-# Run test suite across apps, core library, and training pipeline
-make test
-```
-
-### 5. Run Continuous Training
-```bash
-# Execute the automated 1-click training and evaluation pipeline
-make train
-```
-
-### 6. Start Applications
-
-| Component | Directory | Commands | Default Port |
-| :--- | :--- | :--- | :--- |
-| **Backend API** | `apps/api` | `pip install -r requirements.txt`<br/>`uvicorn main:app --reload --port 8000` | [http://localhost:8000/docs](http://localhost:8000/docs) |
-| **Frontend UI** | `apps/web` | `npm install`<br/>`npm run dev` | [http://localhost:5173](http://localhost:5173) |
-| **MLflow UI** | Orchestrated | `make infra` | [http://localhost:5000](http://localhost:5000) |
-| **Qdrant Dashboard** | Orchestrated | `make infra` | [http://localhost:6333/dashboard](http://localhost:6333/dashboard) |
-
-*(On Windows, you can also run `.\start-webapp.ps1` for automated local setup).*
-
----
-
-## 🧪 Testing & Code Quality
-
-The project maintains a test suite covering unit logic, integration flows, and API contracts:
+The project enforces comprehensive test automation across all layers:
 
 | Test Scope | Target Path | Coverage Focus |
 | :--- | :--- | :--- |
-| **Core Algorithms** | `libs/recsys_core/tests/` | Feature extraction, ranking metrics ($HR$, $NDCG$, $ILD$), MMR re-ranking, RRF fusion. |
-| **Training Pipeline** | `pipelines/training/tests/` | Retrieval factor generation, LightGBM schema compatibility, quality gate evaluation. |
-| **API Endpoints** | `apps/api/tests/` | Route authentication, recommendation serving contracts, cold-start handling, chatbot SQL retrieval. |
+| **Core Algorithms** | `libs/recsys_core/tests/` | Feature extraction, ranking metrics ($HR@K$, $NDCG@K$, $ILD$), MMR diversity, RRF fusion. |
+| **Training Pipeline** | `pipelines/training/tests/` | Latent factor generation, LightGBM schema compatibility, quality gate evaluation. |
+| **API Endpoints** | `apps/api/tests/test_api.py` | JWT auth lifecycle, candidate scoring SLA ($< 80\,\text{ms}$), cold-start fallback. |
+| **SQL Retriever & Chat** | `apps/api/tests/test_sql_retriever.py` | SQL injection prevention, safe SELECT validation, heuristic parser, LLM intent routing. |
 
-To run the complete suite:
+Run the full automated test suite:
 ```bash
 make test
 ```
@@ -192,35 +311,23 @@ make test
 
 ## 📚 Technical Documentation
 
-Detailed architectural and engineering guides are available in the [`docs/`](./docs) directory:
+In-depth technical guides, design rationales, and metric formulations are located in the [`docs/`](./docs) directory:
 
-| Document | Topic | Description |
-| :--- | :--- | :--- |
-| 📘 [**System Architecture**](./docs/architecture.md) | Architecture & Serving | Service boundaries, latency budgets ($\le 50\,\text{ms}$), data flow, and caching strategy. |
-| 📗 [**ML Pipeline Specification**](./docs/ml-pipeline.md) | 3-Stage Pipeline | Retrieval setup, feature engineering, LightGBM training, and LOO validation. |
-| 📙 [**Applied RecSys & AI**](./docs/recsys-applied.md) | Algorithms & Math | Formulation of iALS, FM, LightGBM LambdaRank, MMR, and conversational agent. |
-| 📓 [**Production & MLOps**](./docs/deployment.md) | Deployment & Ops | Container configuration, runbooks, healthchecks, and model registry lifecycle. |
-| 📕 [**Business Requirements**](./docs/business-requirements.md) | Product & Metrics | User personas, journey maps, North Star metrics, and offline-to-online metric alignment. |
-| 📔 [**Architecture Decisions**](./docs/architecture-decisions.md) | ADR Records | Rationale for monorepo layout, shared core library, and training-serving skew control. |
+- 📘 [**System Architecture**](./docs/architecture.md) — Service boundaries, data flow, latency budgets ($\le 50\,\text{ms}$), and caching strategy.
+- 📗 [**ML Pipeline Specification**](./docs/ml-pipeline.md) — Multi-channel retrieval, feature engineering, LightGBM training, and LOO evaluation.
+- 📙 [**Applied RecSys & AI**](./docs/recsys-applied.md) — Mathematical formulation of iALS, LightGBM LambdaRank, MMR, and LangGraph agent workflow.
+- 📓 [**Production Deployment & MLOps**](./docs/deployment.md) — Container orchestration, zero-downtime hot reloading, and MLflow model registry lifecycle.
+- 📕 [**Business Requirements**](./docs/business-requirements.md) — User personas, North Star metrics, and offline-to-online metric alignment.
+- 📔 [**Architecture Decisions (ADRs)**](./docs/architecture-decisions.md) — Rationale for monorepo layout, shared core library, and skew control.
 
 ---
 
-## 👥 Team & Engineering Scope
+## 👥 Contributors & Team
 
 | Contributor | Focus Area | Affiliation |
 | :--- | :--- | :--- |
-| **Le Dinh Duc** | Big Data Engineer | Computer Science, Ho Chi Minh City University of Technology (HCMUT) |
-| **Huynh Le Duy Khanh** | Data Scientist | Information Technology, Ho Chi Minh City University of Science (HCMUS) |
-
-### 🎯 Key Engineering Contributions (Junior MLE Scope)
-
-| Component | Area | Implementation Details |
-| :--- | :--- | :--- |
-| **`libs/recsys_core`** | Shared Core Package | Packaged reusable feature transformations, ranking metrics ($HR@K$, $NDCG@K$, $ILD$), and re-ranking algorithms (RRF, MMR) to eliminate training-serving skew. |
-| **`pipelines/training`** | Continuous Training (CT) | Implemented 1-click training pipeline with Time-Based Leave-One-Out split, negative sampling, LightGBM LambdaRank training from YAML configs, and MLflow logging. |
-| **Metric Quality Gates** | MLOps & Validation | Automated latency ($< 30\,\text{ms}$) and metric quality gates preventing regression before model artifact publishing. |
-| **Serving Integration** | FastAPI Serving Gateway | Harmonized feature schemas across offline training and live serving in `apps/api/app/services/recsys.py`. |
-| **Testing Infrastructure** | CI / Automation | Authored multi-layer automated test suite (46 tests) integrated into GitHub Actions CI. |
+| **Le Dinh Duc** | Big Data & RecSys Engineer | Computer Science, Ho Chi Minh City University of Technology (HCMUT) |
+| **Huynh Le Duy Khanh** | Data Scientist / Machine Learning Engineer | Information Technology, Ho Chi Minh City University of Science (HCMUS) |
 
 ---
 
