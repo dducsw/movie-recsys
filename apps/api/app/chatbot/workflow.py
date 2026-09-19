@@ -1,12 +1,14 @@
-from langgraph.graph import StateGraph, START, END
-from app.chatbot.state import GraphState
-from app.chatbot.route import route_after_intent, route_after_query
+from langgraph.graph import END, START, StateGraph
+
 from app.chatbot.agents import (
     detect_intent_node,
-    query_movies_node,
     enrich_movies_node,
-    generate_answer_node
+    generate_answer_node,
+    query_movies_node,
 )
+from app.chatbot.route import route_after_intent, route_after_query
+from app.chatbot.state import GraphState
+
 
 def build_chatbot_graph():
     workflow = StateGraph(GraphState)

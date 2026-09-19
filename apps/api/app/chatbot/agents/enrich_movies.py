@@ -1,4 +1,5 @@
-from typing import List, Dict, Any
+from typing import Any
+
 from app.chatbot.state import GraphState
 
 
@@ -11,7 +12,7 @@ def enrich_movies_node(state: GraphState) -> dict:
     if not candidates:
         return {"enriched_movies": []}
 
-    enriched: List[Dict[str, Any]] = []
+    enriched: list[dict[str, Any]] = []
     for movie in candidates:
         enriched.append({
             **movie,

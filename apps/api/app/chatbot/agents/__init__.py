@@ -1,13 +1,13 @@
-import os
 import logging
-from typing import Optional
+import os
+
 from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
 
 def get_llm(
-    model_name: Optional[str] = None,
+    model_name: str | None = None,
     temperature: float = 0.3,
     max_tokens: int = 1024
 ):
@@ -74,14 +74,14 @@ def get_llm(
 
 
 from .detect_intent import detect_intent_node
+from .enrich_movies import enrich_movies_node
 from .generate_answer import generate_answer_node
 from .query_movies import query_movies_node
-from .enrich_movies import enrich_movies_node
 
 __all__ = [
-    "get_llm",
     "detect_intent_node",
-    "generate_answer_node",
-    "query_movies_node",
     "enrich_movies_node",
+    "generate_answer_node",
+    "get_llm",
+    "query_movies_node",
 ]
