@@ -1,5 +1,6 @@
 from app.chatbot.state import GraphState
 
+
 def route_after_intent(state: GraphState) -> str:
     """Always route to query_movies so candidate movies are retrieved for horizontal cards display."""
     return "query_movies"
