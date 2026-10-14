@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { API_BASE_URL } from '../api/client';
+import { API_BASE_URL, setAccessToken, refreshAccessToken } from '../api/client';
 
 const AuthContext = createContext();
 
@@ -9,41 +9,51 @@ export function AuthProvider({ children }) {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
+  // Initialize session from secure HttpOnly cookie on page load
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      fetch(`${API_BASE_URL}/auth/me`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-        .then(res => (res.ok ? res.json() : null))
-        .then(data => {
-          if (data && data.user) {
-            setUser(data.user);
-          } else {
-            localStorage.removeItem('auth_token');
-            setUser(null);
-          }
-        })
-        .catch(() => {
+    let isMounted = true;
+    refreshAccessToken()
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && data.user) {
+          setUser(data.user);
+        } else {
           setUser(null);
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    } else {
-      setLoading(false);
-    }
+        }
+      })
+      .catch(() => {
+        if (isMounted) setUser(null);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = (token, userData) => {
-    localStorage.setItem('auth_token', token);
+    setAccessToken(token);
     setUser(userData);
   };
 
-  const logout = () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user_info');
-    setUser(null);
+  const logout = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'include',
+      });
+    } catch {
+      // Ignored
+    } finally {
+      setAccessToken(null);
+      setUser(null);
+    }
   };
 
   const handleAuthSuccess = (userData, isNewUser) => {

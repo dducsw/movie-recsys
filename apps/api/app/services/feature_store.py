@@ -25,13 +25,13 @@ def get_feast_store():
         from feast import FeatureStore
         curr = os.path.dirname(os.path.abspath(__file__))
         repo_root = curr
-        while repo_root and not os.path.exists(os.path.join(repo_root, "pipeline", "feature_store")):
+        while repo_root and not (os.path.exists(os.path.join(repo_root, "pipelines", "feature_store", "feast_repo")) or os.path.exists(os.path.join(repo_root, ".git"))):
             parent = os.path.dirname(repo_root)
             if parent == repo_root:
                 break
             repo_root = parent
 
-        feast_repo_path = os.path.join(repo_root, "pipeline", "feature_store")
+        feast_repo_path = os.path.join(repo_root, "pipelines", "feature_store", "feast_repo")
         if os.path.exists(feast_repo_path):
             _feast_store = FeatureStore(repo_path=feast_repo_path)
             logger.info(f"Connected to Feast Feature Store at {feast_repo_path}")

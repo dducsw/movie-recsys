@@ -20,10 +20,13 @@ echo -e "\033[1;36m   MOVIE RECOMMENDATION SYSTEM - WEBAPP STARTUP         \033[
 echo -e "\033[1;36m========================================================\033[0m"
 
 # 1. Start Docker Infrastructure
-echo -e "\n\033[1;33m[1/3] Khởi động Docker Containers (PostgreSQL, Redis, Qdrant)...\033[0m"
-docker compose -f "$PROJECT_ROOT/docker-compose.yml" up -d postgres redis qdrant
-
-echo -e "\033[1;32m[✓] Docker infra đã sẵn sàng.\033[0m"
+echo -e "\n\033[1;33m[1/3] Kiểm tra Docker Containers (PostgreSQL, Redis, Qdrant)...\033[0m"
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    docker compose -f "$PROJECT_ROOT/docker-compose.yml" up -d postgres redis qdrant
+    echo -e "\033[1;32m[✓] Docker infra đã sẵn sàng.\033[0m"
+else
+    echo -e "\033[1;33m[!] Docker chưa được bật hoặc chưa cài đặt WSL integration. Tiếp tục chạy Backend & Frontend...\033[0m"
+fi
 
 # 2. Khởi chạy Backend
 echo -e "\n\033[1;33m[2/3] Khởi chạy Backend FastAPI (port 8000)...\033[0m"
@@ -40,7 +43,7 @@ if [ ! -d "node_modules" ]; then
     echo "Đang cài đặt dependencies npm..."
     npm install
 fi
-npm run dev &
+CI=true npm run dev -- --host 0.0.0.0 --port 5173 &
 FRONTEND_PID=$!
 echo -e "\033[1;32m[✓] Frontend đã chạy (PID: $FRONTEND_PID) -> http://localhost:5173\033[0m"
 

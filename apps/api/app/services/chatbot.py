@@ -139,6 +139,7 @@ class ChatbotService:
 
         initial_state: GraphState = {
             "messages": history,
+            "session_id": session_id,
             "intent_output": None,
             "candidate_movies": [],
             "enriched_movies": [],

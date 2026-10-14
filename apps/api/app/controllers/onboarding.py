@@ -1,7 +1,7 @@
 import json
 import logging
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from app.models.user import UserModel
 from app.services.auth_service import get_current_user_optional
@@ -12,6 +12,8 @@ router = APIRouter(prefix="/api/users", tags=["Onboarding"])
 
 
 class OnboardingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     favorite_genres: List[str]
     favorite_movie_ids: List[int]
 

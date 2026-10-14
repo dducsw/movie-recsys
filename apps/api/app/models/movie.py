@@ -333,8 +333,10 @@ class MovieModel:
                         if res.status_code == 200:
                             for video in res.json().get("results", []):
                                 if video.get("site") == "YouTube" and video.get("type") == "Trailer":
-                                    resolved_url = f"https://www.youtube.com/embed/{video.get('key')}"
-                                    break
+                                    v_key = video.get("key", "")
+                                    if v_key and re.match(r"^[a-zA-Z0-9_\-]{6,20}$", v_key):
+                                        resolved_url = f"https://www.youtube.com/embed/{v_key}"
+                                        break
                     except Exception:
                         pass
 

@@ -78,7 +78,9 @@ FORBIDDEN_KEYWORDS = [
     r"\binsert\b", r"\bupdate\b", r"\bdelete\b", r"\bdrop\b",
     r"\balter\b", r"\btruncate\b", r"\bcreate\b", r"\bgrant\b",
     r"\brevoke\b", r"\bexecute\b", r"\bexec\b", r"\bcall\b",
-    r"\bpg_sleep\b", r"\bcopy\b", r"\bshutdown\b", r"\bvacuum\b"
+    r"\bpg_sleep\b", r"\bcopy\b", r"\bshutdown\b", r"\bvacuum\b",
+    r"--", r"/\*", r"\bpg_shadow\b", r"\bpg_authid\b", r"\bpg_user\b",
+    r"\bunion\b\s+select\b"
 ]
 
 
@@ -107,10 +109,10 @@ def validate_and_sanitize_sql(query: str, max_limit: int = 20) -> tuple[bool, st
     if not re.match(r"^(?:SELECT|WITH)\b", clean_sql, re.IGNORECASE):
         return False, "", "Only SELECT or WITH queries are permitted."
 
-    # Check forbidden mutating keywords
+    # Check forbidden mutating or dangerous keywords
     for pattern in FORBIDDEN_KEYWORDS:
         if re.search(pattern, clean_sql, re.IGNORECASE):
-            return False, "", f"Query contains forbidden keyword: {pattern}"
+            return False, "", f"Query contains forbidden keyword or sequence: {pattern}"
 
     # Ensure LIMIT clause exists and is clamped
     limit_match = re.search(r"\bLIMIT\s+(\d+)", clean_sql, re.IGNORECASE)
@@ -141,60 +143,67 @@ def heuristic_generate_sql(query_text: str, user_id: int | None = None) -> str |
         return "SELECT COUNT(*) AS total_movies FROM movies;"
 
     # 2. Watchlist inquiry for authenticated user
-    if any(k in q for k in ["danh sách theo dõi", "phim tôi đã lưu", "watchlist", "phim đã lưu"]) and user_id:
+    if any(k in q for k in ["danh sách theo dõi", "phim tôi đã lưu", "watchlist", "phim đã lưu"]) and user_id is not None:
+        try:
+            validated_user_id = int(user_id)
+        except (ValueError, TypeError):
+            return None
         return f"""
             SELECT m.movieid AS "movieId", m.title, m.release_date, m.vote_average, m.popularity, m.poster_url, d.name AS director
             FROM movies m
             JOIN user_watchlist w ON m.movieid = w.movie_id
             LEFT JOIN directors d ON m.director_id = d.id
-            WHERE w.user_id = {int(user_id)}
+            WHERE w.user_id = {validated_user_id}
             ORDER BY w.created_at DESC
             LIMIT 10;
         """
 
     # 3. Director queries:
     # 3a. Who directed movie [Title]: "ai là đạo diễn của phim [Title]", "who directed [Title]"
-    who_directed_match = re.search(r"(?:ai là đạo diễn của(?: phim)?|who directed|đạo diễn của phim)\s+['\"]?([a-zA-Z0-9\s\u00C0-\u1EF9]+)['\"]?", q)
+    who_directed_match = re.search(r"(?:ai là đạo diễn của(?: phim)?|who directed|đạo diễn của phim)\s+['\"]?([a-zA-Z0-9\s\u00C0-\u1EF9'-]+)['\"]?", q)
     if who_directed_match:
         movie_title = who_directed_match.group(1).strip()
         movie_title = re.sub(r"[?.,!]+$", "", movie_title).strip()
         if len(movie_title) >= 2:
+            safe_title = re.sub(r"[^\w\s\u00C0-\u1EF9'-]", "", movie_title).replace("'", "''")
             return f"""
                 SELECT m.movieid AS "movieId", m.title, m.release_date, m.vote_average, m.popularity, m.poster_url, d.name AS director
                 FROM movies m
                 LEFT JOIN directors d ON m.director_id = d.id
-                WHERE m.title ILIKE '%{movie_title}%'
+                WHERE m.title ILIKE '%{safe_title}%'
                 LIMIT 5;
             """
 
     # 3b. Movies by director: "đạo diễn [X]", "phim của đạo diễn [X]", "directed by [X]"
-    dir_match = re.search(r"(?:đạo diễn|directed by|director|phim của đạo diễn)\s+['\"]?([a-zA-Z0-9\s\u00C0-\u1EF9]+)['\"]?", q)
+    dir_match = re.search(r"(?:đạo diễn|directed by|director|phim của đạo diễn)\s+['\"]?([a-zA-Z0-9\s\u00C0-\u1EF9'-]+)['\"]?", q)
     if dir_match:
         director_name = dir_match.group(1).strip()
         director_name = re.sub(r"^(là\s+|ai\s+|nào\s+|của\s+|phim\s+)", "", director_name).strip()
         director_name = re.sub(r"[?.,!]+$", "", director_name).strip()
         if len(director_name) >= 3 and director_name not in ["nào", "ai", "gì", "nhất"]:
+            safe_director = re.sub(r"[^\w\s\u00C0-\u1EF9'-]", "", director_name).replace("'", "''")
             return f"""
                 SELECT m.movieid AS "movieId", m.title, m.release_date, m.vote_average, m.popularity, m.poster_url, d.name AS director
                 FROM movies m
                 JOIN directors d ON m.director_id = d.id
-                WHERE d.name ILIKE '%{director_name}%'
+                WHERE d.name ILIKE '%{safe_director}%'
                 ORDER BY m.popularity DESC, m.vote_average DESC
                 LIMIT 10;
             """
 
     # 4. Actor queries: "diễn viên [X]", "phim có [X] đóng", "phim của [X]", "starring [X]"
-    act_match = re.search(r"(?:diễn viên|starring|đóng bởi|phim có)\s+['\"]?([a-zA-Z0-9\s\u00C0-\u1EF9]+)['\"]?", q)
+    act_match = re.search(r"(?:diễn viên|starring|đóng bởi|phim có)\s+['\"]?([a-zA-Z0-9\s\u00C0-\u1EF9'-]+)['\"]?", q)
     if act_match:
         actor_name = act_match.group(1).strip()
         actor_name = re.sub(r"^(là\s+|ai\s+|nào\s+)", "", actor_name).strip()
         if len(actor_name) >= 3 and actor_name not in ["nào", "ai", "gì", "nhất"]:
+            safe_actor = re.sub(r"[^\w\s\u00C0-\u1EF9'-]", "", actor_name).replace("'", "''")
             return f"""
                 SELECT m.movieid AS "movieId", m.title, m.release_date, m.vote_average, m.popularity, m.poster_url, a.name AS actor
                 FROM movies m
                 JOIN movie_actors ma ON m.movieid = ma.movie_id
                 JOIN actors a ON ma.actor_id = a.id
-                WHERE a.name ILIKE '%{actor_name}%'
+                WHERE a.name ILIKE '%{safe_actor}%'
                 ORDER BY m.popularity DESC
                 LIMIT 10;
             """
@@ -353,7 +362,7 @@ class SQLRetriever:
                 "sql": sanitized_sql,
                 "rows": [],
                 "movie_cards": [],
-                "message": f"Execution error: {e}"
+                "message": "Execution error: Database query failed to execute."
             }
         finally:
             if cur:

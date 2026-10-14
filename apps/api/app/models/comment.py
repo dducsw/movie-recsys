@@ -179,8 +179,8 @@ class CommentModel:
             conn.close()
 
     @staticmethod
-    def delete_comment(comment_id: int, user_id: int) -> bool:
-        """Delete a comment if user is author."""
+    def delete_comment(comment_id: int, user_id: int, is_admin: bool = False) -> bool:
+        """Delete a comment if user is author or administrator."""
         conn = get_db_connection()
         cur = conn.cursor()
         try:
@@ -188,7 +188,7 @@ class CommentModel:
             row = cur.fetchone()
             if not row:
                 return False
-            if row["user_id"] != user_id:
+            if not is_admin and row["user_id"] != user_id:
                 raise PermissionError("You can only delete your own comments.")
 
             cur.execute("DELETE FROM movie_comments WHERE id = %s;", (comment_id,))

@@ -4,7 +4,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage
 
-from app.chatbot.agents import get_llm
+from app.chatbot.agents import get_deepseek_llm, get_llm, get_tokenharbor_llm
 from app.chatbot.prompts import ANSWER_PROMPT
 from app.chatbot.state import GraphState
 
@@ -18,7 +18,11 @@ def build_fallback_response(
     enriched: list[dict[str, Any]],
     sql_results: list[dict[str, Any]] | None = None,
     lang: str = "vi",
-    genres: list[str] | None = None
+    genres: list[str] | None = None,
+    year: str | None = None,
+    director: str | None = None,
+    actors: list[str] | None = None,
+    min_rating: float | None = None,
 ) -> str:
     """Generate a clean, beautiful Markdown response matching the user's input language when LLM is offline."""
     is_vi = (lang == "vi")
@@ -53,16 +57,16 @@ def build_fallback_response(
         lines = []
         for i, row in enumerate(sql_results[:8], 1):
             title = row.get("title") or row.get("name") or "Untitled"
-            year = (row.get("release_date") or "")[:4]
-            year_str = f" *({year})*" if year else ""
-            director = f" | Đạo diễn: {row['director']}" if row.get("director") else ""
+            yr = (row.get("release_date") or "")[:4]
+            year_str = f" *({yr})*" if yr else ""
+            dir_str = f" | Đạo diễn: {row['director']}" if row.get("director") else ""
             rating = f" | ⭐ {row['vote_average']}/10" if row.get("vote_average") else ""
-            lines.append(f"{i}. **{title}**{year_str}{rating}{director}")
+            lines.append(f"{i}. **{title}**{year_str}{rating}{dir_str}")
 
         return header + "\n".join(lines)
 
     # 2. Recommendation Fallbacks
-    if not enriched:
+    if not enriched and not matched_movie:
         if is_vi:
             return (
                 "Chào bạn! Tôi là **MovieNex AI** — trợ lý điện ảnh & gợi ý phim thông minh của bạn. 🎬\n\n"
@@ -72,8 +76,8 @@ def build_fallback_response(
                 "- **Thảo luận điện ảnh:** Giải thích cốt truyện, phân tích cái kết, thảo luận trivia.\n\n"
                 "👉 *Bạn có thể thử hỏi:* \n"
                 "- *'Phim của đạo diễn Christopher Nolan'*\n"
-                "- *'Gợi ý cho tôi phim hành động khoa học viễn tưởng hay'*\n"
-                "- *'Giải thích ý nghĩa cái kết phim Shutter Island'*"
+                "- *'Tìm phim năm 2022'*\n"
+                "- *'Gợi ý cho tôi phim hành động khoa học viễn tưởng hay'*"
             )
         else:
             return (
@@ -84,17 +88,54 @@ def build_fallback_response(
                 "- **Cinema Discussions:** Plot analysis, endings explanation, and trivia.\n\n"
                 "👉 *You can try asking:* \n"
                 "- *'Movies directed by Christopher Nolan'*\n"
-                "- *'Recommend some mind-bending sci-fi movies'*\n"
-                "- *'Explain the ending of Shutter Island'*"
+                "- *'Find movies released in 2022'*\n"
+                "- *'Recommend some mind-bending sci-fi movies'*"
             )
 
+    if not enriched and matched_movie:
+        enriched = [matched_movie]
+
     # Format recommended movies
-    if matched_movie and intent == "similar":
+    if intent == "movie_detail" and matched_movie:
+        orig_title = matched_movie.get("title", "phim")
+        dir_name = matched_movie.get("director")
+        dir_text = f" của đạo diễn **{dir_name}**" if dir_name else ""
+        header = (
+            f"Dưới đây là thông tin chi tiết về tác phẩm điện ảnh **{orig_title}**{dir_text}:\n\n"
+            if is_vi else
+            f"Here are the details for the film **{orig_title}**{dir_text}:\n\n"
+        )
+    elif matched_movie and intent == "similar":
         orig_title = matched_movie.get("title", "phim bạn yêu cầu" if is_vi else "your requested movie")
         header = (
             f"Dựa trên bộ phim **{orig_title}**, hệ thống MovieNex AI đã tuyển chọn những bộ phim tương đồng nhất dành cho bạn:\n\n"
             if is_vi else
             f"Based on **{orig_title}**, here are the most relevant movie recommendations curated for you:\n\n"
+        )
+    elif intent == "year" and year:
+        header = (
+            f"Dưới đây là các tác phẩm điện ảnh phát hành vào năm **{year}** dành cho bạn:\n\n"
+            if is_vi else
+            f"Here are notable movies released in **{year}** for you:\n\n"
+        )
+    elif intent == "director" and director:
+        header = (
+            f"Dưới đây là các tác phẩm của đạo diễn **{director}**:\n\n"
+            if is_vi else
+            f"Here are movies directed by **{director}**:\n\n"
+        )
+    elif intent == "actor" and actors:
+        act_display = ", ".join(actors)
+        header = (
+            f"Dưới đây là các tác phẩm có sự tham gia của diễn viên **{act_display}**:\n\n"
+            if is_vi else
+            f"Here are movies starring **{act_display}**:\n\n"
+        )
+    elif intent == "rating" and min_rating:
+        header = (
+            f"Dưới đây là các tác phẩm có điểm đánh giá từ **{min_rating}/10** trở lên:\n\n"
+            if is_vi else
+            f"Here are top-rated movies with score **{min_rating}/10** or higher:\n\n"
         )
     elif intent == "genre":
         header = (
@@ -146,7 +187,8 @@ def generate_answer_node(state: GraphState) -> dict:
     filtered_movies = enriched
 
     final_text = ""
-    llm = get_llm()
+    # Primary: DeepSeek LLM (Direct / OpenRouter / Token Harbor)
+    llm = get_deepseek_llm(temperature=0.3, max_tokens=2048)
 
     if llm is not None:
         try:
@@ -159,11 +201,26 @@ def generate_answer_node(state: GraphState) -> dict:
                     f"Results: {json.dumps(sql_results[:10], ensure_ascii=False, indent=2)}"
                 )
 
-            # 2. Referenced movie
+            # 2. Referenced / Focus movie with full details
             if matched:
-                context_blocks.append(f"[REFERENCED MOVIE]\nTitle: {matched.get('title', 'Unknown')}")
+                matched_overview = matched.get("overview") or matched.get("description", "")
+                matched_director = matched.get("director", "Unknown")
+                matched_cast = matched.get("cast", "")
+                matched_genres = matched.get("genres", "")
+                matched_rating = matched.get("vote_average", "N/A")
+                matched_year = (matched.get("release_date") or "")[:4]
+                context_blocks.append(
+                    f"[REFERENCED / FOCUS MOVIE DETAILS]\n"
+                    f"Title: {matched.get('title', 'Unknown')}\n"
+                    f"Release Date: {matched.get('release_date', '')} (Year: {matched_year})\n"
+                    f"Director: {matched_director}\n"
+                    f"Cast: {matched_cast}\n"
+                    f"Genres: {matched_genres}\n"
+                    f"Rating: {matched_rating}/10 ({matched.get('vote_count', 0)} votes)\n"
+                    f"Overview / Synopsis: {matched_overview}"
+                )
 
-            # 3. Recommended / Candidate movies
+            # 3. Recommended / Candidate movies with Tavily web context
             if enriched:
                 movie_list_str = json.dumps(
                     [
@@ -171,16 +228,17 @@ def generate_answer_node(state: GraphState) -> dict:
                             "title": m.get("title"),
                             "release_date": m.get("release_date"),
                             "genres": m.get("genres"),
-                            "description": m.get("description", ""),
                             "director": m.get("director", ""),
-                            "rating": m.get("vote_average", 0.0)
+                            "rating": m.get("vote_average", 0.0),
+                            "overview": m.get("description", ""),
+                            "live_web_review_and_reception": m.get("tavily_context", "")
                         }
                         for m in enriched[:8]
                     ],
                     ensure_ascii=False,
                     indent=2,
                 )
-                context_blocks.append(f"[CANDIDATE MOVIES]\n{movie_list_str}")
+                context_blocks.append(f"[CANDIDATE MOVIES (ENRICHED WITH TAVILY LIVE WEB SEARCH)]\n{movie_list_str}")
 
             context_data = "\n\n".join(context_blocks) if context_blocks else "No specific database entities matched. Answer using general cinema knowledge."
 
@@ -203,8 +261,21 @@ def generate_answer_node(state: GraphState) -> dict:
                 if mentioned:
                     filtered_movies = mentioned
         except Exception as e:
-            logger.warning(f"LLM answer generation failed: {e}. Generating localized fallback response.")
-            final_text = ""
+            logger.warning(f"Token Harbor answer generation encountered: {e}. Attempting secondary fallback LLM...")
+            try:
+                fallback_llm = get_llm()
+                if fallback_llm is not None:
+                    prompt = ANSWER_PROMPT
+                    chain = prompt | fallback_llm
+                    response = chain.invoke({
+                        "history": messages,
+                        "context_data": context_data,
+                        "response_language": response_lang_name
+                    })
+                    final_text = response.content.strip()
+            except Exception as e2:
+                logger.warning(f"Secondary fallback LLM failed: {e2}. Generating localized fallback response.")
+                final_text = ""
 
     if not final_text:
         final_text = build_fallback_response(
@@ -214,7 +285,11 @@ def generate_answer_node(state: GraphState) -> dict:
             enriched=enriched,
             sql_results=sql_results,
             lang=detected_lang,
-            genres=genres
+            genres=genres,
+            year=intent_output.year if intent_output else None,
+            director=intent_output.director if intent_output else None,
+            actors=intent_output.actors if intent_output else None,
+            min_rating=intent_output.min_rating if intent_output else None,
         )
 
     return {

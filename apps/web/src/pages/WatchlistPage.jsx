@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, Film, ArrowRight } from 'lucide-react';
 import MovieCard from '../components/MovieCard/MovieCard';
-import { API_BASE_URL } from '../api/client';
+import { apiFetch } from '../api/client';
 import { useWatchlist } from '../context/WatchlistContext';
 import './WatchlistPage.css';
 import './ExplorePage.css';
@@ -22,18 +22,19 @@ export default function WatchlistPage() {
     }
 
     setLoading(true);
-    // Fetch movies in liked list
-    Promise.all(
-      likedMovies.map(id =>
-        fetch(`${API_BASE_URL}/movies/${id}`, { credentials: 'include' })
-          .then(r => (r.ok ? r.json() : null))
-          .then(d => (d?.movie || d))
-          .catch(() => null)
-      )
-    ).then(results => {
-      setMovieDetails(results.filter(Boolean));
-      setLoading(false);
-    });
+    // Fetch movies in liked list via single batch request
+    apiFetch('/movies/batch', {
+      method: 'POST',
+      body: JSON.stringify({ movie_ids: likedMovies })
+    })
+      .then(results => {
+        setMovieDetails(Array.isArray(results) ? results : []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setMovieDetails([]);
+        setLoading(false);
+      });
   }, [likedMovies]);
 
   return (

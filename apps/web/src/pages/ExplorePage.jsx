@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import MovieCard from '../components/MovieCard/MovieCard';
-import { API_BASE_URL } from '../api/client';
+import { API_BASE_URL, apiFetch } from '../api/client';
 import { useWatchlist } from '../context/WatchlistContext';
 import './ExplorePage.css';
 
@@ -23,24 +23,23 @@ export default function ExplorePage() {
 
   useEffect(() => {
     setLoading(true);
-    let url = `${API_BASE_URL}/movies/trending?page=${pageParam}&limit=24`;
+    let path = `/movies/trending?page=${pageParam}&limit=24`;
 
     if (searchQuery.trim()) {
-      url = `${API_BASE_URL}/movies/search?query=${encodeURIComponent(searchQuery.trim())}&limit=40`;
-      if (genreParam !== 'all') url += `&genre=${encodeURIComponent(genreParam)}`;
-      if (yearParam !== 'all') url += `&year=${encodeURIComponent(yearParam)}`;
-      if (statusParam !== 'all') url += `&status=${encodeURIComponent(statusParam)}`;
+      path = `/movies/search?query=${encodeURIComponent(searchQuery.trim())}&limit=40`;
+      if (genreParam !== 'all') path += `&genre=${encodeURIComponent(genreParam)}`;
+      if (yearParam !== 'all') path += `&year=${encodeURIComponent(yearParam)}`;
+      if (statusParam !== 'all') path += `&status=${encodeURIComponent(statusParam)}`;
     } else if (genreParam !== 'all') {
-      url = `${API_BASE_URL}/movies/search?genre=${encodeURIComponent(genreParam)}&limit=40`;
+      path = `/movies/search?genre=${encodeURIComponent(genreParam)}&limit=40`;
     } else if (filterType === 'latest') {
-      url = `${API_BASE_URL}/movies/latest?page=${pageParam}&limit=24`;
+      path = `/movies/latest?page=${pageParam}&limit=24`;
     } else if (filterType === 'recommendations') {
       const q = likedMovies.length > 0 ? `?movie_ids=${likedMovies.join(',')}&limit=40` : '?limit=40';
-      url = `${API_BASE_URL}/recommendations${q}`;
+      path = `/recommendations${q}`;
     }
 
-    fetch(url, { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : { results: [], total_movies: 0 }))
+    apiFetch(path)
       .then(data => {
         setMovies(data.results || []);
         setTotalMovies(data.total_movies || data.results?.length || 0);

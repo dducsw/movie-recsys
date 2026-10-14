@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import HeroBanner from '../components/HeroBanner/HeroBanner';
 import GenreFilterBar from '../components/GenreFilterBar/GenreFilterBar';
 import MovieRow from '../components/MovieRow/MovieRow';
-import { API_BASE_URL } from '../api/client';
+import { API_BASE_URL, apiFetch } from '../api/client';
 import { useWatchlist } from '../context/WatchlistContext';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import './HomePage.css';
@@ -78,8 +78,7 @@ export default function HomePage() {
     setIsLoading(true);
     setBackendOffline(false);
 
-    const trendingPromise = fetch(`${API_BASE_URL}/movies/trending?limit=20`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : Promise.reject(new Error('Trending fetch failed')))
+    const trendingPromise = apiFetch('/movies/trending?limit=20')
       .then(data => {
         if (data.results && data.results.length > 0) {
           setTrendingMovies(data.results);
@@ -89,8 +88,7 @@ export default function HomePage() {
       })
       .catch(() => false);
 
-    const latestPromise = fetch(`${API_BASE_URL}/movies/latest?limit=20`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : Promise.reject(new Error('Latest fetch failed')))
+    const latestPromise = apiFetch('/movies/latest?limit=20')
       .then(data => {
         if (data.results && data.results.length > 0) {
           setLatestMovies(data.results);
@@ -101,8 +99,7 @@ export default function HomePage() {
       .catch(() => false);
 
     const recsQuery = likedMovies.length > 0 ? `?movie_ids=${likedMovies.join(',')}` : '';
-    const recsPromise = fetch(`${API_BASE_URL}/recommendations${recsQuery}`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : Promise.reject(new Error('Recs fetch failed')))
+    const recsPromise = apiFetch(`/recommendations${recsQuery}`)
       .then(data => {
         if (data.results && data.results.length > 0) {
           setRecommendations(data.results);

@@ -1,6 +1,20 @@
 import React, { useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
+
+const sanitizeLinkUrl = (url) => {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+      return url;
+    }
+    return '';
+  } catch {
+    return '';
+  }
+};
 import { 
   Bot, 
   Send, 
@@ -161,8 +175,21 @@ function ChatbotView({
               <div className={`message-bubble-card ${msg.sender}`}>
                 {msg.sender === 'bot' ? (
                   <div className="ai-markdown-render">
-                    <ReactMarkdown>
-                      {msg.text ? msg.text.replace(/!\[.*?\]\(.*?\)/g, '') : ''}
+                    <ReactMarkdown
+                      components={{
+                        a: ({ href, children }) => {
+                          const safeHref = sanitizeLinkUrl(href);
+                          return safeHref ? (
+                            <a href={safeHref} target="_blank" rel="noopener noreferrer">
+                              {children}
+                            </a>
+                          ) : (
+                            <span>{children}</span>
+                          );
+                        }
+                      }}
+                    >
+                      {DOMPurify.sanitize(msg.text ? msg.text.replace(/!\[.*?\]\(.*?\)/g, '') : '')}
                     </ReactMarkdown>
                   </div>
                 ) : (

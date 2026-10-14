@@ -1,49 +1,85 @@
-import os
 import logging
 from contextlib import contextmanager
+from typing import Generator
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
 from fastapi import HTTPException
+
+from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-DB_HOST = os.getenv("DB_HOST") or os.getenv("POSTGRES_HOST") or "localhost"
-DB_PORT = os.getenv("DB_PORT") or os.getenv("POSTGRES_PORT") or "5435"
-DB_NAME = os.getenv("DB_NAME") or os.getenv("POSTGRES_DB") or "movie_db"
-DB_USER = os.getenv("DB_USER") or os.getenv("POSTGRES_USER") or "postgres"
-DB_PASSWORD = os.getenv("DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "mysecretpassword"
+settings = get_settings()
+
+DB_HOST = settings.DB_HOST
+DB_PORT = str(settings.DB_PORT)
+DB_NAME = settings.DB_NAME
+DB_USER = settings.DB_USER
+DB_PASSWORD = settings.DB_PASSWORD
+
+# SQLAlchemy Engine configured with safe, production-grade connection pooling
+# pool_pre_ping=True tests connections prior to checkout to discard stale/dropped connections
+# Explicit pool_size, max_overflow, and pool_timeout prevent connection exhaustion DoS
+engine = create_engine(
+    settings.sqlalchemy_database_url,
+    pool_pre_ping=True,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    pool_recycle=settings.DB_POOL_RECYCLE,
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def get_db() -> Generator[Session, None, None]:
+    """
+    FastAPI dependency that provides an isolated SQLAlchemy session per request
+    with automatic commit/rollback and cleanup.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
 
 _db_pool = None
 
 
 def get_db_pool() -> ThreadedConnectionPool:
-    """Initialize or return the singleton ThreadedConnectionPool."""
+    """Initialize or return the singleton ThreadedConnectionPool for psycopg2."""
     global _db_pool
     if _db_pool is None or _db_pool.closed:
         try:
             _db_pool = ThreadedConnectionPool(
-                minconn=int(os.getenv("DB_POOL_MIN", "2")),
-                maxconn=int(os.getenv("DB_POOL_MAX", "20")),
+                minconn=max(1, settings.DB_POOL_SIZE // 2),
+                maxconn=settings.DB_POOL_SIZE + settings.DB_MAX_OVERFLOW,
                 host=DB_HOST,
-                port=DB_PORT,
+                port=int(DB_PORT),
                 database=DB_NAME,
                 user=DB_USER,
                 password=DB_PASSWORD,
-                cursor_factory=RealDictCursor
+                cursor_factory=RealDictCursor,
             )
-            logger.info("PostgreSQL ThreadedConnectionPool initialized (2-20 connections).")
+            logger.info("PostgreSQL ThreadedConnectionPool initialized safely with pooled bounds.")
         except Exception as e:
             logger.error(f"Failed to initialize PostgreSQL Connection Pool: {e}")
             raise HTTPException(
                 status_code=500,
-                detail="Database connection failure. Make sure PostgreSQL container is running."
+                detail="Database connection failure. Make sure PostgreSQL service is running."
             )
     return _db_pool
 
 
 class PooledConnectionProxy:
-    """Connection proxy that returns connection to pool upon close() instead of dropping it."""
+    """Connection proxy that safely returns connection to pool upon close() instead of dropping it."""
     def __init__(self, pool: ThreadedConnectionPool, conn):
         self._pool = pool
         self._conn = conn

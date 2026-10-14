@@ -1,29 +1,100 @@
 export const API_BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000/api';
 
+// In-memory token storage (XSS-safe: access token is never persisted in localStorage/sessionStorage)
+let inMemoryAccessToken = null;
+
+export const setAccessToken = (token) => {
+  inMemoryAccessToken = token;
+};
+
+export const getAccessToken = () => {
+  return inMemoryAccessToken;
+};
+
+export const resetSessionId = () => {
+  const newSid = crypto.randomUUID();
+  sessionStorage.setItem('movienex_sid', newSid);
+  localStorage.removeItem('movienex_sid');
+  localStorage.removeItem('cinemax_chat_history');
+  return newSid;
+};
+
 export const getOrCreateSessionId = () => {
   const KEY = 'movienex_sid';
-  let sid = localStorage.getItem(KEY);
+  let sid = sessionStorage.getItem(KEY);
   if (!sid) {
     sid = crypto.randomUUID();
-    localStorage.setItem(KEY, sid);
+    sessionStorage.setItem(KEY, sid);
   }
   return sid;
 };
 
+let refreshPromise = null;
+
+export const refreshAccessToken = async () => {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        setAccessToken(null);
+        return null;
+      }
+
+      const data = await response.json();
+      if (data && data.access_token) {
+        setAccessToken(data.access_token);
+        return data;
+      }
+      return null;
+    } catch {
+      setAccessToken(null);
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+};
+
 export const apiFetch = async (path, options = {}) => {
-  const token = localStorage.getItem('auth_token');
+  const token = getAccessToken();
   const headers = {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest', // Anti-CSRF protection
     'X-Session-Id': getOrCreateSessionId(),
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     ...(options.headers || {})
   };
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  let response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers,
     credentials: 'include'
   });
+
+  // Automatic token refresh interceptor on 401
+  if (response.status === 401 && !path.startsWith('/auth/refresh') && !path.startsWith('/auth/login')) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed && refreshed.access_token) {
+      headers['Authorization'] = `Bearer ${refreshed.access_token}`;
+      response = await fetch(`${API_BASE_URL}${path}`, {
+        ...options,
+        headers,
+        credentials: 'include'
+      });
+    }
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -38,7 +109,9 @@ export const trackClick = (movieId, source, position = null) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
       'X-Session-Id': getOrCreateSessionId(),
+      ...(getAccessToken() ? { 'Authorization': `Bearer ${getAccessToken()}` } : {})
     },
     credentials: 'include',
     body: JSON.stringify({ movie_id: movieId, source, position }),
@@ -51,8 +124,9 @@ export const trackImpressions = (items) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
       'X-Session-Id': getOrCreateSessionId(),
-      ...(localStorage.getItem('auth_token') ? { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` } : {})
+      ...(getAccessToken() ? { 'Authorization': `Bearer ${getAccessToken()}` } : {})
     },
     credentials: 'include',
     body: JSON.stringify({
@@ -63,4 +137,30 @@ export const trackImpressions = (items) => {
       }))
     }),
   }).catch(() => {});
+};
+
+let impressionBuffer = [];
+let impressionTimeout = null;
+
+export const queueImpression = (item) => {
+  if (!item || !item.movieId) return;
+  impressionBuffer.push(item);
+  if (!impressionTimeout) {
+    impressionTimeout = setTimeout(() => {
+      const toSend = [...impressionBuffer];
+      impressionBuffer = [];
+      impressionTimeout = null;
+      // Deduplicate by movieId + source within the batch window
+      const seen = new Set();
+      const uniqueItems = [];
+      for (const imp of toSend) {
+        const key = `${imp.movieId}-${imp.source || 'listing'}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueItems.push(imp);
+        }
+      }
+      trackImpressions(uniqueItems);
+    }, 400);
+  }
 };

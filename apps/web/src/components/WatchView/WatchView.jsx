@@ -22,21 +22,24 @@ function WatchView({ movie, onClose }) {
         <div className="watch-video-screen">
           {(() => {
             let embedUrl = null;
+            const SAFE_ID_REGEX = /^[a-zA-Z0-9_-]{6,20}$/;
             if (movie.trailer_url) {
               if (movie.trailer_url.includes('/embed/')) {
                 const parts = movie.trailer_url.split('/embed/');
                 const videoId = parts[1]?.split('?')[0];
-                if (videoId && !videoId.startsWith('?')) {
+                if (videoId && SAFE_ID_REGEX.test(videoId)) {
                   embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
-                } else {
-                  embedUrl = movie.trailer_url.replace('www.youtube.com', 'www.youtube-nocookie.com');
                 }
               } else if (movie.trailer_url.includes('watch?v=')) {
                 const videoId = movie.trailer_url.split('watch?v=')[1]?.split('&')[0];
-                if (videoId) embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+                if (videoId && SAFE_ID_REGEX.test(videoId)) {
+                  embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+                }
               } else if (movie.trailer_url.includes('youtu.be/')) {
                 const videoId = movie.trailer_url.split('youtu.be/')[1]?.split('?')[0];
-                if (videoId) embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+                if (videoId && SAFE_ID_REGEX.test(videoId)) {
+                  embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+                }
               }
             }
 

@@ -53,8 +53,8 @@ export function useChat() {
         ...prev,
         {
           sender: 'bot',
-          text: response.reply || 'Sorry, I could not generate a response right now.',
-          movies: response.recommended_movies || []
+          text: response.text || response.reply || 'Sorry, I could not generate a response right now.',
+          movies: response.movies || response.recommended_movies || []
         }
       ]);
       setChatMessageCount(prev => prev + 1);

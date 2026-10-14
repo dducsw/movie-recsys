@@ -12,7 +12,7 @@ import {
   ChevronUp,
   Clock
 } from 'lucide-react';
-import { API_BASE_URL } from '../../api/client';
+import { apiFetch } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import './CommentSection.css';
 
@@ -67,13 +67,8 @@ export default function CommentSection({ movieId, movieTitle }) {
   // Fetch comments for this movie
   const fetchComments = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const res = await fetch(`${API_BASE_URL}/movies/${movieId}/comments`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setComments(data.comments || []);
-      }
+      const data = await apiFetch(`/movies/${movieId}/comments`);
+      setComments(data.comments || []);
     } catch (err) {
       console.error('Failed to fetch comments:', err);
     } finally {
@@ -100,26 +95,14 @@ export default function CommentSection({ movieId, movieTitle }) {
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem('auth_token');
-      const res = await fetch(`${API_BASE_URL}/movies/${movieId}/comments`, {
+      const data = await apiFetch(`/movies/${movieId}/comments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({ content: newCommentText.trim() })
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        setComments([data.comment, ...comments]);
-        setNewCommentText('');
-      } else {
-        const errData = await res.json();
-        alert(errData.detail || 'Không thể đăng bình luận.');
-      }
+      setComments([data.comment, ...comments]);
+      setNewCommentText('');
     } catch (err) {
-      alert('Lỗi kết nối khi đăng bình luận.');
+      alert(err.message || 'Lỗi khi đăng bình luận.');
     } finally {
       setSubmitting(false);
     }
@@ -136,38 +119,27 @@ export default function CommentSection({ movieId, movieTitle }) {
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem('auth_token');
-      const res = await fetch(`${API_BASE_URL}/movies/${movieId}/comments`, {
+      const data = await apiFetch(`/movies/${movieId}/comments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({ content: replyText.trim(), parent_id: parentId })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        // Insert new reply under parent
-        setComments(comments.map(c => {
-          if (c.id === parentId) {
-            return {
-              ...c,
-              replies: [...(c.replies || []), data.comment]
-            };
-          }
-          return c;
-        }));
-        setReplyText('');
-        setReplyingToId(null);
-        // Ensure replies are expanded
-        setShowRepliesMap(prev => ({ ...prev, [parentId]: true }));
-      } else {
-        const errData = await res.json();
-        alert(errData.detail || 'Không thể gửi câu trả lời.');
-      }
+      // Insert new reply under parent
+      setComments(comments.map(c => {
+        if (c.id === parentId) {
+          return {
+            ...c,
+            replies: [...(c.replies || []), data.comment]
+          };
+        }
+        return c;
+      }));
+      setReplyText('');
+      setReplyingToId(null);
+      // Ensure replies are expanded
+      setShowRepliesMap(prev => ({ ...prev, [parentId]: true }));
     } catch (err) {
-      alert('Lỗi kết nối khi gửi phản hồi.');
+      alert(err.message || 'Lỗi khi gửi phản hồi.');
     } finally {
       setSubmitting(false);
     }
@@ -181,29 +153,24 @@ export default function CommentSection({ movieId, movieTitle }) {
     }
 
     try {
-      const token = localStorage.getItem('auth_token');
-      const res = await fetch(`${API_BASE_URL}/comments/${commentId}/like`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+      const data = await apiFetch(`/comments/${commentId}/like`, {
+        method: 'POST'
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setComments(comments.map(c => {
-          if (!isReply && c.id === commentId) {
-            return { ...c, is_liked: data.is_liked, likes_count: data.likes_count };
-          }
-          if (isReply && c.id === parentId) {
-            return {
-              ...c,
-              replies: c.replies.map(r => 
-                r.id === commentId ? { ...r, is_liked: data.is_liked, likes_count: data.likes_count } : r
-              )
-            };
-          }
-          return c;
-        }));
-      }
+      setComments(comments.map(c => {
+        if (!isReply && c.id === commentId) {
+          return { ...c, is_liked: data.is_liked, likes_count: data.likes_count };
+        }
+        if (isReply && c.id === parentId) {
+          return {
+            ...c,
+            replies: c.replies.map(r => 
+              r.id === commentId ? { ...r, is_liked: data.is_liked, likes_count: data.likes_count } : r
+            )
+          };
+        }
+        return c;
+      }));
     } catch (err) {
       console.error('Like toggle error:', err);
     }
@@ -214,29 +181,22 @@ export default function CommentSection({ movieId, movieTitle }) {
     if (!window.confirm('Bạn có chắc chắn muốn xóa bình luận này không?')) return;
 
     try {
-      const token = localStorage.getItem('auth_token');
-      const res = await fetch(`${API_BASE_URL}/comments/${commentId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+      await apiFetch(`/comments/${commentId}`, {
+        method: 'DELETE'
       });
 
-      if (res.ok) {
-        if (!isReply) {
-          setComments(comments.filter(c => c.id !== commentId));
-        } else {
-          setComments(comments.map(c => {
-            if (c.id === parentId) {
-              return { ...c, replies: c.replies.filter(r => r.id !== commentId) };
-            }
-            return c;
-          }));
-        }
+      if (!isReply) {
+        setComments(comments.filter(c => c.id !== commentId));
       } else {
-        const errData = await res.json();
-        alert(errData.detail || 'Không thể xóa bình luận.');
+        setComments(comments.map(c => {
+          if (c.id === parentId) {
+            return { ...c, replies: c.replies.filter(r => r.id !== commentId) };
+          }
+          return c;
+        }));
       }
     } catch (err) {
-      alert('Lỗi kết nối khi xóa bình luận.');
+      alert(err.message || 'Lỗi khi xóa bình luận.');
     }
   };
 

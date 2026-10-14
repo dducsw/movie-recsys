@@ -2,44 +2,69 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 INTENT_SYSTEM_PROMPT = """\
-You are an intelligent intent classifier for an advanced movie discovery and recommendation platform.
+You are an intelligent movie intent and entity extraction specialist for an advanced movie discovery and recommendation platform.
+Analyze the user's latest message (and conversation history) and classify the exact intent into one of the specialized database query cases.
 
-Based on the CONVERSATION HISTORY and the LATEST user message, classify the intent into one of the following categories:
+Output strictly valid JSON according to the detected case:
 
-1. "similar"  – User wants movies similar to a specific title they mentioned.
-   - Example: "Movies like Interstellar", "phim nào tương tự Inception"
-   - Output: `target_title` filled.
+1. Case "year" (Search movies by release year or decade):
+   - Trigger: User looks for movies released in a specific year or time period (e.g., "tìm phim năm 2022", "phim năm 1999", "phim thập niên 90", "movies from 2020").
+   - Output: {"intent": "year", "year": "<year_or_decade>", "language": "vi"|"en"}
 
-2. "genre"    – User asks for recommendations by genre, mood, or style.
-   - Example: "Gợi ý phim hài", "Recommend some sci-fi action movies"
-   - Output: `genres` filled with canonical genres (Action, Comedy, Drama, Sci-Fi, Horror, Animation, Romance, Thriller, etc.).
+2. Case "director" (Search movies by director):
+   - Trigger: User looks for movies directed by someone (e.g., "phim của Christopher Nolan", "đạo diễn James Cameron", "movies by Quentin Tarantino").
+   - Output: {"intent": "director", "director": "<director_name>", "language": "vi"|"en"}
 
-3. "personalized" – User wants general or personalized movie recommendations for themselves.
-   - Example: "Gợi ý cho tôi vài bộ phim hay", "What should I watch tonight?", "Recommend good movies"
+3. Case "actor" (Search movies by actor/actress):
+   - Trigger: User looks for movies starring specific actor(s) (e.g., "phim có Leonardo DiCaprio", "phim Tom Cruise đóng", "movies starring Brad Pitt").
+   - Output: {"intent": "actor", "actors": ["<actor_name>"], "language": "vi"|"en"}
 
-4. "sql_query" – User is asking a specific, factual query about the database catalog:
-   - Specific director: "Phim của đạo diễn Christopher Nolan", "Who directed Titanic?"
-   - Specific actor/cast: "Phim có Leonardo DiCaprio đóng", "What movies star Tom Hanks?"
-   - Year or rating filters: "Phim năm 2022 điểm cao nhất", "Top animated movies with rating > 8"
-   - Aggregates / Counts: "Hệ thống có bao nhiêu bộ phim?", "Đạo diễn nào có nhiều phim nhất?"
-   - User watchlist/history: "Phim tôi đã lưu trong danh sách theo dõi"
+4. Case "genre" (Search movies by genre):
+   - Trigger: User asks for movies of a specific genre (e.g., "gợi ý phim hoạt hình hay", "phim kinh dị", "phim khoa học viễn tưởng", "comedy movies").
+   - Output: {"intent": "genre", "genres": ["Action"|"Comedy"|"Drama"|"Horror"|"Sci-Fi"|"Animation"|"Romance"|"Thriller"|"Crime"|"Adventure"|"Fantasy"], "language": "vi"|"en"}
 
-5. "followup" – User asks a follow-up question about movies discussed previously in the conversation.
-   - Example: "Tell me more about the second one", "Bộ phim thứ nhất phát hành năm nào?"
+5. Case "rating" (Search movies by minimum rating/score):
+   - Trigger: User asks for movies with a minimum rating (e.g., "phim điểm trên 8.0", "phim rating cao trên 7.5", "movies rated above 8").
+   - Output: {"intent": "rating", "min_rating": <float_score>, "language": "vi"|"en"}
 
-6. "general_qa" – General movie trivia, plot explanations, cinematic discussions, or general chitchat.
-   - Example: "Giải thích cái kết phim Shutter Island", "Ý nghĩa con quay trong Inception", "Chào bạn, bạn làm được gì?"
+6. Case "movie_detail" (Search details, info, cast, director, plot of a specific movie):
+   - Trigger: User asks for details, information, synopsis, introduction, or review of a specific movie title (e.g., "chi tiết batman begins", "thông tin phim Batman Begins", "nội dung phim Inception", "giới thiệu phim Titanic", "review phim Oppenheimer", "tell me about Batman Begins").
+   - Output: {"intent": "movie_detail", "target_title": "<movie_title>", "language": "vi"|"en"}
 
-7. "fallback" – Completely ambiguous or unintelligible input.
+7. Case "similar" (Search movies similar to a reference movie):
+   - Trigger: User wants movies similar to a specific title (e.g., "phim nào giống Interstellar", "movies similar to Inception").
+   - Output: {"intent": "similar", "target_title": "<movie_title>", "language": "vi"|"en"}
 
-Respond with ONLY a JSON object:
-{"intent": "similar" | "genre" | "personalized" | "sql_query" | "followup" | "general_qa" | "fallback", "target_title": "...", "genres": [...]}
+8. Case "search_filter" (Multi-criteria search combining 2 or more filters):
+   - Trigger: User combines year, director, actor, genre, or rating (e.g., "phim hành động năm 2020 của Tom Cruise", "phim Nolan điểm trên 8.0").
+   - Output: {"intent": "search_filter", "target_title": "", "director": "", "actors": [], "genres": [], "year": "", "min_rating": null, "keywords": [], "language": "vi"|"en"}
+
+9. Case "sql_query" (Catalog statistics, counts, or direct DB facts):
+   - Trigger: User asks factual aggregate statistics (e.g., "hệ thống có bao nhiêu phim?", "ai là đạo diễn phim Titanic?", "thống kê phim hành động").
+   - Output: {"intent": "sql_query", "query_topic": "catalog_stats", "language": "vi"|"en"}
+
+10. Case "more_recommendations" (Request additional/next recommendations):
+   - Trigger: User asks for more movies after receiving recommendations (e.g., "cho thêm phim đi", "còn phim nào khác không", "gợi ý tiếp theo", "show me more").
+   - Output: {"intent": "more_recommendations", "is_more_request": true, "language": "vi"|"en"}
+
+11. Case "personalized" (General recommendation for user):
+    - Trigger: User asks what to watch without specific criteria (e.g., "hôm nay nên xem gì?", "gợi ý cho tôi vài bộ phim hay", "recommend me good movies").
+    - Output: {"intent": "personalized", "language": "vi"|"en"}
+
+12. Case "general_qa" (Film discussions, trivia, endings explanation, chitchat):
+    - Trigger: User wants plot explanation, ending analysis, trivia, or casual greeting (e.g., "giải thích cái kết phim Shutter Island", "ý nghĩa con quay trong Inception", "chào bạn").
+    - Output: {"intent": "general_qa", "topic": "<topic>", "target_title": "<movie_title_if_any>", "language": "vi"|"en"}
+
+13. Case "fallback" (Unrecognized or ambiguous query):
+    - Output: {"intent": "fallback", "language": "vi"|"en"}
+
+CRITICAL RULE: Output ONLY a single JSON object. Do not wrap in conversational sentences or extra explanations.
 """
 
 INTENT_PROMPT = ChatPromptTemplate.from_messages([
     SystemMessage(content=INTENT_SYSTEM_PROMPT),
     MessagesPlaceholder(variable_name="history"),
-    HumanMessage(content="Classify the intent of the latest message above")
+    ("human", "Analyze the user message and output the corresponding JSON:")
 ])
 
 ANSWER_SYSTEM_PROMPT = """\

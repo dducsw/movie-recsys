@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, Play, Star } from 'lucide-react';
-import { trackImpressions, trackClick } from '../../api/client';
+import { queueImpression, trackClick } from '../../api/client';
 import { useWatchlist } from '../../context/WatchlistContext';
 import './MovieCard.css';
 
@@ -24,7 +24,7 @@ function MovieCard({
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            trackImpressions([{ movieId, source: movie?.source || source, position }]);
+            queueImpression({ movieId, source: movie?.source || source, position });
             observer.disconnect();
           }
         });
