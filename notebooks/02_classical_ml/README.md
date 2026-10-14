@@ -1,10 +1,21 @@
-# Machine Learning in Recommendation Systems
+# 🧠 Machine Learning in Recommendation Systems
 
-Tài liệu này hướng dẫn chi tiết về việc áp dụng các thuật toán Học máy truyền thống (Traditional Machine Learning) trong xây dựng Hệ gợi ý (Recommendation Systems - RecSys). Tài liệu tập trung vào phân tích lý thuyết toán học, trích dẫn các bài báo khoa học nổi tiếng và các chỉ số đánh giá cốt lõi.
+Tài liệu này hướng dẫn chi tiết về việc áp dụng các thuật toán Học máy truyền thống (Traditional Machine Learning) trong xây dựng Hệ gợi ý (Recommendation Systems - RecSys). Tài liệu bao gồm lý thuyết toán học, trích dẫn các nghiên cứu khoa học kinh điển, cấu trúc mã nguồn và hướng dẫn thực thi thực nghiệm chi tiết.
 
 ---
 
-## 1. Phân loại Tương tác và Tác vụ gợi ý
+## 📂 Cấu trúc Thư mục
+
+```
+evaluation/machine_learning/
+├── README.md                # Tài liệu lý thuyết & hướng dẫn thực thi
+├── generate_notebook.py     # Script tự động tạo/làm mới file Jupyter Notebook
+└── ml_evaluation.ipynb      # Notebook thực nghiệm toàn bộ các mô hình ML
+```
+
+---
+
+## 1. Phân loại Tương tác và Tác vụ Gợi ý
 
 Trước khi áp dụng bất kỳ thuật toán nào, chúng ta cần xác định dạng dữ liệu tương tác đầu vào:
 *   **Phản hồi tường minh (Explicit Feedback):** Người dùng trực tiếp đánh giá chất lượng sản phẩm qua điểm số (ví dụ: số sao 0.5 - 5.0 trong tập dữ liệu MovieLens).
@@ -14,7 +25,7 @@ Trước khi áp dụng bất kỳ thuật toán nào, chúng ta cần xác đ�
 
 ---
 
-## 2. Các thuật toán kinh điển và Cơ sở nghiên cứu khoa học
+## 2. Các Thuật toán Kinh điển và Cơ sở Nghiên cứu Khoa học
 
 ### A. Neighborhood-based Collaborative Filtering (Lọc cộng tác dựa trên lân cận)
 Đây là phương pháp tiếp cận trực quan nhất, chia làm hai loại:
@@ -39,7 +50,7 @@ Phương pháp này phân rã ma trận tương tác User-Item thưa thớt $R \
 
 $$\hat{r}_{u,i} = q_i^T p_u$$
 
-Để tăng độ chính xác, mô hình thường bổ sung thêm các hệ số chệch (biases):
+Để tăng độ chính xác, mô hình bổ sung thêm các hệ số chệch (biases):
 $$\hat{r}_{u,i} = \mu + b_u + b_i + q_i^T p_u$$
 Trong đó:
 *   $\mu$: Điểm đánh giá trung bình toàn bộ hệ thống.
@@ -51,77 +62,61 @@ Mô hình được huấn luyện bằng cách tối thiểu hóa sai số bình
 
 $$\min_{P, Q, b} \sum_{(u,i) \in K} (r_{u,i} - \mu - b_u - b_i - q_i^T p_u)^2 + \lambda \left( \|p_u\|_2^2 + \|q_i\|_2^2 + b_u^2 + b_i^2 \right)$$
 
-#### Thuật toán tối ưu hóa
-1.  **Stochastic Gradient Descent (SGD):** Cập nhật các tham số lặp đi lặp lại cho từng rating. Dễ triển khai và hội tụ nhanh trên tập dữ liệu lớn.
-2.  **Alternating Least Squares (ALS):** Cố định $P$ để tối ưu $Q$, sau đó cố định $Q$ để tối ưu $P$. Rất phù hợp cho xử lý song song và hoạt động tốt trên dữ liệu phản hồi ngầm định (Implicit Feedback).
-
 ---
 
 ### C. Factorization Machines (FM)
 *   **Bài báo tiêu biểu:** [*Factorization Machines*](https://ieeexplore.ieee.org/document/5694074) (Steffen Rendle - IEEE ICDM, 2010).
 
 #### Lý do ra đời
-Matrix Factorization truyền thống chỉ hoạt động tốt trên ID của User và Item. Tuy nhiên trong thực tế, chúng ta có rất nhiều đặc trưng phụ (side information) khác như: tuổi, giới tính của người dùng; đạo diễn, diễn viên của bộ phim; thời gian, thiết bị truy cập (ngữ cảnh). FM ra đời nhằm kết hợp hiệu quả thông tin phụ này vào mô hình phân rã ma trận.
-
-#### Công thức toán học
-FM mô hình hóa tất cả các mối quan hệ tương tác giữa các cặp biến đặc trưng đầu vào $x \in \mathbb{R}^d$ bằng cách sử dụng các vector ẩn bậc thấp:
+Matrix Factorization truyền thống chỉ hoạt động trên cặp ID User - Item. FM kết hợp hiệu quả thông tin phụ (side information) như thể loại, đạo diễn, diễn viên vào cùng một mô hình phân rã ma trận:
 
 $$\hat{y}(x) = w_0 + \sum_{j=1}^d w_j x_j + \sum_{j=1}^d \sum_{l=j+1}^d \langle v_j, v_l \rangle x_j x_l$$
 
-Trong đó:
-*   $w_0 \in \mathbb{R}$: Tham số chệch toàn cục.
-*   $w_j \in \mathbb{R}$: Trọng số biểu thị ảnh hưởng tuyến tính của đặc trưng thứ $j$.
-*   $v_j \in \mathbb{R}^k$: Vector ẩn biểu thị đặc trưng thứ $j$ trong không gian $k$ chiều. Phép tích vô hướng $\langle v_j, v_l \rangle$ giúp ước lượng tương tác giữa đặc trưng $j$ và đặc trưng $l$.
-
-#### Điểm mạnh
-*   Tương tác bậc hai giữa các đặc trưng có thể được tính toán trong thời gian tuyến tính $\mathcal{O}(k \cdot d)$ nhờ kỹ thuật biến đổi đại số toán học của Steffen Rendle, thay vì $\mathcal{O}(d^2)$ thông thường.
-*   Hoạt động cực kỳ hiệu quả trên các ma trận đặc trưng siêu thưa thớt (highly sparse data).
+Tương tác bậc hai giữa các đặc trưng có thể được tính toán trong thời gian tuyến tính $\mathcal{O}(k \cdot d)$ nhờ kỹ thuật biến đổi đại số của Steffen Rendle, hoạt động xuất sắc trên dữ liệu siêu thưa thớt.
 
 ---
 
-## 3. Các chỉ số đánh giá chất lượng (Evaluation Metrics)
+## 3. Các Chỉ số Đánh giá Hiệu năng
 
-### A. Đánh giá dự đoán điểm số (Regression Metrics)
-Thích hợp cho tác vụ Explicit Feedback (dự đoán rating):
-*   **Mean Absolute Error (MAE):**
-    $$\text{MAE} = \frac{1}{|T|} \sum_{(u,i) \in T} |r_{u,i} - \hat{r}_{u,i}|$$
-*   **Root Mean Squared Error (RMSE):** Phạt nặng hơn các lỗi dự đoán lớn.
-    $$\text{RMSE} = \sqrt{\frac{1}{|T|} \sum_{(u,i) \in T} (r_{u,i} - \hat{r}_{u,i})^2}$$
-    *(Trong đó $T$ là tập dữ liệu kiểm thử - Test set).*
+1. **Sai số Dự đoán (Regression Metrics):**
+   * **MAE (Mean Absolute Error):** Đo độ lệch trung bình tuyệt đối.
+   * **RMSE (Root Mean Squared Error):** Phạt nặng các lỗi dự đoán sai lệch lớn.
 
-### B. Đánh giá xếp hạng danh sách (Ranking Metrics)
-Thích hợp cho tác vụ Implicit Feedback hoặc Đề xuất danh sách Top-K:
-*   **Precision@K:** Tỷ lệ sản phẩm được gợi ý thực sự có liên quan (relevant) trong top $K$ sản phẩm được đề xuất.
-    $$\text{Precision@K} = \frac{|\text{Các bộ phim được gợi ý có liên quan trong Top K}|}{K}$$
-*   **Recall@K:** Tỷ lệ sản phẩm có liên quan được hệ thống tìm thấy trong top $K$ đề xuất.
-    $$\text{Recall@K} = \frac{|\text{Các bộ phim được gợi ý có liên quan trong Top K}|}{|\text{Tất cả các bộ phim có liên quan của người dùng}|}$$
-*   **NDCG@K (Normalized Discounted Cumulative Gain):** Chỉ số đo lường chất lượng xếp hạng có tính đến vị trí của sản phẩm trong danh sách đề xuất. Sản phẩm có liên quan nằm ở vị trí càng cao thì điểm NDCG càng lớn.
-    $$\text{DCG@K} = \sum_{i=1}^K \frac{2^{rel_i} - 1}{\log_2(i + 1)}$$
-    $$\text{NDCG@K} = \frac{\text{DCG@K}}{\text{IDCG@K}}$$
-    *(Trong đó $\text{IDCG@K}$ là giá trị DCG lý tưởng nhất khi danh sách được sắp xếp hoàn hảo theo mức độ liên quan).*
+2. **Chất lượng Xếp hạng (Ranking Metrics):**
+   * **Precision@K:** Tỷ lệ phim đúng trong Top-K đề xuất.
+   * **Recall@K:** Tỷ lệ phim đúng được tìm thấy so với tổng số phim user thích.
+   * **NDCG@K:** Đánh giá độ chính xác có tính đến vị trí của phim trong danh sách.
 
 ---
 
-## 4. Hướng dẫn thiết lập Evaluation Pipeline trong Code
+## 🚀 Hướng dẫn Chạy Thực nghiệm Chi tiết
 
-Để đảm bảo kết quả đánh giá mô hình khách quan và chính xác, chúng ta cần tuân thủ quy trình sau:
-
-```
-[ Dữ liệu thô (MovieLens) ]
-         │
-         ▼
-[ Tiền xử lý dữ liệu ] (Tách tập Train/Test theo tỷ lệ 80/20 hoặc theo thời gian)
-         │
-         ├───► Train Set (80%) ───► [ Huấn luyện mô hình (MF, FM, KNN) ]
-         │                                      │
-         ▼                                      ▼
-   Test Set (20%) ───────────────► [ Tạo dự đoán hoặc xếp hạng Top-K ]
-                                                │
-                                                ▼
-                                   [ Tính toán Metrics ]
-                                   (RMSE, MAE, Recall@K, NDCG@K)
+### Bước 1: Chuẩn bị Môi trường
+Đảm bảo đã cài đặt các thư viện:
+```bash
+pip install pandas numpy scikit-learn scikit-surprise matplotlib seaborn jupyter nbformat
 ```
 
-### Các thư viện Python phổ biến hỗ trợ:
-*   **Surprise:** Thư viện Python chuyên biệt cho các mô hình Lọc cộng tác cổ điển (SVD, KNN, NMF, SlopeOne). Rất dễ sử dụng và tối ưu hiệu năng tốt.
-*   **LightFM:** Thư viện tuyệt vời hỗ trợ cả Matrix Factorization và Factorization Machines trên cả dữ liệu Explicit lẫn Implicit.
+### Bước 2: Khởi tạo hoặc Tái tạo Notebook (Tùy chọn)
+Nếu bạn muốn sinh lại file notebook mẫu chuẩn từ script:
+```bash
+python evaluation/machine_learning/generate_notebook.py
+```
+
+### Bước 3: Chạy Thực nghiệm trên Jupyter
+Khởi chạy Jupyter Notebook hoặc mở file trực tiếp trong VS Code / IDE:
+```bash
+jupyter notebook evaluation/machine_learning/ml_evaluation.ipynb
+```
+
+**Các bước được thực hiện tuần tự trong notebook:**
+1. Tải và tiền xử lý dữ liệu `data/ml-latest-small/ratings.csv` và `movies.csv`.
+2. Phân chia Train/Test theo tỷ lệ 80/20.
+3. Huấn luyện các mô hình Lọc cộng tác:
+   - **User-Based CF** (Cosine & Pearson)
+   - **Item-Based CF** (Cosine & Pearson)
+4. Huấn luyện các mô hình Phân rã ma trận:
+   - **SVD** & **SVD++** (với `scikit-surprise`)
+   - **NMF** (Non-negative Matrix Factorization)
+5. Xây dựng và huấn luyện mô hình **Factorization Machines (FM)** từ đầu bằng NumPy + SGD kết hợp đặc trưng Genres.
+6. Xuất bảng so sánh tổng hợp các chỉ số RMSE, MAE, Precision@10, Recall@10, NDCG@10 và vẽ biểu đồ trực quan.
