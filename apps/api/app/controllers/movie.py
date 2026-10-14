@@ -1,4 +1,6 @@
+from typing import List, Optional
 from fastapi import APIRouter, Query, HTTPException, Depends
+from pydantic import BaseModel, ConfigDict
 from app.models.movie import MovieModel
 from app.views.schemas import PaginatedMovieResponse, SearchMovieResponse, MovieResponse
 from app.services.event_producer import emit, EventType
@@ -44,8 +46,6 @@ def get_latest_movies(
         "results": movies
     }
 
-from typing import Optional
-
 @router.get("/search", response_model=SearchMovieResponse)
 def search_movies(
     query: str = Query(default=""),
@@ -71,6 +71,18 @@ def search_movies(
         "count": len(results),
         "results": results
     }
+
+class MovieBatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    movie_ids: List[int]
+
+@router.post("/batch", response_model=List[MovieResponse])
+def get_movies_batch(body: MovieBatchRequest):
+    """
+    Get movie details for a batch of movie IDs in a single query.
+    """
+    return MovieModel.get_by_ids(body.movie_ids)
 
 @router.get("/{movie_id}", response_model=MovieResponse)
 def get_movie_detail(movie_id: int, session_id: str = Depends(get_session_id)):

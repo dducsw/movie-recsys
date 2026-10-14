@@ -4,7 +4,7 @@ Bao gồm: Click, Impression, Star Rating, Watchlist.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 
 from app.services.event_producer import emit, EventType
@@ -16,27 +16,37 @@ router = APIRouter(prefix="/api/events", tags=["Events"])
 
 
 class ClickEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     movie_id: int
     source: str           # "trending" | "latest" | "search" | "recommendations" | "similar" | "chatbot"
     position: Optional[int] = None   # vị trí trong listing (0-indexed)
 
 
 class ImpressionItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     movie_id: int
     source: str
     position: Optional[int] = None
 
 
 class ImpressionBatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     impressions: List[ImpressionItem]
 
 
 class RatingEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     movie_id: int
     rating: float = Field(..., ge=0.5, le=5.0)
 
 
 class WatchlistEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     movie_id: int
 
 

@@ -11,6 +11,7 @@ services:
       - "5435:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-movie_db}"]
       interval: 10s
@@ -53,7 +54,7 @@ services:
     volumes:
       - seaweeddata:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9333/cluster/status"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9333/cluster/status"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -106,8 +107,8 @@ services:
   backend:
     profiles: ["app"]
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/api/Dockerfile
     container_name: movie-recsys-backend
     depends_on:
       postgres:

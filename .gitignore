@@ -249,3 +249,7 @@ data/crawler/*.csv
 data/ml-latest-small/*.csv
 .agents
 .codegraph
+
+# Legacy untracked folders
+web_app/
+

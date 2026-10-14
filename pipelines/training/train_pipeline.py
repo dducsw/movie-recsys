@@ -166,12 +166,21 @@ def train_ranking_model(df_movies, train_ratings, als_map=None, params=None):
     y = []
     groups = []
 
+    all_movie_ids = np.array([int(m) for m in df_movies["movieId"].unique()])
+
     for uid, g in train_ratings.groupby("userId"):
         g_len = len(g)
         if g_len < 2:
             continue
-        groups.append(g_len)
         u_prof = user_profiles.get(uid, {"activity": 1.0, "bias": 0.0, "genres": set(), "als_vec": None})
+
+        # Uniform negative sampling: sample unrated movies to balance ranking discrimination
+        rated_mids = set(int(m) for m in g["movieId"].values)
+        unrated_pool = [m for m in all_movie_ids if m not in rated_mids]
+        n_neg = min(len(unrated_pool), max(1, len(g) // 2))
+        sampled_negs = np.random.choice(unrated_pool, size=n_neg, replace=False) if n_neg > 0 else []
+
+        groups.append(g_len + len(sampled_negs))
 
         for _, row in g.iterrows():
             m_id = int(row["movieId"])
@@ -210,6 +219,36 @@ def train_ranking_model(df_movies, train_ratings, als_map=None, params=None):
             rating = float(row["rating"])
             relevance = int(min(max(round(rating - 1), 0), 4))
             y.append(relevance)
+
+        # Append negative unrated items with relevance = 0
+        for neg_id in sampled_negs:
+            meta = movie_meta.get(int(neg_id), {
+                "popularity": 1.0,
+                "vote_average": 5.0,
+                "release_year": 2010.0,
+                "genres": set(),
+                "als_vec": None
+            })
+            genre_overlap = float(len(u_prof["genres"].intersection(meta["genres"])))
+            cb_score = float(genre_overlap / max(len(u_prof["genres"]), 1))
+            als_score = 0.0
+            if u_prof["als_vec"] is not None and meta["als_vec"] is not None:
+                try:
+                    als_score = float(np.dot(u_prof["als_vec"], meta["als_vec"]))
+                except Exception:
+                    als_score = 0.0
+
+            feature_rows.append({
+                "popularity": meta["popularity"],
+                "vote_average": meta["vote_average"],
+                "genre_overlap": genre_overlap,
+                "release_year": meta["release_year"],
+                "user_activity": u_prof["activity"],
+                "user_bias": u_prof["bias"],
+                "als_score": als_score,
+                "cb_score": cb_score
+            })
+            y.append(0)
 
     X = pd.DataFrame(feature_rows)[RANKING_FEATURES].astype(np.float32)
     y = np.array(y, dtype=np.int32)
@@ -397,10 +436,10 @@ def run_pipeline():
 
     # 6. Optional Sync to SeaweedFS
     try:
-        from pipeline.upload_models_to_seaweedfs import upload_all_models
+        from pipelines.batch.upload_models_to_seaweedfs import upload_all_models
         upload_all_models()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"SeaweedFS model sync skipped: {e}")
 
     duration = round(time.time() - start_time, 2)
     logger.info("==================================================")

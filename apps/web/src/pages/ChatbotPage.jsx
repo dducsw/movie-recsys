@@ -1,28 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ChatbotView from '../components/ChatbotView/ChatbotView';
-import { API_BASE_URL, getOrCreateSessionId } from '../api/client';
+import { apiFetch, getOrCreateSessionId, resetSessionId } from '../api/client';
+
+const INITIAL_GREETING = [{
+  sender: 'bot',
+  text: "👋 **Xin chào! Tôi là MovieNex AI**, trợ lý tìm kiếm và gợi ý phim thông minh của bạn.\n\nBạn có thể hỏi tôi bất kỳ điều gì về phim ảnh, ví dụ:\n- *'Gợi ý phim khoa học viễn tưởng cốt truyện hại não như Interstellar'*\n- *'Phim của đạo diễn Christopher Nolan điểm cao nhất'*\n- *'Tìm phim năm 2022 có Leonardo DiCaprio đóng'*\n- *'Còn phim nào khác không? (gợi ý thêm phim tiếp theo)'*"
+}];
 
 export default function ChatbotPage() {
-  const [chatMessages, setChatMessages] = useState(() => {
-    const saved = localStorage.getItem('cinemax_chat_history');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {}
-    }
-    return [{
-      sender: 'bot',
-      text: "👋 **Hello! I'm MovieNex AI**, your conversational movie recommendation assistant.\n\nAsk me anything like:\n- *'Suggest sci-fi movies with deep plot twists like Interstellar'* \n- *'What are Christopher Nolan's highest rated thriller films?'*\n- *'Recommend emotional anime movies for family night'*"
-    }];
-  });
-
+  // Always reset chat to initial fresh greeting on each page access / mount
+  const [chatMessages, setChatMessages] = useState(INITIAL_GREETING);
+  const [currentSessionId, setCurrentSessionId] = useState(() => resetSessionId());
   const [chatInput, setChatInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef(null);
 
+  // Reset chatbot session on component mount (every visit / reload)
   useEffect(() => {
-    localStorage.setItem('cinemax_chat_history', JSON.stringify(chatMessages));
-  }, [chatMessages]);
+    const newSid = resetSessionId();
+    setCurrentSessionId(newSid);
+    setChatMessages(INITIAL_GREETING);
+  }, []);
 
   const handleSendChatMessage = async () => {
     if (!chatInput.trim() || isTyping) return;
@@ -35,31 +33,19 @@ export default function ChatbotPage() {
     setIsTyping(true);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      const res = await fetch(`${API_BASE_URL}/chatbot/chat`, {
+      const data = await apiFetch('/chatbot/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-Id': getOrCreateSessionId(),
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        credentials: 'include',
         body: JSON.stringify({
           message: userText,
-          session_id: getOrCreateSessionId()
+          session_id: currentSessionId || getOrCreateSessionId()
         })
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP Error ${res.status}`);
-      }
-
-      const data = await res.json();
       setChatMessages([
         ...newMessages,
         {
           sender: 'bot',
-          text: data.text || data.answer || data.reply || "Here are some recommendations based on your request:",
+          text: data.text || data.answer || data.reply || "Dưới đây là các gợi ý phim phù hợp nhất với yêu cầu của bạn:",
           movies: data.movies || []
         }
       ]);
@@ -68,7 +54,7 @@ export default function ChatbotPage() {
         ...newMessages,
         {
           sender: 'bot',
-          text: "I encountered a brief connection issue. Please verify the backend service is running and try again."
+          text: "Hệ thống gặp sự cố kết nối tạm thời. Vui lòng kiểm tra dịch vụ backend và thử lại."
         }
       ]);
     } finally {
@@ -76,13 +62,21 @@ export default function ChatbotPage() {
     }
   };
 
-  const handleClearHistory = () => {
-    const initMsg = [{
-      sender: 'bot',
-      text: "👋 Chat history cleared. How can I help you find your next favorite movie?"
-    }];
-    setChatMessages(initMsg);
-    localStorage.setItem('cinemax_chat_history', JSON.stringify(initMsg));
+  const handleClearHistory = async () => {
+    const oldSid = currentSessionId;
+    const newSid = resetSessionId();
+    setCurrentSessionId(newSid);
+    setChatMessages(INITIAL_GREETING);
+
+    if (oldSid) {
+      try {
+        await apiFetch(`/chatbot/history/${encodeURIComponent(oldSid)}`, {
+          method: 'DELETE'
+        });
+      } catch (e) {
+        // Ignore background clear errors
+      }
+    }
   };
 
   const handleNewSession = () => {

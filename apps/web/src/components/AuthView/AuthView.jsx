@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL, setAccessToken } from '../../api/client';
 import './AuthView.css';
 
 function AuthView({ setView, onLoginSuccess }) {
@@ -10,19 +11,20 @@ function AuthView({ setView, onLoginSuccess }) {
   
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (!username || !password) {
+    if (!username.trim() || !password) {
       setErrorMsg('Please fill in all required fields.');
       return;
     }
 
     if (isRegister) {
-      if (!email) {
+      if (!email.trim()) {
         setErrorMsg('Please enter your email.');
         return;
       }
@@ -30,60 +32,80 @@ function AuthView({ setView, onLoginSuccess }) {
         setErrorMsg('Passwords do not match.');
         return;
       }
-      if (password.length < 4) {
-        setErrorMsg('Password should be at least 4 characters.');
+      if (password.length < 6) {
+        setErrorMsg('Password should be at least 6 characters.');
         return;
       }
 
-      // Check if user exists
-      const existingUsers = JSON.parse(localStorage.getItem('movienex_users') || '[]');
-      const userExists = existingUsers.some(u => u.username.toLowerCase() === username.toLowerCase());
-      
-      if (userExists) {
-        setErrorMsg('Username is already taken.');
-        return;
+      setLoading(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            password,
+            username: username.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Registration failed');
+        }
+
+        setSuccessMsg('Account created successfully! Switching to Login...');
+        setTimeout(() => {
+          setIsRegister(false);
+          setPassword('');
+          setConfirmPassword('');
+          setSuccessMsg('');
+        }, 1500);
+      } catch (err) {
+        setErrorMsg(err.message);
+      } finally {
+        setLoading(false);
       }
-
-      // Save new user
-      const newUser = { username, email, password };
-      existingUsers.push(newUser);
-      localStorage.setItem('movienex_users', JSON.stringify(existingUsers));
-      
-      setSuccessMsg('Account created successfully! Switching to Login...');
-      setTimeout(() => {
-        setIsRegister(false);
-        setPassword('');
-        setConfirmPassword('');
-        setSuccessMsg('');
-      }, 1500);
-
     } else {
-      // Login
-      const existingUsers = JSON.parse(localStorage.getItem('movienex_users') || '[]');
-      
-      // Seed a default demo account if none exists
-      if (existingUsers.length === 0) {
-        const demoUser = { username: 'demo', email: 'demo@movienex.com', password: 'demo' };
-        existingUsers.push(demoUser);
-        localStorage.setItem('movienex_users', JSON.stringify(existingUsers));
+      // Login via secure API
+      setLoading(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            identifier: username.trim(),
+            password,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Invalid username or password.');
+        }
+
+        if (data.access_token) {
+          setAccessToken(data.access_token);
+        }
+
+        if (onLoginSuccess) {
+          onLoginSuccess(data.user?.username || username);
+        }
+        setSuccessMsg('Logged in successfully!');
+        setTimeout(() => {
+          setView('home');
+        }, 800);
+      } catch (err) {
+        setErrorMsg(err.message);
+      } finally {
+        setLoading(false);
       }
-
-      const matchedUser = existingUsers.find(
-        u => u.username.toLowerCase() === username.toLowerCase() && u.password === password
-      );
-
-      if (!matchedUser) {
-        setErrorMsg('Invalid username or password.');
-        return;
-      }
-
-      // Log in
-      localStorage.setItem('movienex_active_user', JSON.stringify({ username: matchedUser.username }));
-      onLoginSuccess(matchedUser.username);
-      setSuccessMsg('Logged in successfully!');
-      setTimeout(() => {
-        setView('home');
-      }, 800);
     }
   };
 
@@ -98,82 +120,84 @@ function AuthView({ setView, onLoginSuccess }) {
           MovieNex <span>RecSys</span>
         </div>
         
-        <h2>{isRegister ? 'Create Account' : 'Welcome Back'}</h2>
+        <h2>{isRegister ? 'Create an Account' : 'Welcome Back'}</h2>
         <p className="auth-subtitle">
-          {isRegister ? 'Sign up to unlock simulated movie watching and watchlist syncing.' : 'Sign in to access personalized recommendations.'}
+          {isRegister 
+            ? 'Sign up to get personalized movie recommendations' 
+            : 'Log in to access your customized watchlist and AI assistant'}
         </p>
 
-        {errorMsg && <div className="auth-alert error">{errorMsg}</div>}
-        {successMsg && <div className="auth-alert success">{successMsg}</div>}
+        {errorMsg && <div className="auth-error-banner">{errorMsg}</div>}
+        {successMsg && <div className="auth-success-banner">{successMsg}</div>}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label htmlFor="username">Username</label>
-            <input
-              type="text"
-              id="username"
+            <label>Username / Account</label>
+            <input 
+              type="text" 
+              placeholder="e.g. alex_movie" 
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter username (e.g. demo)"
               required
             />
           </div>
 
           {isRegister && (
             <div className="form-group">
-              <label htmlFor="email">Email Address</label>
-              <input
-                type="email"
-                id="email"
+              <label>Email Address</label>
+              <input 
+                type="email" 
+                placeholder="alex@example.com" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter email address"
                 required
               />
             </div>
           )}
 
           <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              type="password"
-              id="password"
+            <label>Password</label>
+            <input 
+              type="password" 
+              placeholder="••••••••" 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={isRegister ? "Create password" : "Enter password (e.g. demo)"}
               required
             />
           </div>
 
           {isRegister && (
             <div className="form-group">
-              <label htmlFor="confirmPassword">Confirm Password</label>
-              <input
-                type="password"
-                id="confirmPassword"
+              <label>Confirm Password</label>
+              <input 
+                type="password" 
+                placeholder="••••••••" 
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Repeat password"
                 required
               />
             </div>
           )}
 
-          <button type="submit" className="auth-submit-btn">
-            {isRegister ? 'Register' : 'Sign In'}
+          <button type="submit" className="auth-submit-btn" disabled={loading}>
+            {loading ? 'Processing...' : (isRegister ? 'Register Now' : 'Sign In')}
           </button>
         </form>
 
-        <div className="auth-toggle">
+        <div className="auth-switch">
           {isRegister ? (
             <span>
               Already have an account?{' '}
-              <button className="toggle-mode-btn" onClick={() => { setIsRegister(false); setErrorMsg(''); }}>Sign In</button>
+              <a href="#login" onClick={(e) => { e.preventDefault(); setIsRegister(false); setErrorMsg(''); }}>
+                Sign In
+              </a>
             </span>
           ) : (
             <span>
               Don't have an account?{' '}
-              <button className="toggle-mode-btn" onClick={() => { setIsRegister(true); setErrorMsg(''); }}>Register here</button>
+              <a href="#register" onClick={(e) => { e.preventDefault(); setIsRegister(true); setErrorMsg(''); }}>
+                Create one
+              </a>
             </span>
           )}
         </div>

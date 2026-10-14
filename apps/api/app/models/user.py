@@ -18,9 +18,11 @@ def init_db_tables():
                 username VARCHAR(100) UNIQUE NOT NULL,
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
+                role VARCHAR(20) DEFAULT 'user',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';")
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS user_ratings (
@@ -76,10 +78,35 @@ def init_db_tables():
             );
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_comment_likes_comment_id ON comment_likes(comment_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_ratings_user_id ON user_ratings(user_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_ratings_movie_id ON user_ratings(movie_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_watchlist_user_id ON user_watchlist(user_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_watchlist_movie_id ON user_watchlist(movie_id);")
+
+        # Catalog performance indices
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'movies') THEN
+                    CREATE INDEX IF NOT EXISTS idx_movies_popularity ON movies(popularity DESC);
+                    CREATE INDEX IF NOT EXISTS idx_movies_release_date ON movies(release_date);
+                    CREATE INDEX IF NOT EXISTS idx_movies_director_id ON movies(director_id);
+                END IF;
+                IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'movie_genres') THEN
+                    CREATE INDEX IF NOT EXISTS idx_movie_genres_genre_id ON movie_genres(genre_id);
+                END IF;
+                IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'movie_actors') THEN
+                    CREATE INDEX IF NOT EXISTS idx_movie_actors_actor_id ON movie_actors(actor_id);
+                END IF;
+                IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'movie_tags') THEN
+                    CREATE INDEX IF NOT EXISTS idx_movie_tags_tag_id ON movie_tags(tag_id);
+                END IF;
+            END $$;
+        """)
 
         conn.commit()
         cur.close()
-        logger.info("Successfully initialized PostgreSQL User and Comment tables.")
+        logger.info("Successfully initialized PostgreSQL User, Comment, and Catalog indices.")
     except Exception as e:
         logger.error(f"Failed to initialize user DB tables: {e}")
         if conn:
@@ -98,7 +125,7 @@ class UserModel:
             query = """
                 INSERT INTO users (username, email, password_hash)
                 VALUES (%s, %s, %s)
-                RETURNING id, username, email, created_at;
+                RETURNING id, username, email, COALESCE(role, 'user') AS role, created_at;
             """
             cur.execute(query, (username, email, password_hash))
             user = cur.fetchone()
@@ -154,7 +181,7 @@ class UserModel:
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            query = "SELECT id, username, email, created_at FROM users WHERE id = %s;"
+            query = "SELECT id, username, email, COALESCE(role, 'user') AS role, created_at FROM users WHERE id = %s;"
             cur.execute(query, (user_id,))
             row = cur.fetchone()
             return dict(row) if row else None

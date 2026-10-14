@@ -139,12 +139,16 @@ class ChatbotService:
 
         initial_state: GraphState = {
             "messages": history,
+            "session_id": session_id,
             "intent_output": None,
             "candidate_movies": [],
             "enriched_movies": [],
             "matched_movie": None,
             "user_id": user_id,
             "user_liked_ids": user_liked_ids or [],
+            "sql_query": None,
+            "sql_results": None,
+            "sql_message": None,
             "final_text": ""
         }
 

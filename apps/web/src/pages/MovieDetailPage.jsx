@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import MovieRow from '../components/MovieRow/MovieRow';
 import CommentSection from '../components/CommentSection/CommentSection';
-import { API_BASE_URL } from '../api/client';
+import { apiFetch } from '../api/client';
 import { useWatchlist } from '../context/WatchlistContext';
 import './MovieDetailPage.css';
 
@@ -37,8 +37,7 @@ export default function MovieDetailPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     // 1. Fetch Movie Detail
-    fetch(`${API_BASE_URL}/movies/${movieId}`, { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : null))
+    apiFetch(`/movies/${movieId}`)
       .then(data => {
         if (data && (data.movieId || data.id || data.title)) {
           setMovie(data.movie || data);
@@ -50,8 +49,7 @@ export default function MovieDetailPage() {
       .finally(() => setLoading(false));
 
     // 2. Fetch 3-Stage Similar Movies
-    fetch(`${API_BASE_URL}/movies/${movieId}/recommendations?limit=18`, { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : { results: [] }))
+    apiFetch(`/movies/${movieId}/recommendations?limit=18`)
       .then(data => {
         setSimilarMovies(data.results || []);
       })
@@ -94,22 +92,27 @@ export default function MovieDetailPage() {
     : 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=1200';
 
   const getEmbedUrl = () => {
+    const SAFE_ID_REGEX = /^[a-zA-Z0-9_-]{6,20}$/;
     if (movie.trailer_url) {
       if (movie.trailer_url.includes('/embed/')) {
         const parts = movie.trailer_url.split('/embed/');
         const videoId = parts[1]?.split('?')[0];
-        if (videoId && !videoId.startsWith('?')) {
+        if (videoId && SAFE_ID_REGEX.test(videoId)) {
           return `https://www.youtube-nocookie.com/embed/${videoId}`;
         }
       } else if (movie.trailer_url.includes('watch?v=')) {
         const videoId = movie.trailer_url.split('watch?v=')[1]?.split('&')[0];
-        if (videoId) return `https://www.youtube-nocookie.com/embed/${videoId}`;
+        if (videoId && SAFE_ID_REGEX.test(videoId)) {
+          return `https://www.youtube-nocookie.com/embed/${videoId}`;
+        }
       } else if (movie.trailer_url.includes('youtu.be/')) {
         const videoId = movie.trailer_url.split('youtu.be/')[1]?.split('?')[0];
-        if (videoId) return `https://www.youtube-nocookie.com/embed/${videoId}`;
+        if (videoId && SAFE_ID_REGEX.test(videoId)) {
+          return `https://www.youtube-nocookie.com/embed/${videoId}`;
+        }
       }
     }
-    const cleanTitle = movie.title.replace(/\s*\(\d{4}\)/, '').trim();
+    const cleanTitle = (movie.title || '').replace(/\s*\(\d{4}\)/, '').trim();
     return `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(cleanTitle + ' official trailer')}`;
   };
 

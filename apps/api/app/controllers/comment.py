@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.comment import CommentModel
 from app.services.auth_service import get_current_user, get_current_user_optional
@@ -12,6 +12,8 @@ router = APIRouter(tags=["Comments"])
 
 
 class CreateCommentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     content: str = Field(..., min_length=1, max_length=2000, description="Content of the comment")
     parent_id: Optional[int] = Field(None, description="Optional ID of parent comment to reply to")
 
@@ -100,7 +102,8 @@ def delete_comment(
     Xóa bình luận của chính mình (yêu cầu đăng nhập và đúng chủ sở hữu).
     """
     try:
-        success = CommentModel.delete_comment(comment_id=comment_id, user_id=current_user["id"])
+        is_admin = current_user.get("role") == "admin"
+        success = CommentModel.delete_comment(comment_id=comment_id, user_id=current_user["id"], is_admin=is_admin)
         if not success:
             raise HTTPException(status_code=404, detail="Bình luận không tồn tại.")
         return {"message": "Đã xóa bình luận thành công."}

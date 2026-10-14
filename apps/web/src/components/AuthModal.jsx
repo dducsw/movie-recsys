@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Lock, Mail, User, LogIn, UserPlus, Sparkles } from 'lucide-react';
-import { API_BASE_URL } from '../api/client';
+import { API_BASE_URL, setAccessToken } from '../api/client';
 import './AuthModal.css';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
@@ -27,7 +27,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     try {
       const res = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'include',
         body: JSON.stringify(payload)
       });
 
@@ -36,9 +40,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         throw new Error(data.detail || 'Xác thực thất bại. Vui lòng thử lại.');
       }
 
-      // Save token and user info
-      localStorage.setItem('auth_token', data.access_token);
-      localStorage.setItem('user_info', JSON.stringify(data.user));
+      // Save token in memory (never in localStorage for XSS protection)
+      setAccessToken(data.access_token);
 
       if (onAuthSuccess) {
         onAuthSuccess(data.user, !isLogin);

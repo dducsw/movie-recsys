@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles, Check, ArrowRight } from 'lucide-react';
-import { API_BASE_URL } from '../api/client';
+import { apiFetch } from '../api/client';
+import { useWatchlist } from '../context/WatchlistContext';
 import './OnboardingModal.css';
 
 const GENRE_OPTIONS = [
@@ -21,6 +22,7 @@ const POPULAR_STARTER_MOVIES = [
 ];
 
 export default function OnboardingModal({ isOpen, onClose, onFinish }) {
+  const { reloadPreferences } = useWatchlist();
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [selectedMovies, setSelectedMovies] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -45,25 +47,20 @@ export default function OnboardingModal({ isOpen, onClose, onFinish }) {
 
   const handleSubmit = async () => {
     setSubmitting(true);
-    const token = localStorage.getItem('auth_token');
-
     try {
-      const res = await fetch(`${API_BASE_URL}/users/onboarding`, {
+      await apiFetch('/users/onboarding', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({
           favorite_genres: selectedGenres,
           favorite_movie_ids: selectedMovies
         })
       });
 
-      if (res.ok) {
-        if (onFinish) onFinish();
-        onClose();
+      if (reloadPreferences) {
+        await reloadPreferences();
       }
+      if (onFinish) onFinish();
+      onClose();
     } catch (e) {
       console.error(e);
     } finally {

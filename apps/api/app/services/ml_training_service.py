@@ -72,13 +72,13 @@ def get_model_bundle() -> Optional[Dict[str, Any]]:
         # Pre-index movie features by movieId for O(1) candidate lookup
         if "movie_feats" in bundle and isinstance(bundle["movie_feats"], pd.DataFrame):
             mf_df = bundle["movie_feats"]
-            _movie_feats_dict = {int(row["movieId"]): row.to_dict() for _, row in mf_df.iterrows()}
+            _movie_feats_dict = {int(r["movieId"]): r for r in mf_df.to_dict("records")}
             logger.info(f"Pre-indexed {len(_movie_feats_dict):,} movie feature rows from ml_training bundle.")
 
         # Pre-index user features by userId
         if "user_feats" in bundle and isinstance(bundle["user_feats"], pd.DataFrame):
             uf_df = bundle["user_feats"]
-            _user_feats_dict = {int(row["userId"]): row.to_dict() for _, row in uf_df.iterrows()}
+            _user_feats_dict = {int(r["userId"]): r for r in uf_df.to_dict("records")}
             logger.info(f"Pre-indexed {len(_user_feats_dict):,} user profile feature rows from ml_training bundle.")
 
         duration = round(time.time() - t0, 2)

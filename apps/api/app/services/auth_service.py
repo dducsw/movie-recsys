@@ -1,135 +1,169 @@
-import os
 import time
-import json
-import base64
-import hmac
-import hashlib
+import logging
 from typing import Optional, Dict, Any
-from fastapi import Header, HTTPException, Depends
+from fastapi import Header, HTTPException, Depends, Request, Response
+from passlib.context import CryptContext
+import jwt
+
+from app.config.settings import get_settings
 from app.models.user import UserModel
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "movienex_default_secret_key_2026_dev_mode")
-ALGORITHM = "HS256"
-TOKEN_EXPIRE_SECONDS = 30 * 24 * 3600  # 30 days
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+SECRET_KEY = settings.JWT_SECRET_KEY
+ALGORITHM = settings.JWT_ALGORITHM  # "HS256"
+
+# Strictly use bcrypt via passlib (no weak SHA-256 fallback)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    """Mã hóa mật khẩu an toàn sử dụng passlib (hỗ trợ bcrypt, pbkdf2_sha256) hoặc SHA256 Salted."""
-    try:
-        from passlib.context import CryptContext
-        pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated="auto")
-        return pwd_context.hash(password)
-    except Exception:
-        # Secure salt-based SHA256 fallback if native bcrypt binary backend is missing
-        salt = os.urandom(16).hex()
-        hashed = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
-        return f"sha256${salt}${hashed}"
+    """Hash password securely using bcrypt."""
+    return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Xác thực mật khẩu."""
+    """Verify password against bcrypt hash."""
     if not hashed_password or not plain_password:
         return False
-
-    if hashed_password.startswith("sha256$"):
-        parts = hashed_password.split("$")
-        if len(parts) == 3:
-            salt, expected_hash = parts[1], parts[2]
-            computed = hashlib.sha256((salt + plain_password).encode("utf-8")).hexdigest()
-            return hmac.compare_digest(computed, expected_hash)
-
     try:
-        from passlib.context import CryptContext
-        pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated="auto")
         return pwd_context.verify(plain_password, hashed_password)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Password verification error: {e}")
         return False
 
 
-def create_access_token(user_id: int, username: str) -> str:
-    """Tạo JWT Token cho user (sử dụng PyJWT hoặc HMAC-SHA256 signature)."""
+def create_access_token(user_id: int, username: str, role: str = "user") -> str:
+    """Create a short-lived Access Token (default 15 minutes)."""
+    now = int(time.time())
     payload = {
         "sub": str(user_id),
         "username": username,
-        "iat": int(time.time()),
-        "exp": int(time.time()) + TOKEN_EXPIRE_SECONDS
+        "role": role,
+        "token_type": "access",
+        "iat": now,
+        "exp": now + (settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
     }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-    try:
-        import jwt as pyjwt
-        if hasattr(pyjwt, "encode"):
-            token = pyjwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-            return token if isinstance(token, str) else token.decode("utf-8")
-    except Exception:
-        pass
 
-    # Built-in RFC 7519 HMAC-SHA256 JWT
-    def b64_encode(data: bytes) -> str:
-        return base64.urlsafe_b64encode(data).decode().rstrip("=")
-
-    header_bytes = json.dumps({"alg": "HS256", "typ": "JWT"}).encode("utf-8")
-    payload_bytes = json.dumps(payload).encode("utf-8")
-    signing_input = f"{b64_encode(header_bytes)}.{b64_encode(payload_bytes)}"
-    sig = hmac.new(SECRET_KEY.encode("utf-8"), signing_input.encode("utf-8"), hashlib.sha256).digest()
-    return f"{signing_input}.{b64_encode(sig)}"
+def create_refresh_token(user_id: int, username: str) -> str:
+    """Create a long-lived Refresh Token (default 7 days)."""
+    now = int(time.time())
+    payload = {
+        "sub": str(user_id),
+        "username": username,
+        "token_type": "refresh",
+        "iat": now,
+        "exp": now + (settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400)
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
-    """Giải mã và kiểm tra JWT Token."""
+    """
+    Decodes and strictly validates an access token.
+    Enforces algorithm HS256, rejects 'none', and validates exp, sub, and token_type.
+    """
     if not token or not isinstance(token, str):
         return None
 
     try:
-        import jwt as pyjwt
-        if hasattr(pyjwt, "decode"):
-            return pyjwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except Exception:
-        pass
-
-    # Built-in RFC 7519 HMAC-SHA256 JWT verification
-    try:
-        parts = token.strip().split(".")
-        if len(parts) != 3:
+        # options require exp and sub claims
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={
+                "verify_signature": True,
+                "require": ["exp", "sub"],
+                "verify_exp": True
+            }
+        )
+        if payload.get("token_type") != "access":
+            logger.warning("Rejected token: expected token_type 'access'")
             return None
 
-        header_b64, payload_b64, signature_b64 = parts
-        signing_input = f"{header_b64}.{payload_b64}"
-
-        def b64_decode(data: str) -> bytes:
-            rem = len(data) % 4
-            if rem > 0:
-                data += "=" * (4 - rem)
-            return base64.urlsafe_b64decode(data.encode("utf-8"))
-
-        # Verify signature
-        expected_sig = hmac.new(SECRET_KEY.encode("utf-8"), signing_input.encode("utf-8"), hashlib.sha256).digest()
-        provided_sig = b64_decode(signature_b64)
-        if not hmac.compare_digest(expected_sig, provided_sig):
-            return None
-
-        # Parse payload
-        payload = json.loads(b64_decode(payload_b64).decode("utf-8"))
-        if "exp" in payload and payload["exp"] < time.time():
-            return None
-
+        # Validate that sub is integer representation
+        int(payload["sub"])
         return payload
-    except Exception:
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, ValueError, TypeError) as e:
+        logger.debug(f"Access token validation failure: {e}")
         return None
 
 
-def get_current_user_optional(authorization: Optional[str] = Header(None)) -> Optional[Dict[str, Any]]:
+def decode_refresh_token(token: str) -> Optional[Dict[str, Any]]:
     """
-    Dependency lấy thông tin user từ Authorization header (Bearer token) nếu có.
-    Trả về Dict thông tin user hoặc None nếu không đăng nhập / token không hợp lệ.
+    Decodes and strictly validates a refresh token.
+    Enforces algorithm HS256, rejects 'none', and validates exp, sub, and token_type.
     """
-    if not authorization:
+    if not token or not isinstance(token, str):
         return None
 
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={
+                "verify_signature": True,
+                "require": ["exp", "sub"],
+                "verify_exp": True
+            }
+        )
+        if payload.get("token_type") != "refresh":
+            logger.warning("Rejected token: expected token_type 'refresh'")
+            return None
+
+        int(payload["sub"])
+        return payload
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, ValueError, TypeError) as e:
+        logger.debug(f"Refresh token validation failure: {e}")
         return None
 
-    token = parts[1]
+
+def set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    """Sets the Refresh Token in a secure, HttpOnly cookie."""
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/api/auth",
+    )
+
+
+def clear_refresh_cookie(response: Response) -> None:
+    """Clears the Refresh Token cookie."""
+    response.delete_cookie(
+        key="refresh_token",
+        path="/api/auth",
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax"
+    )
+
+
+def get_current_user_optional(
+    request: Request,
+    authorization: Optional[str] = Header(None)
+) -> Optional[Dict[str, Any]]:
+    """
+    Dependency returning current user from Bearer header if present and valid.
+    Returns None if unauthenticated.
+    """
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+
+    if not token:
+        return None
+
     payload = decode_access_token(token)
     if not payload or "sub" not in payload:
         return None
@@ -141,12 +175,26 @@ def get_current_user_optional(authorization: Optional[str] = Header(None)) -> Op
         return None
 
 
-def get_current_user(current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)) -> Dict[str, Any]:
-    """Dependency that strictly requires an authenticated user (raises 401 if missing)."""
+def get_current_user(
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
+) -> Dict[str, Any]:
+    """Dependency that strictly requires an authenticated user."""
     if not current_user:
         raise HTTPException(
             status_code=401,
             detail="Vui lòng đăng nhập để thực hiện thao tác này.",
             headers={"WWW-Authenticate": "Bearer"}
+        )
+    return current_user
+
+
+def require_admin(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """RBAC Dependency: requires admin privileges."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Quyền truy cập bị từ chối: Yêu cầu quyền quản trị viên."
         )
     return current_user
