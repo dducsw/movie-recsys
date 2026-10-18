@@ -14,19 +14,22 @@ import pipelines.training.train_pipeline as tp
 
 
 def test_ranking_features_schema():
-    """Verify 8 standard ranking features schema matching serving."""
+    """Verify 11 standard ranking features schema matching serving."""
     expected_cols = [
         "popularity",
         "vote_average",
+        "bayesian_rating",
         "genre_overlap",
+        "genre_affinity_pct",
         "release_year",
+        "recency_decay_score",
         "user_activity",
         "user_bias",
         "als_score",
         "cb_score",
     ]
     assert RANKING_FEATURES == expected_cols
-    assert len(RANKING_FEATURES) == 8
+    assert len(RANKING_FEATURES) == 11
 
 
 @pytest.fixture
@@ -87,7 +90,7 @@ def test_train_ranking_model_schema(sample_data, tmp_path, monkeypatch):
         params={"n_estimators": 5, "min_child_samples": 1, "num_leaves": 4}
     )
 
-    assert ranker.n_features_ == 8
+    assert ranker.n_features_ == 11
     assert (tmp_path / "lgb_ranker.pkl").exists()
 
 

@@ -1,10 +1,11 @@
 from typing import List, Optional
 from fastapi import APIRouter, Query, HTTPException, Depends
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.models.movie import MovieModel
 from app.views.schemas import PaginatedMovieResponse, SearchMovieResponse, MovieResponse
 from app.services.event_producer import emit, EventType
 from app.services.session import get_session_id
+from app.deps import decode_cursor
 
 router = APIRouter(prefix="/api/movies", tags=["Movies"])
 
@@ -12,11 +13,18 @@ router = APIRouter(prefix="/api/movies", tags=["Movies"])
 def get_trending_movies(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None, description="Opaque cursor for keyset pagination"),
     session_id: str = Depends(get_session_id),
 ):
     """
-    Get the trending movies paginated list, sorted by popularity.
+    Trending movies. Use cursor for deep pagination, page for simple browsing.
     """
+    if cursor:
+        keyset = decode_cursor(cursor)
+        movies, next_cursor = MovieModel.get_trending_cursor(limit, keyset)
+        emit(EventType.TRENDING_BROWSE, user_id=session_id, extra={"cursor": True, "limit": limit})
+        return {"page": page, "limit": limit, "total_movies": 0,
+                "results": movies, "next_cursor": next_cursor}
     movies = MovieModel.get_trending(page, limit)
     total_count = MovieModel.get_total_count()
     emit(EventType.TRENDING_BROWSE, user_id=session_id, extra={"page": page, "limit": limit})
@@ -24,7 +32,8 @@ def get_trending_movies(
         "page": page,
         "limit": limit,
         "total_movies": total_count,
-        "results": movies
+        "results": movies,
+        "next_cursor": None,
     }
 
 @router.get("/latest", response_model=PaginatedMovieResponse)
@@ -75,14 +84,16 @@ def search_movies(
 class MovieBatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    movie_ids: List[int]
+    movie_ids: List[int] = Field(default_factory=list, max_length=100)
 
 @router.post("/batch", response_model=List[MovieResponse])
 def get_movies_batch(body: MovieBatchRequest):
     """
-    Get movie details for a batch of movie IDs in a single query.
+    Get movie details for a batch of movie IDs in a single query (max 100).
     """
-    return MovieModel.get_by_ids(body.movie_ids)
+    if not body.movie_ids:
+        return []
+    return MovieModel.get_by_ids(body.movie_ids[:100])
 
 @router.get("/{movie_id}", response_model=MovieResponse)
 def get_movie_detail(movie_id: int, session_id: str = Depends(get_session_id)):

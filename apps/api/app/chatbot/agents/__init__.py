@@ -135,7 +135,18 @@ def get_deepseek_llm(
         except Exception as e:
             logger.warning(f"Failed to initialize Token Harbor DeepSeek LLM: {e}")
 
-    return get_llm(model_name=model_name, temperature=temperature, max_tokens=max_tokens)
+    target_model = model_name or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    fallback_llm = get_llm(model_name=target_model, temperature=temperature, max_tokens=max_tokens)
+    if fallback_llm and ("deepseek" in getattr(fallback_llm, "model_name", "").lower() or "deepseek" in str(getattr(fallback_llm, "openai_api_base", "")).lower()):
+        return fallback_llm
+
+    return ChatOpenAI(
+        model=target_model,
+        api_key=os.getenv("DEEPSEEK_API_KEY") or "sk-dummy-deepseek",
+        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
 
 
 def get_tokenharbor_llm(

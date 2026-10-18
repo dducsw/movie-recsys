@@ -3,14 +3,18 @@ import { useSearchParams } from 'react-router-dom';
 import { Search, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import MovieCard from '../components/MovieCard/MovieCard';
 import { API_BASE_URL, apiFetch } from '../api/client';
+import { t } from '../i18n';
 import { useWatchlist } from '../context/WatchlistContext';
 import './ExplorePage.css';
+
+const PAGE_SIZE = 24;
 
 export default function ExplorePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { likedMovies } = useWatchlist();
 
-  const searchQuery = searchParams.get('search') || '';
+  // TopNav writes ?query=, legacy links use ?search= — accept both.
+  const searchQuery = searchParams.get('search') || searchParams.get('query') || '';
   const filterType = searchParams.get('filter') || 'trending';
   const genreParam = searchParams.get('genre') || 'all';
   const yearParam = searchParams.get('year') || 'all';
@@ -20,34 +24,46 @@ export default function ExplorePage() {
   const [movies, setMovies] = useState([]);
   const [totalMovies, setTotalMovies] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   useEffect(() => {
     setLoading(true);
-    let path = `/movies/trending?page=${pageParam}&limit=24`;
+    setVisibleCount(PAGE_SIZE);
+    const controller = new AbortController();
+    // Debounce fast filter typing to avoid request race.
+    const timer = setTimeout(() => {
+      let path = `/movies/trending?page=${pageParam}&limit=24`;
 
-    if (searchQuery.trim()) {
-      path = `/movies/search?query=${encodeURIComponent(searchQuery.trim())}&limit=40`;
-      if (genreParam !== 'all') path += `&genre=${encodeURIComponent(genreParam)}`;
-      if (yearParam !== 'all') path += `&year=${encodeURIComponent(yearParam)}`;
-      if (statusParam !== 'all') path += `&status=${encodeURIComponent(statusParam)}`;
-    } else if (genreParam !== 'all') {
-      path = `/movies/search?genre=${encodeURIComponent(genreParam)}&limit=40`;
-    } else if (filterType === 'latest') {
-      path = `/movies/latest?page=${pageParam}&limit=24`;
-    } else if (filterType === 'recommendations') {
-      const q = likedMovies.length > 0 ? `?movie_ids=${likedMovies.join(',')}&limit=40` : '?limit=40';
-      path = `/recommendations${q}`;
-    }
+      if (searchQuery.trim()) {
+        path = `/movies/search?query=${encodeURIComponent(searchQuery.trim())}&limit=40`;
+        if (genreParam !== 'all') path += `&genre=${encodeURIComponent(genreParam)}`;
+        if (yearParam !== 'all') path += `&year=${encodeURIComponent(yearParam)}`;
+        if (statusParam !== 'all') path += `&status=${encodeURIComponent(statusParam)}`;
+      } else if (genreParam !== 'all') {
+        path = `/movies/search?genre=${encodeURIComponent(genreParam)}&limit=40`;
+      } else if (filterType === 'latest') {
+        path = `/movies/latest?page=${pageParam}&limit=24`;
+      } else if (filterType === 'recommendations') {
+        const ids = likedMovies.slice(0, 50);
+        const q = ids.length > 0 ? `?movie_ids=${ids.join(',')}&limit=40` : '?limit=40';
+        path = `/recommendations${q}`;
+      }
 
-    apiFetch(path)
-      .then(data => {
-        setMovies(data.results || []);
-        setTotalMovies(data.total_movies || data.results?.length || 0);
-      })
-      .catch(() => {
-        setMovies([]);
-      })
-      .finally(() => setLoading(false));
+      apiFetch(path, { signal: controller.signal })
+        .then(data => {
+          setMovies(data.results || []);
+          setTotalMovies(data.total_movies || data.results?.length || 0);
+        })
+        .catch((err) => {
+          if (err?.name === 'AbortError') return;
+          setMovies([]);
+        })
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [searchQuery, filterType, genreParam, yearParam, statusParam, pageParam, likedMovies]);
 
   const handlePageChange = (newPage) => {
@@ -75,7 +91,7 @@ export default function ExplorePage() {
             <h1 className="explore-main-title">{getPageTitle()}</h1>
           </div>
           <p className="explore-sub-count">
-            Showing {movies.length} {movies.length === 1 ? 'movie' : 'movies'}
+            {t('showing', movies.length)}
           </p>
         </div>
       </div>
@@ -84,27 +100,39 @@ export default function ExplorePage() {
       {loading ? (
         <div className="spinner-container">
           <div className="spinner" />
-          <p className="explore-sub-count">Loading catalog...</p>
+          <p className="explore-sub-count">{t('loading')} catalog...</p>
         </div>
       ) : movies.length === 0 ? (
         <div className="explore-empty-state">
           <Search className="explore-empty-icon" />
-          <h3 className="explore-empty-title">No movies found</h3>
+          <h3 className="explore-empty-title">{t('noMovies')}</h3>
           <p className="explore-empty-desc">
-            Try adjusting your search query, genre tags, or explore our trending catalog.
+            {t('noMoviesDesc')}
           </p>
         </div>
       ) : (
-        <div className="explore-movies-grid">
-          {movies.map((movie, idx) => (
-            <MovieCard
-              key={movie.movieId || movie.id || idx}
-              movie={movie}
-              source="explore_grid"
-              position={idx}
-            />
-          ))}
-        </div>
+        <>
+          <div className="explore-movies-grid">
+            {movies.slice(0, visibleCount).map((movie, idx) => (
+              <MovieCard
+                key={movie.movieId || movie.id || idx}
+                movie={movie}
+                source="explore_grid"
+                position={idx}
+              />
+            ))}
+          </div>
+          {visibleCount < movies.length && (
+            <div style={{ textAlign: 'center', marginTop: 24 }}>
+              <button
+                className="explore-nav-btn"
+                onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+              >
+                {t('showMore')} ({movies.length - visibleCount})
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Centered Modern Pagination Dock */}
@@ -118,7 +146,7 @@ export default function ExplorePage() {
               title="Previous Page"
             >
               <ChevronLeft className="w-4 h-4" />
-              <span>Trang trước</span>
+              <span>{t('prev')}</span>
             </button>
 
             {pageParam > 2 && (
@@ -160,7 +188,7 @@ export default function ExplorePage() {
               disabled={movies.length < 20}
               title="Next Page"
             >
-              <span>Trang sau</span>
+              <span>{t('next')}</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>

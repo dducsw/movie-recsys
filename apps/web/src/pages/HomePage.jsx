@@ -98,7 +98,7 @@ export default function HomePage() {
       })
       .catch(() => false);
 
-    const recsQuery = likedMovies.length > 0 ? `?movie_ids=${likedMovies.join(',')}` : '';
+    const recsQuery = likedMovies.length > 0 ? `?movie_ids=${likedMovies.slice(0, 50).join(',')}` : '';
     const recsPromise = apiFetch(`/recommendations${recsQuery}`)
       .then(data => {
         if (data.results && data.results.length > 0) {

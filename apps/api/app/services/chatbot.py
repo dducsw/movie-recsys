@@ -7,7 +7,7 @@ from app.chatbot import build_chatbot_graph, IntentOutput, GraphState
 # ---------------------------------------------------------------------------
 
 import json
-from app.services.recsys import get_redis_client
+from app.services.redis_factory import get_redis
 
 class ConversationMemory:
     """
@@ -17,6 +17,7 @@ class ConversationMemory:
     _graph = None
     _sessions: Dict[str, List[BaseMessage]] = {}
     _max_history: int = 20 # Keep last 20 messages per session
+    _max_sessions: int = 1000  # LRU cap to avoid unbounded RAM
 
     @classmethod
     def _get_graph(cls):
@@ -29,7 +30,7 @@ class ConversationMemory:
         """
         Retrieve message history for a session from Redis or in-memory dict.
         """
-        r = get_redis_client()
+        r = get_redis(db=0, timeout=0.5)
         if r:
             try:
                 raw_list = r.lrange(f"chat:{session_id}:history", 0, -1)
@@ -63,8 +64,12 @@ class ConversationMemory:
         cls._sessions[session_id].append(message)
         if len(cls._sessions[session_id]) > cls._max_history:
             cls._sessions[session_id] = cls._sessions[session_id][-cls._max_history:]
+        # LRU eviction: drop oldest session when over cap
+        if len(cls._sessions) > cls._max_sessions:
+            oldest = next(iter(cls._sessions))
+            cls._sessions.pop(oldest, None)
 
-        r = get_redis_client()
+        r = get_redis(db=0, timeout=0.5)
         if r:
             try:
                 role = "human" if isinstance(message, HumanMessage) else "ai"
@@ -84,7 +89,7 @@ class ConversationMemory:
         Clear a session's history.
         """
         cls._sessions.pop(session_id, None)
-        r = get_redis_client()
+        r = get_redis(db=0, timeout=0.5)
         if r:
             try:
                 r.delete(f"chat:{session_id}:history")

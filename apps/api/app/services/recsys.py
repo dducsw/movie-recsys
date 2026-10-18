@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import math
@@ -48,34 +49,15 @@ ALL_GENRES = [
 logger = logging.getLogger(__name__)
 
 # Singletons with lazy initialization
-_redis_client = None
 _qdrant_client = None
 _ranker_model = None
 
 
 def get_redis_client():
-    global _redis_client
-    if _redis_client is not None:
-        return _redis_client if _redis_client is not False else None
-    try:
-        import redis
-        host = os.getenv("REDIS_HOST", "127.0.0.1")
-        port = int(os.getenv("REDIS_PORT", 6379))
-        client = redis.Redis(
-            host=host, 
-            port=port, 
-            db=0, 
-            decode_responses=True, 
-            socket_timeout=0.1,
-            socket_connect_timeout=0.1
-        )
-        client.ping()
-        _redis_client = client
-        logger.info("Connected to Redis online feature store.")
-    except Exception as e:
-        logger.warning(f"Could not connect to Redis: {e}")
-        _redis_client = False
-    return _redis_client if _redis_client is not False else None
+    """Online feature store (Redis db=0). Shared via redis_factory."""
+    from app.services.redis_factory import get_redis
+
+    return get_redis(db=0, timeout=0.5)
 
 
 def get_qdrant_client():
@@ -98,7 +80,12 @@ def get_qdrant_client():
 def get_ranker_model():
     global _ranker_model
     if _ranker_model is not None:
-        return _ranker_model
+        return _ranker_model if _ranker_model is not False else None
+    _ranker_model = _load_ranker_model()
+    return _ranker_model if _ranker_model is not False else None
+
+
+def _load_ranker_model():
     try:
         import requests
         curr = os.path.dirname(os.path.abspath(__file__))
@@ -112,8 +99,12 @@ def get_ranker_model():
         candidates = [
             os.path.join(repo_root, "pipelines", "training", "ml_pipeline", "models", "lgb_ranker.pkl"),
             os.path.join(repo_root, "models", "lgb_ranker.pkl"),
+            os.path.join(repo_root, "notebooks", "04_pipeline_prototypes", "models", "lgb_ranker.pkl"),
             os.path.join(repo_root, "evaluation", "ml_pipeline", "models", "lgb_ranker.pkl"),
         ]
+        pinned = os.getenv("RANKER_MODEL_FILE")
+        if pinned:
+            candidates = [pinned] + candidates
         model_path = next((p for p in candidates if os.path.exists(p)), candidates[0])
         
         # Auto-download from SeaweedFS S3 storage if missing locally
@@ -138,15 +129,28 @@ def get_ranker_model():
 
         if os.path.exists(model_path):
             with open(model_path, "rb") as f:
-                _ranker_model = pickle.load(f)
+                model = pickle.load(f)
             logger.info(f"Successfully loaded LightGBM Ranker model from {model_path}.")
-        else:
-            logger.warning(f"Ranker model not found at {model_path}")
-            _ranker_model = False
+            return model
+        logger.warning(f"Ranker model not found at {model_path}")
+        return False
     except Exception as e:
         logger.warning(f"Failed to load Ranker model: {e}")
-        _ranker_model = False
-    return _ranker_model if _ranker_model is not False else None
+        return False
+
+
+def warmup_models() -> None:
+    """Preload heavy models at startup. Fail-open, never crashes boot."""
+    try:
+        get_ranker_model()
+    except Exception as e:
+        logger.warning("Ranker warmup failed: %s", e)
+    try:
+        from app.services.ml_training_service import get_model_bundle
+
+        get_model_bundle()
+    except Exception as e:
+        logger.warning("ML bundle warmup failed: %s", e)
 
 
 class RecsysService:
@@ -180,10 +184,26 @@ class RecsysService:
         qdrant = get_qdrant_client()
         if qdrant:
             try:
-                # Retrieve vector for target movie
-                res = qdrant.retrieve(collection_name="movies", ids=[movie_id], with_vectors=True)
-                if res and res[0].vector:
-                    target_vec = res[0].vector
+                target_vec = None
+                if r:
+                    try:
+                        raw_vec = r.get(f"movie:{movie_id}:vec")
+                        if raw_vec:
+                            target_vec = json.loads(raw_vec)
+                    except Exception:
+                        pass
+
+                if not target_vec:
+                    res = qdrant.retrieve(collection_name="movies", ids=[movie_id], with_vectors=True)
+                    if res and res[0].vector:
+                        target_vec = res[0].vector
+                        if r:
+                            try:
+                                r.setex(f"movie:{movie_id}:vec", 86400, json.dumps(target_vec))
+                            except Exception:
+                                pass
+
+                if target_vec:
                     points = qdrant.query_points(
                         collection_name="movies",
                         query=target_vec,
@@ -232,16 +252,48 @@ class RecsysService:
         r = get_redis_client()
         qdrant = get_qdrant_client()
 
-        # Source A: Qdrant Vector Search using averaged user vector
+        # Source A: Qdrant Vector Search using recency-weighted user vector
         if qdrant and liked_movie_ids:
             try:
-                liked_points = qdrant.retrieve(collection_name="movies", ids=liked_movie_ids[:10], with_vectors=True)
-                vectors = [pt.vector for pt in liked_points if pt.vector]
+                target_ids = liked_movie_ids[:10]
+                vectors = []
+                missing_ids = []
+                if r:
+                    try:
+                        cached_raw = r.mget([f"movie:{mid}:vec" for mid in target_ids])
+                        for mid, val in zip(target_ids, cached_raw):
+                            if val:
+                                vectors.append(json.loads(val))
+                            else:
+                                missing_ids.append(mid)
+                    except Exception:
+                        missing_ids = target_ids
+                else:
+                    missing_ids = target_ids
+
+                if missing_ids:
+                    liked_points = qdrant.retrieve(collection_name="movies", ids=missing_ids, with_vectors=True)
+                    for pt in liked_points:
+                        if pt.vector:
+                            vectors.append(pt.vector)
+                            if r:
+                                try:
+                                    r.setex(f"movie:{pt.id}:vec", 86400, json.dumps(pt.vector))
+                                except Exception:
+                                    pass
+
                 if vectors:
-                    avg_vec = np.mean(vectors, axis=0).tolist()
+                    arr = np.array(vectors, dtype=np.float32)
+                    # Exponential recency weighting: recent interactions have higher weights
+                    weights = np.exp(np.linspace(-0.6, 0.0, len(arr)))
+                    weights /= weights.sum()
+                    weighted_vec = np.sum(arr * weights[:, np.newaxis], axis=0)
+                    norm = float(np.linalg.norm(weighted_vec))
+                    user_vec = (weighted_vec / norm).tolist() if norm > 1e-6 else np.mean(arr, axis=0).tolist()
+
                     points = qdrant.query_points(
                         collection_name="movies",
-                        query=avg_vec,
+                        query=user_vec,
                         limit=limit
                     ).points
                     for pt in points:
@@ -251,19 +303,20 @@ class RecsysService:
             except Exception as e:
                 logger.warning(f"Qdrant personalized vector search error: {e}")
 
-        # Source B: Redis Precomputed Similarities for each liked movie
+        # Source B: Redis Precomputed Similarities (single mget, no N+1)
         if r and liked_movie_ids:
             try:
-                for lmid in liked_movie_ids[:5]:
-                    cache = r.get(f"movie:{lmid}:similar")
-                    if cache:
-                        items = json.loads(cache)[:20]
-                        for item in items:
-                            m_id = item.get("movieId")
-                            if m_id and m_id not in liked_set:
-                                score = float(item.get("score", 0.4))
-                                if m_id not in candidates or score > candidates[m_id]["retrieval_score"]:
-                                    candidates[m_id] = {"movieId": m_id, "retrieval_score": score, "source": "redis_similar"}
+                keys = [f"movie:{lmid}:similar" for lmid in liked_movie_ids[:5]]
+                for cache in r.mget(keys):
+                    if not cache:
+                        continue
+                    items = json.loads(cache)[:20]
+                    for item in items:
+                        m_id = item.get("movieId")
+                        if m_id and m_id not in liked_set:
+                            score = float(item.get("score", 0.4))
+                            if m_id not in candidates or score > candidates[m_id]["retrieval_score"]:
+                                candidates[m_id] = {"movieId": m_id, "retrieval_score": score, "source": "redis_similar"}
             except Exception as e:
                 logger.warning(f"Redis personalized lookup error: {e}")
 
@@ -363,16 +416,30 @@ class RecsysService:
 
             retrieval_score = float(cand.get("retrieval_score", 0.0))
 
-            feat = {
+            # Shared builder (parity with CT). als_score overridden by
+            # retrieval proxy since serving has no ALS vectors in memory.
+            from recsys_core.features import build_ranking_row
+
+            # Bayesian rating calculation
+            vote_cnt = float(online_f.get("vote_count") or movie.get("vote_count", pop))
+            bayesian_rating = float((vote_cnt / (vote_cnt + 25.0)) * vote_avg + (25.0 / (vote_cnt + 25.0)) * 5.0)
+
+            meta = {
                 "popularity": pop,
                 "vote_average": vote_avg,
-                "genre_overlap": genre_overlap,
-                "release_year": release_year,
-                "user_activity": float(np.log1p(liked_count)),
-                "user_bias": user_bias,
-                "als_score": retrieval_score,
-                "cb_score": float(genre_overlap / max(len(target_genres), 1))
+                "bayesian_rating": bayesian_rating,
+                "release_year": float(release_year),
+                "genres": movie_genres,
+                "als_vec": None,
             }
+            profile = {
+                "genres": set(target_genres),
+                "activity": float(np.log1p(liked_count)),
+                "bias": user_bias,
+                "als_vec": None,
+            }
+            feat = build_ranking_row(meta, profile)
+            feat["als_score"] = retrieval_score
 
             feature_rows.append(feat)
             valid_candidates.append(movie)
@@ -463,9 +530,21 @@ class RecsysService:
         cls,
         liked_movie_ids: List[int],
         limit: int = 20,
-        user_id: Optional[int] = None
+        user_id: Optional[int] = None,
+        session_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Public API: 3-Stage Recommendation for Personalized User Feed."""
+        # 0. Nearline session adaptation: if liked_movie_ids empty/small, blend fresh interactions
+        if not liked_movie_ids and session_id:
+            try:
+                from app.services.event_producer import get_nearline_interactions
+                nearline_ids = get_nearline_interactions(session_id)
+                if nearline_ids:
+                    logger.info("Blending %d nearline session interactions for session %s", len(nearline_ids), session_id)
+                    liked_movie_ids = nearline_ids
+            except Exception as exc:
+                logger.debug("Failed nearline interaction lookup: %s", exc)
+
         if not liked_movie_ids:
             if user_id:
                 return cls.get_user_recommendations(user_id, limit=limit)
@@ -523,6 +602,28 @@ class RecsysService:
         recsys_cache.set(cache_key, res, ttl_seconds=180)
         RECSYS_REQUESTS_TOTAL.labels(endpoint="personalized_recommendations", status="success").inc()
         return res
+
+    @classmethod
+    async def get_similar_movies_async(cls, movie_id: int, limit: int = 12) -> List[Dict[str, Any]]:
+        """Non-blocking async wrapper offloading heavy similarity scoring to worker thread."""
+        return await asyncio.to_thread(cls.get_similar_movies, movie_id, limit)
+
+    @classmethod
+    async def get_personalized_recommendations_async(
+        cls,
+        liked_movie_ids: List[int],
+        limit: int = 20,
+        user_id: Optional[int] = None,
+        session_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Non-blocking async wrapper offloading heavy ranking and MMR to worker thread."""
+        return await asyncio.to_thread(
+            cls.get_personalized_recommendations,
+            liked_movie_ids=liked_movie_ids,
+            limit=limit,
+            user_id=user_id,
+            session_id=session_id
+        )
 
     @classmethod
     def get_user_recommendations(cls, user_id: int, limit: int = 20) -> List[Dict[str, Any]]:

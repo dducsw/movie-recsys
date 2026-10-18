@@ -63,8 +63,9 @@ class FeatureStoreService:
 
         # Quick circuit-breaker: verify Redis is reachable before invoking Feast to avoid long socket timeouts
         try:
-            from app.services.recsys import get_redis_client
-            if not get_redis_client():
+            from app.services.redis_factory import get_redis
+
+            if not get_redis(db=0, timeout=0.5):
                 return {}
         except Exception:
             return {}

@@ -11,7 +11,7 @@ MovieNex separates offline batch training, nearline stream processing, and onlin
 ```mermaid
 flowchart TD
     subgraph ClientTier ["1. Client Layer"]
-        SPA["MovieNex Web Client<br/>(React 18 + Vite + Tailwind CSS)"]
+        SPA["MovieNex Web Client<br/>(React 19 + Vite + Vanilla CSS (Netflix theme))"]
         Tracker["Interaction Tracker<br/>(Clicks, Dwell Time, Ratings)"]
         SPA --- Tracker
     end
@@ -48,7 +48,7 @@ flowchart TD
     end
 
     subgraph AsyncTier ["5. Streaming & Continuous Training"]
-        Kafka{{Message Bus<br/>Interaction Stream}}
+        RedisStream{{Redis Streams<br/>user-events-stream}}
         StreamWorker["Stream Processor<br/>Trending Windows & User Signals"]
         BatchTrainer["Continuous Training Pipeline<br/>LOO Split, Evaluation, Model Export"]
     end
@@ -62,8 +62,8 @@ flowchart TD
     ChatAgent <--> Redis
     ChatAgent <--> Qdrant
 
-    EventProducer -->|"Publish Events"| Kafka
-    Kafka --> StreamWorker
+    EventProducer -->|"XADD Events"| RedisStream
+    RedisStream --> StreamWorker
     StreamWorker -->|"Update Signals"| Redis
     StreamWorker -->|"Persist Data"| Postgres
 
@@ -81,10 +81,10 @@ The table below breaks down the serving path for personalized recommendations (`
 
 | Step | Action | Latency Target | Description |
 | :--- | :--- | :--- | :--- |
-| **1. Session & Context** | Fetch user state | $< 5\,\text{ms}$ | Retrieve recent interaction history, user activity, and rating bias from Redis. |
-| **2. Multi-Channel Retrieval** | Generate candidates | $< 15\,\text{ms}$ | Query Implicit ALS factors, TF-IDF metadata index, and Qdrant vector index. Merge into ~200 unique candidates. |
-| **3. Heavy Ranking** | Feature assembly & score | $< 15\,\text{ms}$ | Assemble 8 tabular features (`features.py`) and score candidates via LightGBM LambdaRanker in memory. |
-| **4. Diversity Re-ranking** | Apply MMR | $< 5\,\text{ms}$ | Re-rank top candidates using MMR ($\lambda = 0.7$) to balance accuracy and genre diversity. |
+| **1. Session & Nearline State** | Fetch user state | $< 5\,\text{ms}$ | Retrieve recent interaction history, rolling nearline dwell/click events, user activity, and rating bias from Redis. |
+| **2. Multi-Channel Retrieval** | Generate candidates | $< 15\,\text{ms}$ | Query iALS factors ($c = 1 + \alpha \cdot r$), Two-Tower DSSM embeddings, TF-IDF metadata index, and Qdrant 384-dim semantic vectors. Merge into 200–300 unique candidates via RRF. |
+| **3. Non-blocking Heavy Ranking** | Feature assembly & score | $< 15\,\text{ms}$ | Assemble 11 tabular features (`features.py`) and score candidates via `asyncio.to_thread` execution of LightGBM LambdaRanker / CatBoost ensemble to avoid event loop blocking. |
+| **4. Diversity Re-ranking** | Apply MMR | $< 5\,\text{ms}$ | Re-rank top candidates using MMR with dynamic user entropy-based $\lambda \in [0.4, 0.9]$ to balance accuracy and genre diversity. |
 | **5. Response Hydration** | Format & return | $< 5\,\text{ms}$ | Hydrate movie metadata (posters, genres, titles) from cache/DB and return JSON response. |
 | **Total** | End-to-End SLA | **$\le 50\,\text{ms}$** | Full request-response cycle. |
 
@@ -99,7 +99,7 @@ The table below breaks down the serving path for personalized recommendations (`
 | **Vector Database** | Qdrant | Vector Index (HNSW) | $< 15\,\text{ms}$ | Dense embeddings of movie synopses for semantic similarity searches. |
 | **Artifact Store** | SeaweedFS (S3) | Object Storage | $< 25\,\text{ms}$ | Storage for trained model files (`lgb_ranker.pkl`, TF-IDF matrices). |
 | **ML Platform** | MLflow | Database + S3 | N/A (Offline) | Experiment tracking, parameter logging, and model registry. |
-| **Message Broker** | Kafka / Redis Stream | Append-only Log | $< 5\,\text{ms}$ | Ingests real-time user clicks, ratings, and impression events. |
+| **Message Broker** | Redis Streams | Append-only Log | $< 5\,\text{ms}$ | Ingests real-time user clicks, ratings, and impression events. |
 
 ---
 

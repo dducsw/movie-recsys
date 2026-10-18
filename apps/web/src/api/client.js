@@ -104,17 +104,34 @@ export const apiFetch = async (path, options = {}) => {
   return response.json();
 };
 
+const trackingHeaders = () => {
+  const token = getAccessToken();
+  return {
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+    'X-Session-Id': getOrCreateSessionId(),
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+};
+
 export const trackClick = (movieId, source, position = null) => {
   fetch(`${API_BASE_URL}/events/click`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-      'X-Session-Id': getOrCreateSessionId(),
-      ...(getAccessToken() ? { 'Authorization': `Bearer ${getAccessToken()}` } : {})
-    },
+    headers: trackingHeaders(),
     credentials: 'include',
+    keepalive: true,
     body: JSON.stringify({ movie_id: movieId, source, position }),
+  }).catch(() => {});
+};
+
+export const trackDwell = (movieId, dwellTimeMs, source = 'listing', position = null) => {
+  if (!movieId || !dwellTimeMs || dwellTimeMs < 500) return;
+  fetch(`${API_BASE_URL}/events/dwell`, {
+    method: 'POST',
+    headers: trackingHeaders(),
+    credentials: 'include',
+    keepalive: true,
+    body: JSON.stringify({ movie_id: movieId, dwell_time_ms: Math.round(dwellTimeMs), source, position }),
   }).catch(() => {});
 };
 
@@ -122,13 +139,9 @@ export const trackImpressions = (items) => {
   if (!items || items.length === 0) return;
   fetch(`${API_BASE_URL}/events/impression`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-      'X-Session-Id': getOrCreateSessionId(),
-      ...(getAccessToken() ? { 'Authorization': `Bearer ${getAccessToken()}` } : {})
-    },
+    headers: trackingHeaders(),
     credentials: 'include',
+    keepalive: true,
     body: JSON.stringify({
       impressions: items.map(item => ({
         movie_id: item.movieId,
@@ -142,25 +155,39 @@ export const trackImpressions = (items) => {
 let impressionBuffer = [];
 let impressionTimeout = null;
 
+const flushImpressions = () => {
+  if (impressionTimeout) {
+    clearTimeout(impressionTimeout);
+    impressionTimeout = null;
+  }
+  if (impressionBuffer.length === 0) return;
+  const toSend = [...impressionBuffer];
+  impressionBuffer = [];
+  // Deduplicate by movieId + source + position within the batch window
+  const seen = new Set();
+  const uniqueItems = [];
+  for (const imp of toSend) {
+    const key = `${imp.movieId}-${imp.source || 'listing'}-${imp.position ?? ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueItems.push(imp);
+    }
+  }
+  trackImpressions(uniqueItems.slice(0, 50));
+};
+
 export const queueImpression = (item) => {
   if (!item || !item.movieId) return;
   impressionBuffer.push(item);
   if (!impressionTimeout) {
-    impressionTimeout = setTimeout(() => {
-      const toSend = [...impressionBuffer];
-      impressionBuffer = [];
-      impressionTimeout = null;
-      // Deduplicate by movieId + source within the batch window
-      const seen = new Set();
-      const uniqueItems = [];
-      for (const imp of toSend) {
-        const key = `${imp.movieId}-${imp.source || 'listing'}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          uniqueItems.push(imp);
-        }
-      }
-      trackImpressions(uniqueItems);
-    }, 400);
+    impressionTimeout = setTimeout(flushImpressions, 400);
   }
 };
+
+// Flush pending impressions on navigate/close (was lost before).
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushImpressions);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushImpressions();
+  });
+}

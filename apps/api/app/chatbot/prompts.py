@@ -92,10 +92,14 @@ CRITICAL RULES:
    - When presenting movie titles in your text, format headers cleanly as: `### 🎬 **Title** *(Year)*`.
    - Include key details (Director, Genre, brief synopsis or why it fits).
    - DO NOT generate raw markdown images `![title](url)` — the frontend UI will automatically display interactive movie cards underneath your message.
-4. TONE & STYLE:
+4. EXPLAINABLE RECOMMENDATIONS (CRS TRANSPARENCY):
+   - Whenever recommending a movie from candidate list or user profile, explicitly provide a brief, compelling rationale explaining WHY it was chosen for this user (e.g. "Lý do gợi ý: Tương đồng với gu phim khoa học viễn tưởng của bạn..." or "Được chọn vì bạn thích các tác phẩm có nhịp phim căng thẳng và điểm đánh giá cao...").
+5. PROACTIVE ELICITATION (INTERACTIVE DIALOGUE):
+   - If the user query is broad or underspecified (e.g. "gợi ý phim hay", "hôm nay xem gì"), offer 2-3 top diverse picks and proactively ask a natural follow-up question to elicit their current mood, preferred pacing, or genre boundaries (e.g., "Bạn đang tìm kiếm cảm giác giật gân hồi hộp, tiếng cười giải trí nhẹ nhàng, hay một câu chuyện sâu lắng?").
+6. TONE & STYLE:
    - Sophisticated yet accessible, enthusiastic about film art.
    - Use clean Markdown formatting: bullet points, bold key terms, and dividing rules (`---`) where appropriate.
-   - Conclude with a helpful, inviting follow-up question or observation to keep the dialogue lively.
+   - Conclude with an engaging, interactive follow-up to sustain conversational flow.
 """
 
 ANSWER_PROMPT = ChatPromptTemplate.from_messages([

@@ -240,6 +240,21 @@ def generate_answer_node(state: GraphState) -> dict:
                 )
                 context_blocks.append(f"[CANDIDATE MOVIES (ENRICHED WITH TAVILY LIVE WEB SEARCH)]\n{movie_list_str}")
 
+            # 4. Chat-REC user profile (long-term tastes from chat + watchlist)
+            try:
+                from app.services.chat_profile import get_profile
+
+                _uid = state.get("user_id")
+                _liked = state.get("user_liked_ids") or []
+                _prof = get_profile(_uid) if _uid else {"liked_genres": [], "liked_ids": []}
+                context_blocks.append(
+                    "[USER PROFILE]\n"
+                    f"Liked genres: {', '.join(_prof.get('liked_genres', [])) or 'unknown'}\n"
+                    f"Liked movie ids (watchlist+chat): {_liked[:50]}"
+                )
+            except Exception:
+                pass
+
             context_data = "\n\n".join(context_blocks) if context_blocks else "No specific database entities matched. Answer using general cinema knowledge."
 
             prompt = ANSWER_PROMPT

@@ -1,4 +1,5 @@
 import os
+from unittest import mock
 import pytest
 from dotenv import load_dotenv
 
@@ -133,7 +134,16 @@ def test_end_to_end_chatbot_workflow_deepseek():
         "final_text": ""
     }
 
-    final_state = graph.invoke(initial_state)
+    fake_genre_movies = [
+        {"movieId": 1, "title": "Toy Story", "genres": "Animation|Children", "popularity": 35.0, "vote_average": 8.3},
+        {"movieId": 2, "title": "Spirited Away", "genres": "Animation|Fantasy", "popularity": 40.0, "vote_average": 8.5},
+    ]
+
+    with mock.patch("app.models.movie.MovieModel.get_movie_by_genre", return_value=fake_genre_movies):
+        final_state = graph.invoke(
+            initial_state,
+            config={"configurable": {"thread_id": "test_e2e_deepseek"}}
+        )
 
     # 1. Intent node output
     assert final_state.get("intent_output") is not None

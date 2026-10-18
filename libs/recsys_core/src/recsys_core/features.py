@@ -9,17 +9,59 @@ from typing import Dict, Any, Optional, Set
 import numpy as np
 import pandas as pd
 
-# Standard 8-feature schema matching Stage 2 serving and continuous training
+# Standard 11-feature schema matching Stage 2 serving and continuous training
 RANKING_FEATURES = [
     "popularity",
     "vote_average",
+    "bayesian_rating",
     "genre_overlap",
+    "genre_affinity_pct",
     "release_year",
+    "recency_decay_score",
     "user_activity",
     "user_bias",
     "als_score",
     "cb_score",
 ]
+
+# Single TF-IDF vocab size shared by CT and batch (no skew).
+TFIDF_MAX_FEATURES = 50
+
+
+def build_ranking_row(meta: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, float]:
+    """Unified 11-feature row. Shared by training and serving (100% parity)."""
+    prof_genres = profile.get("genres", set()) or set()
+    movie_genres = meta.get("genres", set()) or set()
+    overlap = float(len(prof_genres.intersection(movie_genres)))
+    genre_affinity_pct = float(overlap / max(len(prof_genres), 1))
+    cb_score = genre_affinity_pct
+
+    # Recency decay feature: exponential decay centered on 2026 reference
+    rel_year = float(meta.get("release_year", 2010.0))
+    # Half-life of ~15 years: exp(-ln(2)/15 * (2026 - year))
+    years_ago = max(0.0, 2026.0 - rel_year)
+    recency_decay = float(np.exp(-0.046 * years_ago))
+
+    als_score = 0.0
+    if profile.get("als_vec") is not None and meta.get("als_vec") is not None:
+        try:
+            als_score = float(np.dot(profile["als_vec"], meta["als_vec"]))
+        except Exception:
+            als_score = 0.0
+
+    return {
+        "popularity": float(meta.get("popularity", 1.0)),
+        "vote_average": float(meta.get("vote_average", 5.0)),
+        "bayesian_rating": float(meta.get("bayesian_rating", meta.get("vote_average", 5.0))),
+        "genre_overlap": overlap,
+        "genre_affinity_pct": genre_affinity_pct,
+        "release_year": rel_year,
+        "recency_decay_score": recency_decay,
+        "user_activity": float(profile.get("activity", 1.0)),
+        "user_bias": float(profile.get("bias", 0.0)),
+        "als_score": als_score,
+        "cb_score": cb_score,
+    }
 
 
 def extract_movie_release_year(row: Dict[str, Any] | pd.Series) -> int:
@@ -36,9 +78,14 @@ def extract_movie_release_year(row: Dict[str, Any] | pd.Series) -> int:
 
 
 def build_movie_meta(df_movies: pd.DataFrame, als_map: Optional[Dict[int, np.ndarray]] = None) -> Dict[int, Dict[str, Any]]:
-    """Precompute movie metadata dictionary containing release year, genres, and ALS vector."""
+    """Precompute movie metadata dictionary containing release year, genres, Bayesian rating, and ALS vector."""
     records = df_movies.to_dict("records")
     has_year = "release_year" in df_movies.columns
+
+    # Bayesian weighted rating parameters (IMDb formula): WR = (v / (v + m)) * R + (m / (v + m)) * C
+    # m = minimum votes threshold (25), C = global prior rating (~5.0)
+    m_prior = 25.0
+    c_prior = 5.0
 
     movie_meta = {}
     for r in records:
@@ -46,9 +93,14 @@ def build_movie_meta(df_movies: pd.DataFrame, als_map: Optional[Dict[int, np.nda
         g_str = str(r.get("genres", "") or "")
         g_set = set(g_str.split("|")) if g_str else set()
         rel_year = float(r["release_year"]) if has_year else float(extract_movie_release_year(r))
+        vote_avg = float(r.get("vote_average", 5.0))
+        vote_cnt = float(r.get("vote_count", r.get("popularity", 10.0)))
+        bayesian_rating = float((vote_cnt / (vote_cnt + m_prior)) * vote_avg + (m_prior / (vote_cnt + m_prior)) * c_prior)
+
         movie_meta[mid] = {
             "popularity": float(r.get("popularity", 1.0)),
-            "vote_average": float(r.get("vote_average", 5.0)),
+            "vote_average": vote_avg,
+            "bayesian_rating": bayesian_rating,
             "release_year": rel_year,
             "genres": g_set,
             "als_vec": als_map.get(mid) if als_map else None,

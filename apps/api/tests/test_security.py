@@ -256,12 +256,17 @@ def test_ssrf_validator_blocks_internal_ips():
 def test_comment_deletion_authorization_unit():
     """Verify non-authors cannot delete comments, but administrators can."""
     import unittest.mock as mock
+    from contextlib import contextmanager
 
     # Mock DB cursor to simulate a comment belonging to user 10
-    with mock.patch("app.models.comment.get_db_connection") as mock_conn:
-        mock_cur = mock.MagicMock()
-        mock_cur.fetchone.return_value = {"user_id": 10}
-        mock_conn.return_value.cursor.return_value = mock_cur
+    mock_cur = mock.MagicMock()
+    mock_cur.fetchone.return_value = {"user_id": 10}
+
+    @contextmanager
+    def _fake_cursor(*args, **kwargs):
+        yield mock_cur
+
+    with mock.patch("app.models.comment.get_db_cursor", side_effect=_fake_cursor):
 
         # User 20 (not author, not admin) -> PermissionError
         with pytest.raises(PermissionError):

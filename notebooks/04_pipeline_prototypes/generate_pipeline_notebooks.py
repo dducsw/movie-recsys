@@ -2,7 +2,7 @@ import os
 import nbformat as nbf
 
 def create_pipeline_notebooks():
-    output_dir = "." if os.path.exists("generate_pipeline_notebooks.py") else os.path.join("evaluation", "ml_pipeline")
+    output_dir = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(output_dir, exist_ok=True)
 
     # ==========================================================
@@ -670,12 +670,33 @@ for uid, mid in zip(uids, mids):
     cb_score = u_scores[m_idx] if (u_scores is not None and m_idx is not None) else 0.0
     cb_scores.append(cb_score)
 
-# Instantly build features DataFrame
+# Precompute vote_count and bayesian rating
+movie_vote_count_dict = movies_df.get('vote_count', movies_df['popularity']).to_dict()
+bayesian_ratings = []
+for mid in mids:
+    v_avg = float(movie_vote_average_dict.get(mid, 5.0))
+    v_cnt = float(movie_vote_count_dict.get(mid, 10.0))
+    bayesian_ratings.append(float((v_cnt / (v_cnt + 25.0)) * v_avg + (25.0 / (v_cnt + 25.0)) * 5.0))
+
+genre_affinity_pcts = []
+for uid, ov in zip(uids, genre_overlaps):
+    u_fav_len = max(len(user_fav_genres_dict.get(uid, set())), 1)
+    genre_affinity_pcts.append(float(ov / u_fav_len))
+
+recency_decay_scores = [
+    float(np.exp(-0.046 * max(0.0, 2026.0 - float(yr))))
+    for yr in release_years
+]
+
+# Instantly build features DataFrame (11 standardized features)
 X = pd.DataFrame({
     'popularity': popularity_vec,
     'vote_average': vote_average_vec,
+    'bayesian_rating': bayesian_ratings,
     'genre_overlap': genre_overlaps,
+    'genre_affinity_pct': genre_affinity_pcts,
     'release_year': release_years,
+    'recency_decay_score': recency_decay_scores,
     'user_activity': user_activity_vec,
     'user_bias': user_bias_vec,
     'als_score': als_scores,
@@ -1430,12 +1451,33 @@ for uid, mid in zip(uids, mids):
     cb_score = user_bm25_scores[m_idx] if (user_bm25_scores is not None and m_idx is not None) else 0.0
     cb_scores.append(cb_score)
 
-# Instantly build features DataFrame
+# Precompute vote_count and bayesian rating
+movie_vote_count_dict = movies_df.get('vote_count', movies_df['popularity']).to_dict()
+bayesian_ratings = []
+for mid in mids:
+    v_avg = float(movie_vote_average_dict.get(mid, 5.0))
+    v_cnt = float(movie_vote_count_dict.get(mid, 10.0))
+    bayesian_ratings.append(float((v_cnt / (v_cnt + 25.0)) * v_avg + (25.0 / (v_cnt + 25.0)) * 5.0))
+
+genre_affinity_pcts = []
+for uid, ov in zip(uids, genre_overlaps):
+    u_fav_len = max(len(user_fav_genres_dict.get(uid, set())), 1)
+    genre_affinity_pcts.append(float(ov / u_fav_len))
+
+recency_decay_scores = [
+    float(np.exp(-0.046 * max(0.0, 2026.0 - float(yr))))
+    for yr in release_years
+]
+
+# Instantly build features DataFrame (11 standardized features)
 X_train = pd.DataFrame({
     'popularity': popularity_vec,
     'vote_average': vote_average_vec,
+    'bayesian_rating': bayesian_ratings,
     'genre_overlap': genre_overlaps,
+    'genre_affinity_pct': genre_affinity_pcts,
     'release_year': release_years,
+    'recency_decay_score': recency_decay_scores,
     'user_activity': user_activity_vec,
     'user_bias': user_bias_vec,
     'als_score': als_scores,

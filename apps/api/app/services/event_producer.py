@@ -1,52 +1,35 @@
 """
 event_producer.py
 -----------------
-Event producer singleton. Emit user-interaction events lên Redis stream "user-events-stream"
-hoặc fallback logger. Non-blocking qua background thread.
+Non-blocking event producer. Uses a bounded queue + single worker
+(no thread-per-request). Fail-open when Redis is down.
 """
 
 import json
 import logging
-import os
+import queue
 import threading
 import time
 from typing import Any
 
+from app.services.redis_factory import get_redis
+
 logger = logging.getLogger(__name__)
 
-# ── Redis Event Stream Helper ──────────────────────────────────────────────────
-_redis_client = None
-
-def _get_redis():
-    """Khởi tạo kết nối Redis cho event streaming."""
-    global _redis_client
-    if _redis_client is not None:
-        return _redis_client if _redis_client is not False else None
-
-    try:
-        import redis
-        host = os.getenv("REDIS_HOST", "localhost")
-        port = int(os.getenv("REDIS_PORT", "6379"))
-        client = redis.Redis(host=host, port=port, db=0, decode_responses=True, socket_timeout=1.0)
-        client.ping()
-        _redis_client = client
-        logger.info("EventProducer connected to Redis stream at %s:%d", host, port)
-    except Exception as exc:
-        logger.warning("EventProducer Redis init failed (events fallback to logger): %s", exc)
-        _redis_client = False
-
-    return _redis_client if _redis_client is not False else None
-
-
-# ── Public API ─────────────────────────────────────────────────────────────────
 STREAM_KEY = "user-events-stream"
+STREAM_DB = 0
+_QUEUE: queue.Queue = queue.Queue(maxsize=1000)
+_WORKER_STARTED = False
+_WORKER_LOCK = threading.Lock()
 
 
-def _send_in_background(record: dict[str, Any]) -> None:
+def _send_batch(records: list[dict[str, Any]]) -> None:
+    r = get_redis(db=STREAM_DB, timeout=1.0)
+    if not r:
+        return
     try:
-        r = _get_redis()
-        if r:
-            # Flatten extra for Redis stream entry
+        pipe = r.pipeline()
+        for record in records:
             payload = {
                 "userId": str(record.get("userId") or ""),
                 "movieId": str(record.get("movieId") or ""),
@@ -56,10 +39,37 @@ def _send_in_background(record: dict[str, Any]) -> None:
                 "source": str(record.get("source") or "webapp"),
                 "extra": json.dumps(record.get("extra") or {}, default=str),
             }
-            r.xadd(STREAM_KEY, payload, maxlen=100000, approximate=True)
-        logger.debug("Emitted event '%s' for user '%s'", record.get("event_type"), record.get("userId"))
+            pipe.xadd(STREAM_KEY, payload, maxlen=100000, approximate=True)
+        pipe.execute()
     except Exception as exc:
-        logger.warning("Failed to emit event '%s': %s", record.get("event_type"), exc)
+        logger.warning("Failed to emit %d events: %s", len(records), exc)
+
+
+def _worker() -> None:
+    while True:
+        batch = [_QUEUE.get()]
+        try:
+            while len(batch) < 50:
+                batch.append(_QUEUE.get_nowait())
+        except queue.Empty:
+            pass
+        try:
+            _send_batch(batch)
+        finally:
+            for _ in batch:
+                _QUEUE.task_done()
+        if not batch:
+            time.sleep(0.2)
+
+
+def _ensure_worker() -> None:
+    global _WORKER_STARTED
+    with _WORKER_LOCK:
+        if _WORKER_STARTED:
+            return
+        t = threading.Thread(target=_worker, daemon=True, name="event-producer")
+        t.start()
+        _WORKER_STARTED = True
 
 
 def emit(
@@ -69,34 +79,68 @@ def emit(
     movie_id: int | None = None,
     extra: dict[str, Any] | None = None,
 ) -> None:
-    """
-    Gửi một event lên Kafka. Non-blocking (chạy ngầm), không làm chậm HTTP response.
-    """
+    """Enqueue event. Never blocks request, drops when full."""
+    _ensure_worker()
     record = {
-        "userId":     user_id,
-        "movieId":    movie_id,
-        "timestamp":  time.time(),          # epoch float — align với simulator
+        "userId": user_id,
+        "movieId": movie_id,
+        "timestamp": time.time(),
         "event_type": event_type,
-        "session_id": user_id,              # alias, giữ compat với simulator field
-        "source":     "webapp",             # phân biệt real vs simulated data
-        "extra":      extra or {},
+        "session_id": user_id,
+        "source": "webapp",
+        "extra": extra or {},
     }
-    threading.Thread(target=_send_in_background, args=(record,), daemon=True).start()
+    try:
+        _QUEUE.put_nowait(record)
+    except queue.Full:
+        logger.warning("Event queue full, dropping '%s'", event_type)
 
 
 # ── Event type constants ───────────────────────────────────────────────────────
 class EventType:
-    # Align với simulator — dùng chung khi Spark join batch + stream
-    CLICK                   = "click"               # ≈ simulator: click (từ listing)
-    DETAIL_VIEW             = "detail_view"         # ≈ simulator: detail_view
+    CLICK = "click"
+    DWELL = "dwell"
+    DETAIL_VIEW = "detail_view"
+    MOVIE_SEARCH = "movie_search"
+    TRENDING_BROWSE = "trending_browse"
+    LATEST_BROWSE = "latest_browse"
+    RECOMMENDATION_REQUEST = "recommendation_request"
+    SIMILAR_MOVIE_REQUEST = "similar_movie_request"
+    CHATBOT_MESSAGE = "chatbot_message"
+    CHAT_PREFERENCE = "chat_preference"
+    IMPRESSION = "impression"
+    RATING = "rating"
+    WATCHLIST = "watchlist"
 
-    # Webapp-only events (không có trong simulator)
-    MOVIE_SEARCH            = "movie_search"
-    TRENDING_BROWSE         = "trending_browse"
-    LATEST_BROWSE           = "latest_browse"
-    RECOMMENDATION_REQUEST  = "recommendation_request"
-    SIMILAR_MOVIE_REQUEST   = "similar_movie_request"
-    CHATBOT_MESSAGE         = "chatbot_message"
-    IMPRESSION              = "impression"
-    RATING                  = "rating"
-    WATCHLIST               = "watchlist"
+
+def record_nearline_interaction(session_id: str, movie_id: int) -> None:
+    """Record nearline interaction in Redis for instant session feed adaptation (TTL 10m)."""
+    if not session_id or not movie_id:
+        return
+    r = get_redis(db=STREAM_DB, timeout=0.5)
+    if r:
+        try:
+            key = f"session:{session_id}:recent"
+            pipe = r.pipeline()
+            pipe.lrem(key, 0, str(movie_id))
+            pipe.lpush(key, str(movie_id))
+            pipe.ltrim(key, 0, 19)
+            pipe.expire(key, 600)  # 10 minutes session budget
+            pipe.execute()
+        except Exception as exc:
+            logger.debug("Failed to record nearline interaction: %s", exc)
+
+
+def get_nearline_interactions(session_id: str) -> list[int]:
+    """Retrieve recent movie IDs interacted within current session."""
+    if not session_id:
+        return []
+    r = get_redis(db=STREAM_DB, timeout=0.5)
+    if r:
+        try:
+            key = f"session:{session_id}:recent"
+            raw = r.lrange(key, 0, 19)
+            return [int(mid) for mid in raw if str(mid).isdigit()]
+        except Exception:
+            pass
+    return []

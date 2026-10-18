@@ -1,8 +1,8 @@
-"""
-pipeline/feature/batch/model.py
+"""pipeline/feature/batch/model.py
 --------------------------------
-Pandas & Scikit-learn data loading, genre TF-IDF feature extraction,
-and collaborative item factor modeling (Zero PySpark dependency).
+Pandas & scikit-learn data loading, genre TF-IDF extraction,
+and true implicit-ALS item factors (Hu-Koren-Volinsky confidence).
+Zero Spark/Kafka dependency: batch runs on Pandas, streaming on Redis Streams.
 """
 
 import os
@@ -91,13 +91,15 @@ def load_datasets() -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
 
 
 def extract_genre_tfidf_features(movies_df: pd.DataFrame) -> Tuple[np.ndarray, list]:
-    """Compute 20-dim TF-IDF feature vectors on movie genres using Scikit-Learn."""
+    """Compute TF-IDF genre vectors. Vocab size shared with CT (no skew)."""
     logger.info("Computing Genre TF-IDF vectors using Scikit-learn...")
+    from recsys_core.features import TFIDF_MAX_FEATURES
+
     genres_series = movies_df["genres"].fillna("(no genres listed)").astype(str)
     # Replace pipe delimiter with spaces so TfidfVectorizer tokenizes them as separate words
     genres_text = genres_series.str.replace("|", " ", regex=False)
 
-    tfidf = TfidfVectorizer(max_features=20, token_pattern=r"(?u)\b[\w-]+\b")
+    tfidf = TfidfVectorizer(max_features=TFIDF_MAX_FEATURES, token_pattern=r"(?u)\b[\w-]+\b")
     tfidf_matrix = tfidf.fit_transform(genres_text).toarray().astype(np.float32)
 
     # L2 normalize
@@ -105,44 +107,59 @@ def extract_genre_tfidf_features(movies_df: pd.DataFrame) -> Tuple[np.ndarray, l
     norms[norms == 0] = 1.0
     norm_matrix = tfidf_matrix / norms
 
-    # Ensure shape is (N, 20)
-    if norm_matrix.shape[1] < 20:
-        pad_width = 20 - norm_matrix.shape[1]
+    # Ensure stable width matching shared constant
+    if norm_matrix.shape[1] < TFIDF_MAX_FEATURES:
+        pad_width = TFIDF_MAX_FEATURES - norm_matrix.shape[1]
         norm_matrix = np.pad(norm_matrix, ((0, 0), (0, pad_width)), mode='constant')
 
     return norm_matrix, tfidf.get_feature_names_out().tolist()
 
 
 def train_als_model(ratings_df: Optional[pd.DataFrame]) -> Dict[int, np.ndarray]:
-    """Train Collaborative Filtering / item factor vectors if ratings available."""
-    als_factors_map = {}
-    if ratings_df is None or ratings_df.empty:
-        return als_factors_map
+    """Train true iALS item factors (confidence c = 1 + alpha * r).
 
+    Delegates to ``recsys_core.retrieval.train_ials_factors`` so offline
+    training and online serving share one implementation (no skew).
+    Falls back to TruncatedSVD when ``implicit`` is unavailable.
+    """
+    if ratings_df is None or ratings_df.empty:
+        return {}
+    try:
+        from recsys_core.retrieval import IALSConfig, train_ials_factors
+
+        factors = train_ials_factors(ratings_df, config=IALSConfig())
+        logger.info("iALS factors computed for %d movies.", len(factors))
+        return factors
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning("iALS training failed, using SVD fallback: %s", e)
     try:
         logger.info(f"Extracting item collaborative factors from {len(ratings_df)} ratings...")
-        # Simple SVD / factor representation using scipy/numpy
+        # SVD fallback on confidence-weighted interactions
         from scipy.sparse import csr_matrix
         from sklearn.decomposition import TruncatedSVD
 
+        als_factors_map: Dict[int, np.ndarray] = {}
         user_ids = ratings_df["userId"].astype("category").cat.codes
         movie_ids = ratings_df["movieId"].astype("category").cat.codes
         unique_movies = ratings_df["movieId"].astype("category").cat.categories
 
-        rating_vals = ratings_df["rating"].values.astype(np.float32)
+        alpha = 40.0
+        confidence_vals = (1.0 + alpha * ratings_df["rating"].values).astype(np.float32)
         n_users = user_ids.max() + 1
         n_movies = movie_ids.max() + 1
 
-        interaction_matrix = csr_matrix((rating_vals, (user_ids, movie_ids)), shape=(n_users, n_movies))
+        interaction_matrix = csr_matrix((confidence_vals, (user_ids, movie_ids)), shape=(n_users, n_movies))
 
-        n_components = min(20, min(n_users, n_movies) - 1)
+        n_components = min(32, min(n_users, n_movies) - 1)
         if n_components >= 2:
-            svd = TruncatedSVD(n_components=20 if n_components >= 20 else n_components, random_state=42)
-            item_factors = svd.fit_transform(interaction_matrix.T)
+            svd = TruncatedSVD(n_components=n_components, random_state=42)
+            item_factors = svd.fit_transform(interaction_matrix.T).astype(np.float32)
 
-            # Pad to 20 if needed
-            if item_factors.shape[1] < 20:
-                item_factors = np.pad(item_factors, ((0, 0), (0, 20 - item_factors.shape[1])), mode='constant')
+            # Pad to 32 if needed for stable downstream dim
+            if item_factors.shape[1] < 32:
+                item_factors = np.pad(item_factors, ((0, 0), (0, 32 - item_factors.shape[1])), mode='constant')
 
             for idx, m_id in enumerate(unique_movies):
                 vec = item_factors[idx].astype(np.float32)
@@ -154,5 +171,6 @@ def train_als_model(ratings_df: Optional[pd.DataFrame]) -> Dict[int, np.ndarray]
             logger.info(f"Collaborative SVD factors computed for {len(als_factors_map)} movies.")
     except Exception as e:
         logger.warning(f"Collaborative factor extraction skipped: {e}")
+        return {}
 
     return als_factors_map

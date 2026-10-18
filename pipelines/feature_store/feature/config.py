@@ -1,7 +1,8 @@
 """
 pipeline/feature/config.py
 --------------------------
-Central configuration settings and environment variables for batch and streaming pipelines.
+Central configuration for batch and streaming pipelines.
+Batch: Pandas/scikit-learn. Streaming: Redis Streams (no Spark/Kafka).
 """
 
 import os
@@ -27,9 +28,13 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "movies")
 
-# Postgres Database
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5435))
+# Qdrant semantic embeddings (pinned — must match collection dim)
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", 384))
+
+# Postgres Database (POSTGRES_* preferred, DB_* alias for docker-compose compat)
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", os.getenv("DB_HOST", "localhost"))
+POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", os.getenv("DB_PORT", 5435)))
 POSTGRES_DB = os.getenv("POSTGRES_DB", "movie_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mysecretpassword")

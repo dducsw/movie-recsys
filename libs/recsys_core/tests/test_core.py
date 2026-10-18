@@ -21,7 +21,7 @@ from recsys_core import (
 
 
 def test_schema_and_features():
-    assert len(RANKING_FEATURES) == 8
+    assert len(RANKING_FEATURES) == 11
     row = {"title": "The Matrix (1999)"}
     assert extract_movie_release_year(row) == 1999
 

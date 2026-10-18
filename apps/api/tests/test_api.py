@@ -134,10 +134,12 @@ def test_recsys_stage_2_ranking_and_serving(monkeypatch):
     from app.services.recsys import RecsysService, get_ranker_model
     from app.models.movie import MovieModel
 
-    # Verify ranker has 8 standardized features
+    from recsys_core.features import RANKING_FEATURES
+
+    # Verify ranker has standardized ranking features
     ranker = get_ranker_model()
     if ranker is not None and hasattr(ranker, "feature_name_"):
-        assert len(ranker.feature_name_) == 8
+        assert len(ranker.feature_name_) == len(RANKING_FEATURES)
         assert "als_score" in ranker.feature_name_
         assert "cb_score" in ranker.feature_name_
 

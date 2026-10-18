@@ -15,9 +15,10 @@ from recsys_core.features import (
 
 
 def test_ranking_features_schema():
-    assert len(RANKING_FEATURES) == 8
+    assert len(RANKING_FEATURES) == 11
     expected = [
-        "popularity", "vote_average", "genre_overlap", "release_year",
+        "popularity", "vote_average", "bayesian_rating", "genre_overlap",
+        "genre_affinity_pct", "release_year", "recency_decay_score",
         "user_activity", "user_bias", "als_score", "cb_score"
     ]
     assert RANKING_FEATURES == expected

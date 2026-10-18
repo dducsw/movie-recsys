@@ -1,27 +1,4 @@
-/* Main Application Layout & Components */
-.streamix-app-layout {
-  display: flex;
-  min-height: 100vh;
-  width: 100%;
-  background-color: var(--bg-body);
-}
-
-.streamix-main-container {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow-y: auto;
-}
-
-.streamix-content-body {
-  flex: 1;
-  padding: 24px 36px 60px 36px;
-  max-width: 1600px;
-  width: 100%;
-  margin: 0 auto;
-}
+/* App-level animations only. Base layout lives in index.css (single source). */
 
 /* Animations */
 @keyframes fadeIn {

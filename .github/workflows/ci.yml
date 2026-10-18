@@ -26,7 +26,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r apps/api/requirements.txt
           pip install -e libs/recsys_core
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov ruff
+
+      - name: Lint (Ruff)
+        run: |
+          ruff check libs/recsys_core/src/recsys_core/retrieval.py libs/recsys_core/src/recsys_core/embeddings.py libs/recsys_core/src/recsys_core/sampling.py libs/recsys_core/src/recsys_core/quality_gate.py pipelines/training/full_eval.py pipelines/batch/backfill_qdrant.py
 
       - name: Run Test Suite
         env:

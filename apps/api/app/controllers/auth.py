@@ -17,9 +17,21 @@ from app.services.auth_service import (
     decode_refresh_token,
     set_refresh_cookie,
     clear_refresh_cookie,
+    issue_token_pair,
     get_current_user_optional,
     get_current_user
 )
+
+def _generate_username(email_clean: str) -> str:
+    """Generate a unique username from email prefix. Simple loop with cap."""
+    prefix = email_clean.split("@")[0]
+    base = re.sub(r"[^a-zA-Z0-9_]", "", prefix) or "movienex_user"
+    candidate = base
+    for _ in range(20):
+        if UserModel.get_by_username(candidate) is None:
+            return candidate
+        candidate = f"{base}_{random.randint(100, 9999)}"
+    return f"user_{int(time.time())}"
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -92,27 +104,14 @@ def register_user(request: Request, response: Response, body: RegisterRequest):
         if existing_username:
             raise HTTPException(status_code=400, detail="Tên người dùng đã tồn tại. Vui lòng chọn tên khác.")
     else:
-        prefix = email_clean.split("@")[0]
-        base_prefix = re.sub(r"[^a-zA-Z0-9_]", "", prefix) or "movienex_user"
-        chosen_username = base_prefix
-        counter = 1
-        while UserModel.get_by_username(chosen_username) is not None:
-            chosen_username = f"{base_prefix}_{random.randint(100, 9999)}"
-            counter += 1
-            if counter > 20:
-                chosen_username = f"user_{int(time.time())}"
-                break
+        chosen_username = _generate_username(email_clean)
 
     hashed = hash_password(body.password)
     try:
         user = UserModel.create_user(chosen_username, email_clean, hashed)
         role = user.get("role", "user")
 
-        access_token = create_access_token(user["id"], user["username"], role=role)
-        refresh_token = create_refresh_token(user["id"], user["username"])
-
-        # Store Refresh Token in secure HttpOnly cookie
-        set_refresh_cookie(response, refresh_token)
+        access_token = issue_token_pair(response, user["id"], user["username"], role=role)
 
         return {
             "message": "User registered successfully",
@@ -146,11 +145,7 @@ def login_user(request: Request, response: Response, body: LoginRequest):
         raise HTTPException(status_code=401, detail="Email/Tên người dùng hoặc mật khẩu không chính xác.")
 
     role = user.get("role", "user")
-    access_token = create_access_token(user["id"], user["username"], role=role)
-    refresh_token = create_refresh_token(user["id"], user["username"])
-
-    # Set secure HttpOnly cookie for Refresh Token
-    set_refresh_cookie(response, refresh_token)
+    access_token = issue_token_pair(response, user["id"], user["username"], role=role)
 
     prefs = UserModel.get_user_preferences(user["id"])
     watchlist = UserModel.get_user_watchlist(user["id"])
@@ -192,11 +187,7 @@ def refresh_access_token(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="User account no longer exists.")
 
     role = user.get("role", "user")
-    new_access_token = create_access_token(user["id"], user["username"], role=role)
-    new_refresh_token = create_refresh_token(user["id"], user["username"])
-
-    # Rotate refresh token
-    set_refresh_cookie(response, new_refresh_token)
+    new_access_token = issue_token_pair(response, user["id"], user["username"], role=role)
 
     return {
         "access_token": new_access_token,

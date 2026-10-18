@@ -1,5 +1,6 @@
 from langgraph.graph import END, START, StateGraph
 
+from app.chatbot.redis_checkpointer import RedisMemorySaver
 from app.chatbot.agents import (
     detect_intent_node,
     enrich_movies_node,
@@ -9,8 +10,10 @@ from app.chatbot.agents import (
 from app.chatbot.route import route_after_intent, route_after_query
 from app.chatbot.state import GraphState
 
+_checkpointer = RedisMemorySaver()
 
-def build_chatbot_graph():
+
+def build_chatbot_graph(checkpointer=_checkpointer):
     workflow = StateGraph(GraphState)
 
     # Add nodes
@@ -40,4 +43,6 @@ def build_chatbot_graph():
     workflow.add_edge("enrich_movies", "generate_answer")
     workflow.add_edge("generate_answer", END)
 
+    if checkpointer is not None:
+        return workflow.compile(checkpointer=checkpointer)
     return workflow.compile()

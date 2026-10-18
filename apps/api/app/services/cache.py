@@ -1,38 +1,17 @@
-import os
 import json
 import logging
 from typing import Any, Optional
 
+from app.services.redis_factory import get_redis
+
 logger = logging.getLogger(__name__)
 
-_redis_client = None
+CACHE_DB = 1
 
 
 def get_cache_client():
-    global _redis_client
-    if _redis_client is not None:
-        return _redis_client if _redis_client is not False else None
-
-    try:
-        import redis
-        host = os.getenv("REDIS_HOST", "localhost")
-        port = int(os.getenv("REDIS_PORT", 6379))
-        client = redis.Redis(
-            host=host,
-            port=port,
-            db=1,  # use db 1 for app object caching
-            decode_responses=True,
-            socket_timeout=0.5,
-            socket_connect_timeout=0.5
-        )
-        client.ping()
-        _redis_client = client
-        logger.info(f"Connected to Redis Cache at {host}:{port}")
-    except Exception as e:
-        logger.warning(f"Redis Cache unavailable ({e}), caching disabled.")
-        _redis_client = False
-
-    return _redis_client if _redis_client is not False else None
+    """App object cache (Redis db=1). Fail-open."""
+    return get_redis(db=CACHE_DB, timeout=0.5)
 
 
 def cache_get(key: str) -> Optional[Any]:

@@ -70,3 +70,39 @@ Implement a 1-click Continuous Training pipeline (`pipelines/training/train_pipe
 | Positive | Trade-offs |
 | :--- | :--- |
 | • Fully reproducible retraining from `configs.yaml`.<br/>• Automatic safety check prevents deploying slow or invalid models.<br/>• Automated feature importance logging to MLflow. | • Negative sampling protocol evaluates a representative subset ($N=200$ users) to keep training fast. |
+
+---
+
+## ADR-004: Two-Tower Neural Candidate Retrieval (DSSM)
+
+### Context & Problem Statement
+Averaging historical item vectors in collaborative filtering loses nonlinear user context, session recency, and cold-start metadata signals. 
+
+### Decision
+Introduce a dedicated **Two-Tower Neural Retrieval model** (`libs/recsys_core/src/recsys_core/two_tower.py`):
+1. **User Tower**: Projects interaction history with exponential decay weighting, user genre distribution, activity level, and rating bias into a normalized 64-dimensional embedding $\mathbf{u} \in \mathbb{R}^{64}$.
+2. **Item Tower**: Projects item semantic plot representations, genres, and metadata into the same 64-dimensional embedding $\mathbf{v} \in \mathbb{R}^{64}$.
+3. **Pure NumPy Forward Pass**: Optimized with zero PyTorch runtime overhead in online SLA budget ($< 5\,\text{ms}$).
+
+### Consequences
+| Positive | Trade-offs |
+| :--- | :--- |
+| • Maps user context and content metadata into a unified metric space.<br/>• Seamless blending with iALS and BM25 via Reciprocal Rank Fusion (RRF). | • Requires maintaining dual-tower weights synchronization during CT cycles. |
+
+---
+
+## ADR-005: 11-Dimensional Standardized Feature Parity & Catalog Alignment
+
+### Context & Problem Statement
+Initial evaluation revealed two major discrepancies:
+1. Low-vote outlier items artificially inflated ranker scores.
+2. The movie catalog ID domain diverged from the MovieLens rating ID domain (only 5% ID overlap), causing extreme popularity bias where popularity gain accounted for >2100 while personalization was suppressed.
+
+### Decision
+1. **Catalog Domain Alignment**: Synchronize the movie catalog directly with the interaction domain (9,742 movies in `ml-latest-small`, achieving 100% ID coverage).
+2. **11-Feature Standardization**: Extend `RANKING_FEATURES` to include `bayesian_rating` ($WR = \frac{v}{v+m}R + \frac{m}{v+m}C$), `genre_affinity_pct`, and `recency_decay_score` with strict training-serving parity across `features.py`, `train_pipeline.py`, and `recsys.py`.
+
+### Consequences
+| Positive | Trade-offs |
+| :--- | :--- |
+| • Personalization signal (`als_score`) feature gain increased by 800% (from 1,330 to 10,664).<br/>• Popularity bias reduced by 78%, restoring balanced recommendation slates.<br/>• 100% schema alignment across offline prototypes, CT pipelines, and online API serving. | • Feature matrix dimension increased from 8 to 11 columns, with negligible (< 0.2ms) latency impact. |

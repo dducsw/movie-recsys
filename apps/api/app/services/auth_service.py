@@ -2,7 +2,7 @@ import time
 import logging
 from typing import Optional, Dict, Any
 from fastapi import Header, HTTPException, Depends, Request, Response
-from passlib.context import CryptContext
+import bcrypt
 import jwt
 
 from app.config.settings import get_settings
@@ -14,13 +14,12 @@ settings = get_settings()
 SECRET_KEY = settings.JWT_SECRET_KEY
 ALGORITHM = settings.JWT_ALGORITHM  # "HS256"
 
-# Strictly use bcrypt via passlib (no weak SHA-256 fallback)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def hash_password(password: str) -> str:
     """Hash password securely using bcrypt."""
-    return pwd_context.hash(password)
+    pw_bytes = password.encode("utf-8")[:72]
+    salt = bcrypt.gensalt(rounds=12)
+    return bcrypt.hashpw(pw_bytes, salt).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -28,7 +27,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     if not hashed_password or not plain_password:
         return False
     try:
-        return pwd_context.verify(plain_password, hashed_password)
+        pw_bytes = plain_password.encode("utf-8")[:72]
+        return bcrypt.checkpw(pw_bytes, hashed_password.encode("utf-8"))
     except Exception as e:
         logger.warning(f"Password verification error: {e}")
         return False
@@ -145,6 +145,14 @@ def clear_refresh_cookie(response: Response) -> None:
         secure=settings.is_production,
         samesite="lax"
     )
+
+
+def issue_token_pair(response: Response, user_id: int, username: str, role: str = "user") -> str:
+    """Create access+refresh tokens, set refresh cookie, return access token."""
+    access_token = create_access_token(user_id, username, role=role)
+    refresh_token = create_refresh_token(user_id, username)
+    set_refresh_cookie(response, refresh_token)
+    return access_token
 
 
 def get_current_user_optional(

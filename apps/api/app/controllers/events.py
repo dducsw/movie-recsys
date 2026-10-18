@@ -1,18 +1,19 @@
-"""
-events.py — Controller cho interaction tracking từ frontend.
-Bao gồm: Click, Impression, Star Rating, Watchlist.
-"""
+"""events.py — Controller cho interaction tracking từ frontend."""
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 
-from app.services.event_producer import emit, EventType
+from app.services.event_producer import emit, EventType, record_nearline_interaction
 from app.services.session import get_session_id
 from app.services.auth_service import get_current_user_optional
 from app.models.user import UserModel
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/events", tags=["Events"])
+MAX_IMPRESSIONS = 50
 
 
 class ClickEvent(BaseModel):
@@ -21,6 +22,15 @@ class ClickEvent(BaseModel):
     movie_id: int
     source: str           # "trending" | "latest" | "search" | "recommendations" | "similar" | "chatbot"
     position: Optional[int] = None   # vị trí trong listing (0-indexed)
+
+
+class DwellEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    movie_id: int
+    dwell_time_ms: int = Field(..., ge=100, le=3600000)
+    source: str = "listing"
+    position: Optional[int] = None
 
 
 class ImpressionItem(BaseModel):
@@ -34,7 +44,7 @@ class ImpressionItem(BaseModel):
 class ImpressionBatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    impressions: List[ImpressionItem]
+    impressions: List[ImpressionItem] = Field(..., max_length=50)
 
 
 class RatingEvent(BaseModel):
@@ -56,7 +66,7 @@ def track_click(
     session_id: str = Depends(get_session_id),
     current_user: Optional[dict] = Depends(get_current_user_optional)
 ):
-    """Ghi nhận click event từ frontend."""
+    """Ghi nhận click event từ frontend và kích hoạt nearline session adaptation."""
     user_identifier = str(current_user["id"]) if current_user else session_id
     emit(
         EventType.CLICK,
@@ -64,6 +74,26 @@ def track_click(
         movie_id=body.movie_id,
         extra={"source": body.source, "position": body.position},
     )
+    record_nearline_interaction(session_id, body.movie_id)
+
+
+@router.post("/dwell", status_code=204)
+def track_dwell(
+    body: DwellEvent,
+    session_id: str = Depends(get_session_id),
+    current_user: Optional[dict] = Depends(get_current_user_optional)
+):
+    """Ghi nhận dwell time (thời gian tương tác/dừng mắt) trên card phim."""
+    user_identifier = str(current_user["id"]) if current_user else session_id
+    emit(
+        EventType.DWELL,
+        user_id=user_identifier,
+        movie_id=body.movie_id,
+        extra={"dwell_time_ms": body.dwell_time_ms, "source": body.source, "position": body.position},
+    )
+    # Dwell >= 1.5s is a high implicit affinity signal -> trigger session adaptation
+    if body.dwell_time_ms >= 1500:
+        record_nearline_interaction(session_id, body.movie_id)
 
 
 @router.post("/impression", status_code=204)
@@ -74,7 +104,7 @@ def track_impression(
 ):
     """Ghi nhận danh sách các card phim xuất hiện trong viewport (Impression Tracking)."""
     user_identifier = str(current_user["id"]) if current_user else session_id
-    for item in body.impressions[:50]:
+    for item in body.impressions[:MAX_IMPRESSIONS]:
         emit(
             EventType.IMPRESSION,
             user_id=user_identifier,
@@ -97,7 +127,7 @@ def track_rating(
         try:
             saved_rating = UserModel.save_rating(current_user["id"], body.movie_id, body.rating)
         except Exception as e:
-            print(f"[Warning] Could not save rating to PostgreSQL DB: {e}")
+            logger.warning("Could not save rating to DB: %s", e)
 
     emit(
         EventType.RATING,
@@ -121,7 +151,7 @@ def track_watchlist(
         try:
             is_in_watchlist = UserModel.toggle_watchlist(current_user["id"], body.movie_id)
         except Exception as e:
-            print(f"[Warning] Could not update watchlist in DB: {e}")
+            logger.warning("Could not update watchlist in DB: %s", e)
 
     emit(
         EventType.WATCHLIST,

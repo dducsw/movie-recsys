@@ -33,27 +33,25 @@ export default function MovieDetailPage() {
   const currentRating = getRating(movieId);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    // 1. Fetch Movie Detail
-    apiFetch(`/movies/${movieId}`)
-      .then(data => {
-        if (data && (data.movieId || data.id || data.title)) {
-          setMovie(data.movie || data);
-        } else {
-          setMovie(null);
-        }
-      })
-      .catch(() => setMovie(null))
-      .finally(() => setLoading(false));
-
-    // 2. Fetch 3-Stage Similar Movies
-    apiFetch(`/movies/${movieId}/recommendations?limit=18`)
-      .then(data => {
-        setSimilarMovies(data.results || []);
-      })
-      .catch(() => setSimilarMovies([]));
+    // Parallel: detail + similar (was sequential waterfall).
+    Promise.all([
+      apiFetch(`/movies/${movieId}`).catch(() => null),
+      apiFetch(`/movies/${movieId}/recommendations?limit=18`).catch(() => ({ results: [] })),
+    ]).then(([detail, similar]) => {
+      if (cancelled) return;
+      if (detail && (detail.movieId || detail.id || detail.title)) {
+        setMovie(detail.movie || detail);
+      } else {
+        setMovie(null);
+      }
+      setSimilarMovies(similar?.results || []);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, [movieId]);
 
   if (loading) {

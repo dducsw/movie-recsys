@@ -1,10 +1,14 @@
-from app.config.db import get_db_connection
+from app.config.db import get_db_connection, get_db_cursor
 from app.services.cache import cache_get, cache_set
+from app.core.errors import NotFoundError
 from fastapi import HTTPException
 from typing import List, Dict, Any
+import logging
 import os
 import re
 import requests
+
+logger = logging.getLogger(__name__)
 
 class MovieModel:
     @staticmethod
@@ -60,6 +64,36 @@ class MovieModel:
         finally:
             cur.close()
             conn.close()
+
+    @staticmethod
+    def get_trending_cursor(limit: int, cursor: tuple = None) -> tuple:
+        """Keyset pagination for trending. Returns (rows, next_cursor)."""
+        from app.config.db import get_db_cursor
+        from app.deps import encode_cursor
+
+        last_pop, last_id = cursor if cursor else (None, None)
+        with get_db_cursor() as cur:
+            if last_pop is None:
+                cur.execute(
+                    """SELECT movieid AS "movieId", title, release_date, popularity,
+                              overview, vote_average, vote_count, poster_url
+                       FROM movies ORDER BY popularity DESC, movieid DESC LIMIT %s;""",
+                    (limit + 1,))
+            else:
+                cur.execute(
+                    """SELECT movieid AS "movieId", title, release_date, popularity,
+                              overview, vote_average, vote_count, poster_url
+                       FROM movies
+                       WHERE (popularity, movieid) < (%s, %s)
+                       ORDER BY popularity DESC, movieid DESC LIMIT %s;""",
+                    (last_pop, last_id, limit + 1))
+            rows = [dict(r) for r in cur.fetchall()]
+        next_cursor = None
+        if len(rows) > limit:
+            last = rows[limit - 1]
+            next_cursor = encode_cursor(float(last.get("popularity") or 0), int(last["movieId"]))
+            rows = rows[:limit]
+        return rows, next_cursor
 
     @staticmethod
     def get_latest(page: int, limit: int) -> List[Dict[str, Any]]:
@@ -324,28 +358,31 @@ class MovieModel:
                 
                 api_key = os.getenv("TMDB_API_KEY")
                 if api_key:
-                    try:
-                        res = requests.get(
-                            f"https://api.themoviedb.org/3/movie/{movie_id}/videos",
-                            params={"api_key": api_key},
-                            timeout=0.8
-                        )
-                        if res.status_code == 200:
-                            for video in res.json().get("results", []):
-                                if video.get("site") == "YouTube" and video.get("type") == "Trailer":
-                                    v_key = video.get("key", "")
-                                    if v_key and re.match(r"^[a-zA-Z0-9_\-]{6,20}$", v_key):
-                                        resolved_url = f"https://www.youtube.com/embed/{v_key}"
-                                        break
-                    except Exception:
-                        pass
+                    import threading
+                    def _async_enrich_trailer(m_id: int, key: str, fallback_movie: dict):
+                        try:
+                            res = requests.get(
+                                f"https://api.themoviedb.org/3/movie/{m_id}/videos",
+                                params={"api_key": key},
+                                timeout=1.5
+                            )
+                            if res.status_code == 200:
+                                for video in res.json().get("results", []):
+                                    if video.get("site") == "YouTube" and video.get("type") == "Trailer":
+                                        v_key = video.get("key", "")
+                                        if v_key and re.match(r"^[a-zA-Z0-9_\-]{6,20}$", v_key):
+                                            embed_url = f"https://www.youtube.com/embed/{v_key}"
+                                            with get_db_cursor() as bg_cur:
+                                                bg_cur.execute(
+                                                    "UPDATE movies SET trailer_url = %s WHERE movieid = %s",
+                                                    (embed_url, m_id)
+                                                )
+                                            cache_set(f"movie:detail:{m_id}", {**fallback_movie, "trailer_url": embed_url}, ttl_seconds=3600)
+                                            break
+                        except Exception:
+                            pass
 
-                movie["trailer_url"] = resolved_url
-                try:
-                    cur.execute("UPDATE movies SET trailer_url = %s WHERE movieid = %s", (resolved_url, movie_id))
-                    conn.commit()
-                except Exception:
-                    pass
+                    threading.Thread(target=_async_enrich_trailer, args=(movie_id, api_key, dict(movie)), daemon=True).start()
 
             cache_set(cache_key, movie, ttl_seconds=3600)
             return movie
@@ -360,12 +397,12 @@ class MovieModel:
 
     @staticmethod
     def get_by_ids(movie_ids: List[int]) -> List[Dict[str, Any]]:
+        """Batch lookup in one query. Always returns list of dicts."""
         if not movie_ids:
             return []
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            query = """
+        with get_db_cursor() as cur:
+            try:
+                query = """
                 SELECT 
                     m.movieid AS "movieId", 
                     m.title, 
@@ -391,14 +428,11 @@ class MovieModel:
                 WHERE m.movieid IN %s
                 GROUP BY m.movieid, d.name
             """
-            cur.execute(query, (tuple(movie_ids),))
-            return cur.fetchall()
-        except Exception as e:
-            print(f"[Error] Failed to fetch movies by IDs: {e}")
-            raise HTTPException(status_code=500, detail="Failed to query movies by list of IDs.")
-        finally:
-            cur.close()
-            conn.close()
+                cur.execute(query, (tuple(movie_ids),))
+                return [dict(r) for r in cur.fetchall()]
+            except Exception as e:
+                logger.error("Failed to fetch movies by IDs: %s", e)
+                raise HTTPException(status_code=500, detail="Failed to query movies by list of IDs.")
 
     @staticmethod
     def get_all_genres_and_popularity() -> List[Dict[str, Any]]:

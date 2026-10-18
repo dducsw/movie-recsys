@@ -1,17 +1,19 @@
-import React, { useRef, useEffect } from 'react';
+import React, { memo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, Play, Star } from 'lucide-react';
-import { queueImpression, trackClick } from '../../api/client';
+import { queueImpression, trackClick, trackDwell } from '../../api/client';
+import { formatRating, posterUrl } from '../../utils/format';
 import { useWatchlist } from '../../context/WatchlistContext';
 import './MovieCard.css';
 
-function MovieCard({ 
-  movie, 
+function MovieCard({
+  movie,
   onClick,
   source = 'listing',
   position = null
 }) {
   const cardRef = useRef(null);
+  const hoverStartRef = useRef(null);
   const navigate = useNavigate();
   const { isLiked, toggleLike } = useWatchlist();
 
@@ -36,10 +38,22 @@ function MovieCard({
   }, [movieId, source, position, movie?.source]);
 
   const year = movie?.release_date ? movie.release_date.split('-')[0] : '2025';
-  const voteScore = movie?.vote_average ? (Number(movie.vote_average) / 2).toFixed(1) : '4.3';
-  const posterSrc = movie?.poster_url && !movie.poster_url.includes('placeholder.com')
-    ? movie.poster_url
-    : 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300';
+  const voteScore = formatRating(movie?.vote_average);
+  const posterSrc = posterUrl(movie?.poster_url);
+
+  const handleMouseEnter = () => {
+    hoverStartRef.current = Date.now();
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverStartRef.current) {
+      const elapsed = Date.now() - hoverStartRef.current;
+      hoverStartRef.current = null;
+      if (elapsed >= 1000) {
+        trackDwell(movieId, elapsed, movie?.source || source, position);
+      }
+    }
+  };
 
   const handleCardClick = () => {
     trackClick(movieId, movie?.source || source, position);
@@ -56,7 +70,16 @@ function MovieCard({
   };
 
   return (
-    <div ref={cardRef} className="streamix-movie-card" onClick={handleCardClick}>
+    <div
+      ref={cardRef}
+      className="streamix-movie-card"
+      onClick={handleCardClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter') handleCardClick(); }}
+    >
       {/* Poster Box */}
       <div className="streamix-poster-box">
         <img
@@ -67,15 +90,16 @@ function MovieCard({
           decoding="async"
           onError={(e) => {
             e.target.onerror = null;
-            e.target.src = 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=300';
+            e.target.src = posterUrl('');
           }}
         />
 
         {/* Favorite Heart Button */}
-        <button 
+        <button
           className={`streamix-heart-btn ${liked ? 'liked' : ''}`}
           onClick={handleLikeClick}
           title={liked ? "Remove from Favorites" : "Add to Favorites"}
+          aria-label={liked ? "Remove from Favorites" : "Add to Favorites"}
         >
           <Heart 
             className="w-4 h-4" 
@@ -111,4 +135,4 @@ function MovieCard({
   );
 }
 
-export default MovieCard;
+export default memo(MovieCard);

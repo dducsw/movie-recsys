@@ -24,6 +24,7 @@ class PaginatedMovieResponse(BaseModel):
     limit: int
     total_movies: int
     results: List[MovieResponse]
+    next_cursor: Optional[str] = None
 
 class SearchMovieResponse(BaseModel):
     query: str

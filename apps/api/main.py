@@ -37,8 +37,21 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Automatically check and initialize PostgreSQL DB tables on startup."""
+    """Init DB tables + warmup Redis and heavy ML models (fail-open)."""
     init_db_tables()
+    try:
+        from app.services.redis_factory import get_redis
+
+        get_redis(db=0, timeout=0.5)
+        get_redis(db=1, timeout=0.5)
+    except Exception as e:
+        logger.warning(f"Redis warmup failed: {e}")
+    try:
+        from app.services.recsys import warmup_models
+
+        warmup_models()
+    except Exception as e:
+        logger.warning(f"Model warmup failed: {e}")
     yield
 
 

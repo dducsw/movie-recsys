@@ -41,6 +41,20 @@ class ClearResponse(BaseModel):
     session_id: str
 
 
+class FeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    movie_id: int
+    liked: bool
+    session_id: Optional[str] = Field(default="default", max_length=100)
+
+
+class FeedbackResponse(BaseModel):
+    movie_id: int
+    liked: bool
+    message: str
+
+
 def validate_session_identifier(session_id: str, current_user: Optional[dict] = None) -> str:
     """
     Validates session identifier to prevent BOLA, IDOR, and injection.
@@ -80,8 +94,21 @@ def chat(
     user_liked_ids = []
     if user_id:
         try:
-            watchlist = UserModel.get_user_watchlist(user_id)
-            user_liked_ids = [w["movie_id"] for w in watchlist]
+            watchlist = UserModel.get_user_watchlist(user_id) or []
+            # get_user_watchlist returns List[int]; tolerate List[dict] too.
+            user_liked_ids = [w.get("movie_id", w) if isinstance(w, dict) else w
+                              for w in watchlist]
+            user_liked_ids = [int(x) for x in user_liked_ids]
+        except Exception:
+            user_liked_ids = []
+    if user_id:
+        try:
+            from app.services.chat_profile import get_profile
+
+            profile = get_profile(user_id)
+            for mid in profile.get("liked_ids", []):
+                if mid not in user_liked_ids:
+                    user_liked_ids.append(mid)
         except Exception:
             pass
 
@@ -92,12 +119,28 @@ def chat(
             user_id=user_id,
             user_liked_ids=user_liked_ids
         )
+
+        # Chat-to-RecSys Feedback Loop:
+        # Sync top recommended / discussed movie IDs into nearline session state
+        # so home feed immediately adapts to recent conversational discoveries.
+        result_movies = result.get("movies", [])
+        if result_movies:
+            from app.services.event_producer import record_nearline_interaction
+            top_rec_id = result_movies[0].get("movieId") or result_movies[0].get("id")
+            if top_rec_id:
+                try:
+                    record_nearline_interaction(validated_sid, int(top_rec_id))
+                    if user_id:
+                        record_nearline_interaction(str(user_id), int(top_rec_id))
+                except Exception:
+                    pass
+
         emit(
             EventType.CHATBOT_MESSAGE,
             user_id=str(user_id) if user_id else (validated_sid or "anonymous"),
             extra={
                 "message_len": len(body.message),
-                "result_movie_count": len(result.get("movies", [])),
+                "result_movie_count": len(result_movies),
                 "message_count": result.get("message_count", 0),
             },
         )
@@ -129,6 +172,45 @@ def clear_history(
     validated_sid = validate_session_identifier(session_id, current_user)
     result = ChatbotService.clear_history(validated_sid)
     return ClearResponse(**result)
+
+
+@router.post("/feedback", response_model=FeedbackResponse)
+def chat_feedback(
+    body: FeedbackRequest,
+    current_user: Optional[dict] = Depends(get_current_user_optional)
+):
+    """Card like/dislike inside chat flows back into the user profile."""
+    validated_sid = validate_session_identifier(body.session_id or "default",
+                                                current_user)
+    user_id = current_user["id"] if current_user else None
+    movie = None
+    try:
+        from app.models.movie import MovieModel
+
+        movie = MovieModel.get_by_id(body.movie_id)
+    except Exception:
+        movie = {"movieId": body.movie_id}
+    try:
+        from app.services.chat_profile import record_feedback
+
+        record_feedback(user_id, movie or {"movieId": body.movie_id},
+                        body.liked)
+    except Exception:
+        pass
+    if user_id and body.liked:
+        try:
+            from app.models.user import UserModel as _UM
+
+            _UM.toggle_watchlist(user_id, body.movie_id)
+        except Exception:
+            pass
+    try:
+        emit(EventType.CHATBOT_MESSAGE, user_id=str(user_id) if user_id else validated_sid,
+             movie_id=body.movie_id, extra={"feedback": body.liked})
+    except Exception:
+        pass
+    return FeedbackResponse(movie_id=body.movie_id, liked=body.liked,
+                            message="Feedback recorded.")
 
 
 @router.get("/session/{session_id}")

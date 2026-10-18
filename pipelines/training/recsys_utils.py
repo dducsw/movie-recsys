@@ -488,15 +488,26 @@ def extract_user_features(user_id, movie_ids, train_ratings, movies_df, users_df
         als_score = als_user_factors[u_idx].dot(als_item_factors[m_idx]) if (u_idx is not None and m_idx is not None) else 0.0
         cb_score = user_bm25_scores[m_idx] if (user_bm25_scores is not None and m_idx is not None) else 0.0
         
+        genre_affinity_pct = float(genre_overlap / max(len(user_fav_genres), 1))
+        years_ago = max(0.0, 2026.0 - float(release_year))
+        recency_decay = float(np.exp(-0.046 * years_ago))
+
+        vote_avg = float(movie.get('vote_average', 5.0))
+        vote_cnt = float(movie.get('vote_count', movie.get('popularity', 10.0)))
+        bayesian_rating = float((vote_cnt / (vote_cnt + 25.0)) * vote_avg + (25.0 / (vote_cnt + 25.0)) * 5.0)
+
         features.append({
-            'popularity': movie['popularity'],
-            'vote_average': movie['vote_average'],
-            'genre_overlap': genre_overlap,
-            'release_year': release_year,
-            'user_activity': user['activity_level'],
-            'user_bias': user['user_bias'],
-            'als_score': als_score,
-            'cb_score': cb_score
+            'popularity': float(movie.get('popularity', 1.0)),
+            'vote_average': vote_avg,
+            'bayesian_rating': bayesian_rating,
+            'genre_overlap': float(genre_overlap),
+            'genre_affinity_pct': genre_affinity_pct,
+            'release_year': float(release_year),
+            'recency_decay_score': recency_decay,
+            'user_activity': float(user.get('activity_level', 1.0)),
+            'user_bias': float(user.get('user_bias', 0.0)),
+            'als_score': float(als_score),
+            'cb_score': float(cb_score)
         })
         
     df_res = pd.DataFrame(features)

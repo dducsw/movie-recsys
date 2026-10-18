@@ -73,6 +73,21 @@ def get_next_recsys_batch(session_id: str, batch_size: int = 5) -> List[Dict[str
     return next_batch
 
 
+def _get_full_pool(session_id: str) -> List[Dict[str, Any]]:
+    """Full saved slate for critiquing (Redis first, memory fallback)."""
+    if not session_id:
+        return []
+    try:
+        r = get_redis_client()
+        if r:
+            raw = r.get(f"chat:{session_id}:recsys_pool")
+            if raw:
+                return json.loads(raw).get("all_movies", [])
+    except Exception:
+        pass
+    return _in_memory_recsys_pools.get(session_id, {}).get("all_movies", [])
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DATASET QUERY FUNCTIONS COVERING ALL FIELDS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -236,6 +251,40 @@ def query_movies_node(state: GraphState) -> dict:
     sql_message_text: str | None = None
 
     # ─────────────────────────────────────────────────────────────────────────
+    # CASE 0: CRITIQUING — refine the last slate ("funnier", "newer", "8+")
+    # ─────────────────────────────────────────────────────────────────────────
+    try:
+        from app.chatbot.critique import apply_critique, parse_critique
+
+        critique = parse_critique(last_user_msg)
+        if critique:
+            pool = _get_full_pool(session_id)
+            refined = apply_critique(pool, critique, limit=5)
+            if refined:
+                return {
+                    "candidate_movies": refined,
+                    "matched_movie": None,
+                    "sql_query": None,
+                    "sql_results": None,
+                    "sql_message": None,
+                }
+            # "more/khác" with empty pool falls through to normal retrieval.
+            if critique.get("diverse"):
+                pass
+            else:
+                # Constrained critique with no match: return empty so the
+                # answer explains the constraint instead of random movies.
+                return {
+                    "candidate_movies": [],
+                    "matched_movie": None,
+                    "sql_query": None,
+                    "sql_results": None,
+                    "sql_message": "No titles match that refinement. Try relaxing it.",
+                }
+    except Exception as e:
+        logger.debug(f"Critique handling bypassed: {e}")
+
+    # ─────────────────────────────────────────────────────────────────────────
     # CASE 1: USER REQUESTS MORE RECOMMENDATIONS FROM PREVIOUS POOL
     # ─────────────────────────────────────────────────────────────────────────
     if is_more_req or intent == "more_recommendations":
@@ -393,6 +442,37 @@ def query_movies_node(state: GraphState) -> dict:
                     candidates = [matched]
         except Exception as e:
             logger.debug(f"Target fallback lookup bypassed: {e}")
+
+    # CRAG entity-link: quoted/Capitalized mentions -> catalog lookup
+    if not matched and not candidates and last_user_msg:
+        try:
+            from app.chatbot.entity_link import extract_mentions
+
+            for mention in extract_mentions(last_user_msg)[:3]:
+                try:
+                    res = MovieModel.search_with_filters(query_str=mention, limit=3)
+                except Exception:
+                    res = []
+                if res:
+                    matched = res[0]
+                    candidates = [matched]
+                    break
+        except Exception as e:
+            logger.debug(f"Entity-link bypassed: {e}")
+
+    # CRAG reflect + rerank: drop context-mismatch, boost profile fit
+    if candidates and intent not in ("sql_query", "movie_detail"):
+        try:
+            from app.chatbot.reflect import reflect_and_rerank
+            from app.services.chat_profile import get_profile
+
+            profile = get_profile(user_id) if user_id else {}
+            reranked = reflect_and_rerank(candidates, intent_output, profile,
+                                          user_liked_ids, limit=5)
+            if reranked:
+                candidates = reranked
+        except Exception as e:
+            logger.debug(f"Reflect bypassed: {e}")
 
     return {
         "candidate_movies": candidates,

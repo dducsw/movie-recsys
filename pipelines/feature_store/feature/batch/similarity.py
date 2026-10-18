@@ -1,88 +1,74 @@
-"""
-pipeline/feature/batch/similarity.py
+"""pipeline/feature/batch/similarity.py
 -------------------------------------
-Vector consolidation and item-item similarity matrix calculation.
+Item-item similarity for Redis precompute (TF-IDF cosine + iALS dot, fused).
+
+Semantic (plot) embeddings live in Qdrant (384-dim, see backfill_qdrant.py)
+and are intentionally NOT mixed here — different spaces must not be averaged.
 """
+
+from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Tuple, Any
+from typing import Any
+
 import numpy as np
 import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger("BatchSimilarity")
 
 
+def _top_k_from_scores(
+    scores: np.ndarray, m_ids: list[int], self_idx: int, k: int = 20,
+    min_score: float = 0.1,
+) -> list[dict[str, Any]]:
+    order = np.argsort(scores)[::-1]
+    out: list[dict[str, Any]] = []
+    for idx in order:
+        if idx == self_idx or float(scores[idx]) <= min_score:
+            continue
+        out.append({"movieId": m_ids[idx], "score": round(float(scores[idx]), 4)})
+        if len(out) >= k:
+            break
+    return out
+
+
 def compute_item_similarity_matrix(
-    movies_df,
+    movies_df: pd.DataFrame,
     genre_vectors: np.ndarray,
-    als_factors_map: Dict[int, np.ndarray] = None
-) -> Tuple[Dict[int, List[Dict[str, Any]]], Dict[int, Dict[str, Any]]]:
-    """
-    Consolidate TF-IDF genre vectors & ALS factors, and compute item similarity matrix via chunked dot-products.
-    """
-    logger.info("Extracting movie vectors & calculating similarity matrix...")
-    if als_factors_map is None:
-        als_factors_map = {}
+    als_factors_map: dict[int, np.ndarray] | None = None,
+) -> tuple[dict[int, list[dict[str, Any]]], dict[int, dict[str, Any]]]:
+    """Compute Redis-ready similar lists + lightweight movie meta."""
+    logger.info("Computing item similarity (TF-IDF cosine + iALS dot)...")
+    als_factors_map = als_factors_map or {}
 
-    m_ids = []
-    vectors = []
-    movie_meta = {}
-
-    for idx, row in movies_df.iterrows():
-        m_id = int(row["movieId"])
-        title = str(row["title"]) if pd.notna(row["title"]) else ""
-        genres = str(row["genres"]) if pd.notna(row["genres"]) else ""
-
-        genre_vec = genre_vectors[idx]
-
-        # Combine with ALS factor vector if available
-        if m_id in als_factors_map:
-            combined = 0.5 * genre_vec + 0.5 * als_factors_map[m_id]
-            norm = np.linalg.norm(combined)
-            final_vec = (combined / norm).tolist() if norm > 0 else genre_vec.tolist()
-        else:
-            final_vec = genre_vec.tolist()
-
-        # Ensure exact dimension size 20
-        if len(final_vec) < 20:
-            final_vec.extend([0.0] * (20 - len(final_vec)))
-        else:
-            final_vec = final_vec[:20]
-
-        m_ids.append(m_id)
-        vectors.append(final_vec)
-        movie_meta[m_id] = {
-            "title": title,
-            "genres": genres,
-            "vector": final_vec
+    m_ids = [int(r["movieId"]) for _, r in movies_df.iterrows()]
+    movie_meta = {
+        int(row["movieId"]): {
+            "title": str(row["title"]) if pd.notna(row["title"]) else "",
+            "genres": str(row["genres"]) if pd.notna(row["genres"]) else "",
         }
+        for _, row in movies_df.iterrows()
+    }
 
-    matrix = np.array(vectors, dtype=np.float32)  # Shape (N, 20)
-    N = len(m_ids)
-    similarities = defaultdict(list)
+    tfidf_norm = genre_vectors.astype(np.float32)
+    norms = np.linalg.norm(tfidf_norm, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    tfidf_norm = tfidf_norm / norms
+    tfidf_sim = cosine_similarity(tfidf_norm)
 
-    # Chunked dot product to prevent NxN memory allocation OOM on large datasets
-    chunk_size = 500
-    for start_idx in range(0, N, chunk_size):
-        end_idx = min(start_idx + chunk_size, N)
-        chunk = matrix[start_idx:end_idx]
-        sim_chunk = np.dot(chunk, matrix.T)
+    als_matrix = None
+    if als_factors_map:
+        als_matrix = np.stack(
+            [als_factors_map.get(mid, np.zeros(32, dtype=np.float32)) for mid in m_ids]
+        ).astype(np.float32)
+        als_sim = als_matrix @ als_matrix.T
+    else:
+        als_sim = np.zeros_like(tfidf_sim)
 
-        for i_local in range(end_idx - start_idx):
-            i_global = start_idx + i_local
-            id_a = m_ids[i_global]
-            scores = sim_chunk[i_local]
-            top_indices = np.argpartition(scores, -min(25, N))[-min(25, N):]
-            top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
-
-            for idx in top_indices:
-                if idx == i_global:
-                    continue
-                score = float(scores[idx])
-                if score > 0.1:
-                    similarities[id_a].append({"movieId": m_ids[idx], "score": round(score, 4)})
-                if len(similarities[id_a]) >= 20:
-                    break
-
-    return similarities, movie_meta
+    similarities: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for i, mid in enumerate(m_ids):
+        fused = 0.6 * tfidf_sim[i] + 0.4 * als_sim[i]
+        similarities[mid] = _top_k_from_scores(fused, m_ids, i, k=20, min_score=0.1)
+    return dict(similarities), movie_meta
