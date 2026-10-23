@@ -1,0 +1,16 @@
+# Repo-pinned Ruff configuration.
+# Pinned here (instead of relying on the CLI defaults) so CI and local
+# environments run the exact same ruleset.
+line-length = 120
+target-version = "py311"
+
+[lint]
+# F (pyflakes) catches real breakage: unused/undefined names.
+# E9 catches runtime-breaking syntax issues.
+# E4/E7 catch logical style bugs (unused variable, ambiguous names).
+# I (isort) keeps import blocks consistent.
+select = ["E4", "E7", "E9", "F", "I"]
+ignore = ["E501"]  # formatting handled by the formatter, not the linter
+
+[lint.isort]
+known-first-party = ["recsys_core", "app", "pipelines"]

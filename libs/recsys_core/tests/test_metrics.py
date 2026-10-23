@@ -34,9 +34,10 @@ def test_rmse_mae_known_delta():
 def test_evaluate_ranking_metrics_empty():
     empty_df = pd.DataFrame(columns=["userId", "movieId", "rating", "pred"])
     res = evaluate_ranking_metrics(empty_df, k=10)
-    assert res["Hit Ratio@10"] == 0.0
+    assert res["Hit Ratio@10"] == 0.0  # legacy alias
+    assert res["HR@10"] == 0.0
     assert res["NDCG@10"] == 0.0
-    assert res["MRR"] == 0.0
+    assert res["MRR@10"] == 0.0
 
 
 def test_evaluate_ranking_metrics_no_relevant_items():
@@ -50,7 +51,7 @@ def test_evaluate_ranking_metrics_no_relevant_items():
     res = evaluate_ranking_metrics(df, k=10, relevance_threshold=4.0)
     assert res["Hit Ratio@10"] == 0.0
     assert res["NDCG@10"] == 0.0
-    assert res["MRR"] == 0.0
+    assert res["MRR@10"] == 0.0
 
 
 def test_evaluate_ranking_metrics_perfect_ranking():
@@ -65,7 +66,7 @@ def test_evaluate_ranking_metrics_perfect_ranking():
     res = evaluate_ranking_metrics(df, k=2, relevance_threshold=4.0)
     assert res["Hit Ratio@2"] == 1.0
     assert pytest.approx(res["NDCG@2"], abs=1e-4) == 1.0
-    assert res["MRR"] == 1.0
+    assert res["MRR@2"] == 1.0
 
 
 def test_evaluate_ranking_metrics_imperfect_ranking():
@@ -80,7 +81,7 @@ def test_evaluate_ranking_metrics_imperfect_ranking():
     })
     res = evaluate_ranking_metrics(df, k=2, relevance_threshold=4.0)
     assert res["Hit Ratio@2"] == 1.0
-    assert res["MRR"] == 0.5  # 1 / rank 2 = 0.5
+    assert res["MRR@2"] == 0.5  # 1 / rank 2 = 0.5
     # dcg = 1 / log2(2 + 1) = 1 / log2(3) = ~0.6309
     # idcg = 1 / log2(0 + 2) = 1 / 1 = 1.0
     # ndcg = dcg / idcg = 1 / log2(3)

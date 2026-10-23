@@ -19,7 +19,7 @@ def test_ranking_features_schema():
     expected = [
         "popularity", "vote_average", "bayesian_rating", "genre_overlap",
         "genre_affinity_pct", "release_year", "recency_decay_score",
-        "user_activity", "user_bias", "als_score", "cb_score"
+        "user_activity", "user_bias", "retrieval_score", "cb_score"
     ]
     assert RANKING_FEATURES == expected
 

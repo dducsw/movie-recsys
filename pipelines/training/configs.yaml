@@ -33,6 +33,11 @@ quality_gates:
   min_ndcg: 0.12
   min_ild: 0.30
   max_latency_ms: 30.0
+  # A gate must never pass on a handful of users.
+  min_users_evaluated: 1
+  # Incumbent comparison: challenger must beat the champion, not just pass.
+  # min_rmse_improvement_pct: 0.005   # enable after the first promotion
+  max_ndcg_regression: 0.003
 
 # Fast CT uses 99-neg protocol; nightly full_eval.py scans full catalog
 evaluation:

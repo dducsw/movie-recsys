@@ -554,7 +554,7 @@ print(df_rank['label'].value_counts())
    - `user_bias`: Xu hướng chấm điểm của người dùng (chênh lệch trung bình so với điểm chung).
 3. **Đặc trưng Tương tác chéo (Cross/Affinity Features)**:
    - `genre_overlap`: Số thể loại trùng khớp giữa gu yêu thích của người dùng và thể loại của bộ phim.
-   - `als_score`: Điểm số dự đoán từ mô hình Collaborative Filtering (ALS) ở Stage 1.
+   - `retrieval_score`: Điểm số dự đoán từ mô hình Collaborative Filtering (iALS) ở Stage 1 - dot product giữa user và item factors (tên chuẩn trùng với `recsys_core.features.RANKING_FEATURES`).
    - `cb_score`: Điểm số dự đoán độ tương đồng nội dung BM25 từ mô hình Content-Based ở Stage 1.
 """))
     nb4_cells.append(nbf.v4.new_code_cell("""# 2. Xây dựng các đặc trưng (Feature Engineering)""" + """
@@ -636,13 +636,13 @@ for mid in mids:
     except:
         release_years.append(2010)
 
-# Vectorized ALS scores (avoid loop row-by-row matrix multiplication)
+# Vectorized retrieval scores (iALS dot product, avoid loop row-by-row matrix multiplication) - parity with serving feature name `retrieval_score`
 u_idx_arr = np.array([user_to_idx.get(u, -1) for u in uids])
 m_idx_arr = np.array([movie_to_idx.get(m, -1) for m in mids])
 valid_mask = (u_idx_arr != -1) & (m_idx_arr != -1)
-als_scores = np.zeros(len(df_rank_sorted_by_user))
+retrieval_scores = np.zeros(len(df_rank_sorted_by_user))
 if valid_mask.any():
-    als_scores[valid_mask] = np.sum(
+    retrieval_scores[valid_mask] = np.sum(
         als_model.user_factors[u_idx_arr[valid_mask]] * als_model.item_factors[m_idx_arr[valid_mask]], 
         axis=1
     )
@@ -683,8 +683,12 @@ for uid, ov in zip(uids, genre_overlaps):
     u_fav_len = max(len(user_fav_genres_dict.get(uid, set())), 1)
     genre_affinity_pcts.append(float(ov / u_fav_len))
 
+# Recency decay trùng công thức với recsys_core (half-life 15 năm, không hardcode năm)
+from recsys_utils import RECENCY_DECAY_RATE, reference_year as _ref_year
+
+_recency_ref = float(_ref_year())
 recency_decay_scores = [
-    float(np.exp(-0.046 * max(0.0, 2026.0 - float(yr))))
+    float(np.exp(-RECENCY_DECAY_RATE * max(0.0, _recency_ref - float(yr))))
     for yr in release_years
 ]
 
@@ -699,7 +703,7 @@ X = pd.DataFrame({
     'recency_decay_score': recency_decay_scores,
     'user_activity': user_activity_vec,
     'user_bias': user_bias_vec,
-    'als_score': als_scores,
+    'retrieval_score': retrieval_scores,
     'cb_score': cb_scores
 })
 y = df_rank_sorted_by_user['label']
@@ -1343,7 +1347,7 @@ df_rank_sorted = df_rank.sort_values(by='userId').reset_index(drop=True)
 """))
 
     nb7_cells.append(nbf.v4.new_markdown_cell("""### Bước 3: Thiết kế Đặc trưng (Feature Engineering)
-Tế bào này trích xuất các đặc trưng xếp hạng tương đồng với mô hình LightGBM bao gồm đặc trưng phim, đặc trưng user và các điểm số chéo (als_score, cb_score) để đảm bảo so sánh công bằng chéo (apples-to-apples comparison).
+Tế bào này trích xuất các đặc trưng xếp hạng tương đồng với mô hình LightGBM bao gồm đặc trưng phim, đặc trưng user và các điểm số chéo (retrieval_score, cb_score) để đảm bảo so sánh công bằng chéo (apples-to-apples comparison).
 """))
     nb7_cells.append(nbf.v4.new_code_cell("""# 2. Xây dựng các đặc trưng (Feature Engineering)""" + """
 movies_df['genres'] = movies_df['genres'].fillna('')
@@ -1419,13 +1423,13 @@ for mid in mids:
     except:
         release_years.append(2010)
 
-# Vectorized ALS scores (avoid loop row-by-row matrix multiplication)
+# Vectorized retrieval scores (iALS dot product, avoid loop row-by-row matrix multiplication) - parity with serving feature name `retrieval_score`
 u_idx_arr = np.array([user_to_idx.get(u, -1) for u in uids])
 m_idx_arr = np.array([movie_to_idx.get(m, -1) for m in mids])
 valid_mask = (u_idx_arr != -1) & (m_idx_arr != -1)
-als_scores = np.zeros(len(df_rank_sorted))
+retrieval_scores = np.zeros(len(df_rank_sorted))
 if valid_mask.any():
-    als_scores[valid_mask] = np.sum(
+    retrieval_scores[valid_mask] = np.sum(
         als_model.user_factors[u_idx_arr[valid_mask]] * als_model.item_factors[m_idx_arr[valid_mask]], 
         axis=1
     )
@@ -1464,8 +1468,12 @@ for uid, ov in zip(uids, genre_overlaps):
     u_fav_len = max(len(user_fav_genres_dict.get(uid, set())), 1)
     genre_affinity_pcts.append(float(ov / u_fav_len))
 
+# Recency decay trùng công thức với recsys_core (half-life 15 năm, không hardcode năm)
+from recsys_utils import RECENCY_DECAY_RATE, reference_year as _ref_year
+
+_recency_ref = float(_ref_year())
 recency_decay_scores = [
-    float(np.exp(-0.046 * max(0.0, 2026.0 - float(yr))))
+    float(np.exp(-RECENCY_DECAY_RATE * max(0.0, _recency_ref - float(yr))))
     for yr in release_years
 ]
 
@@ -1480,7 +1488,7 @@ X_train = pd.DataFrame({
     'recency_decay_score': recency_decay_scores,
     'user_activity': user_activity_vec,
     'user_bias': user_bias_vec,
-    'als_score': als_scores,
+    'retrieval_score': retrieval_scores,
     'cb_score': cb_scores
 })
 y_train = df_rank_sorted['label']
@@ -1905,7 +1913,7 @@ print(f"| **Inference Time (sec/user)** | {lgb_inference_time:.4f}s | {cat_infer
         nbf.write(nb7, f)
 
 
-    print("Successfully created 7 notebooks in evaluation/ml_pipeline!")
+    print(f"Successfully created 7 notebooks in {output_dir}!")
 
 if __name__ == "__main__":
     create_pipeline_notebooks()

@@ -5,6 +5,8 @@ Integration tests for continuous training pipeline: retrieval, LightGBM ranker,
 and metric quality gate evaluation.
 """
 
+import glob
+
 import pytest
 import numpy as np
 import pandas as pd
@@ -25,7 +27,7 @@ def test_ranking_features_schema():
         "recency_decay_score",
         "user_activity",
         "user_bias",
-        "als_score",
+        "retrieval_score",
         "cb_score",
     ]
     assert RANKING_FEATURES == expected_cols
@@ -61,20 +63,27 @@ def sample_data():
 def test_train_retrieval_models_smoke(sample_data, tmp_path, monkeypatch):
     """Verify retrieval model training creates TF-IDF matrix and collaborative factors."""
     monkeypatch.setattr(tp, "MODELS_DIR", str(tmp_path))
+
     df_movies, train_ratings, _ = sample_data
 
     vectorizer, tfidf_matrix, als_map = tp.train_retrieval_models(df_movies, train_ratings)
 
     assert tfidf_matrix.shape[0] == len(df_movies)
     assert isinstance(als_map, dict)
-    assert (tmp_path / "tfidf_vectorizer.pkl").exists()
-    assert (tmp_path / "tfidf_matrix.pkl").exists()
-    assert (tmp_path / "als_model.pkl").exists()
+    # CT saves *candidates* via save_versioned; nothing is published pre-gate.
+    assert len(glob.glob(str(tmp_path / "tfidf_vectorizer_*.pkl"))) == 1
+    assert len(glob.glob(str(tmp_path / "tfidf_matrix_*.pkl"))) == 1
+    assert len(glob.glob(str(tmp_path / "als_model_*.pkl"))) == 1
+    assert not (tmp_path / "tfidf_vectorizer.pkl").exists()
+    assert not (tmp_path / "tfidf_matrix.pkl").exists()
+    assert not (tmp_path / "als_model.pkl").exists()
 
 
 def test_train_ranking_model_schema(sample_data, tmp_path, monkeypatch):
-    """Verify LightGBM LambdaRanker fits 8 features and saves artifact."""
+    """Verify LightGBM LambdaRanker fits 11 features and saves a *candidate* only."""
     monkeypatch.setattr(tp, "MODELS_DIR", str(tmp_path))
+    from pipelines.training import versioning as ver
+
     df_movies, train_ratings, _ = sample_data
 
     als_map = {
@@ -91,7 +100,15 @@ def test_train_ranking_model_schema(sample_data, tmp_path, monkeypatch):
     )
 
     assert ranker.n_features_ == 11
+    # Candidate artifact exists; nothing is published until the gate passes.
+    versioned = glob.glob(str(tmp_path / "lgb_ranker_*.pkl"))
+    assert len(versioned) == 1
+    assert not (tmp_path / "lgb_ranker.pkl").exists()
+    assert ver.read_champion(str(tmp_path), "lgb_ranker") is None
+    # Explicit promotion publishes to the serving name.
+    promoted = ver.promote(str(tmp_path), "lgb_ranker", versioned[0])
     assert (tmp_path / "lgb_ranker.pkl").exists()
+    assert ver.read_champion(str(tmp_path), "lgb_ranker") == promoted
 
 
 def test_evaluate_pipeline_returns_valid_metrics(sample_data, tmp_path, monkeypatch):

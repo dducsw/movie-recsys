@@ -1,13 +1,14 @@
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from typing import Dict, List, Any, Optional
-from app.chatbot import build_chatbot_graph, IntentOutput, GraphState
-
 # ---------------------------------------------------------------------------
 # Session Manager – handles multiple users/sessions
 # ---------------------------------------------------------------------------
-
 import json
+from typing import Any, Dict, List, Optional
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+
+from app.chatbot import GraphState, build_chatbot_graph
 from app.services.redis_factory import get_redis
+
 
 class ConversationMemory:
     """
@@ -169,7 +170,7 @@ class ChatbotService:
             result = graph.invoke(initial_state, config=config)
             movies_list = result.get("enriched_movies", [])
             final_text = result.get("final_text", "")
-        except Exception as e:
+        except Exception:
             # Robust Fallback: Neural Vector & Keyword Search when LLM API balance is 0 or rate-limited
             from app.models.movie import MovieModel
             

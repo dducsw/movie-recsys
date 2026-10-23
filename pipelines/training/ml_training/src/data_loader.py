@@ -1,4 +1,5 @@
 import pandas as pd
+
 try:
     from configs import CFG
 except ImportError:

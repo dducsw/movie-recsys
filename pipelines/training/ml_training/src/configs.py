@@ -5,6 +5,7 @@ Loads configuration dictionary from configs.yaml with directory resolution fallb
 """
 
 import os
+
 import yaml
 
 _src_dir = os.path.dirname(os.path.abspath(__file__))

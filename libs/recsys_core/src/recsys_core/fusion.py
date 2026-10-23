@@ -4,7 +4,8 @@ recsys_core.fusion
 Candidate fusion algorithms (Reciprocal Rank Fusion) and sparse text retrieval (BM25).
 """
 
-from typing import List, Tuple, Dict, Any, Union
+from typing import Dict, List, Tuple
+
 import numpy as np
 
 

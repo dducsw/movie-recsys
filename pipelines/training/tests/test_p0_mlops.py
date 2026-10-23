@@ -31,13 +31,22 @@ def test_parity_builder_deterministic():
 
 
 def test_versioned_save_and_prune(tmp_path):
-    from pipelines.training.versioning import save_versioned
+    from pipelines.training import versioning
     import glob
     import os
 
-    for _ in range(5):
-        save_versioned({"v": 1}, str(tmp_path), "lgb_ranker")
+    # save_versioned only writes immutable *candidates* — no promotion.
+    paths = [versioning.save_versioned({"v": 1}, str(tmp_path), "lgb_ranker")
+             for _ in range(5)]
     versioned = glob.glob(os.path.join(str(tmp_path), "lgb_ranker_*.pkl"))
-    assert len(versioned) == 3  # keep last 3
+    assert len(versioned) == 5  # candidates are never auto-pruned
+    assert not os.path.exists(os.path.join(str(tmp_path), "lgb_ranker.pkl"))
+    assert versioning.read_champion(str(tmp_path), "lgb_ranker") is None
+
+    # Explicit promotion publishes the + prunes to KEEP_LAST (champion kept).
+    promoted = versioning.promote(str(tmp_path), "lgb_ranker", paths[-1])
     assert os.path.exists(os.path.join(str(tmp_path), "lgb_ranker.pkl"))
-    assert os.path.exists(os.path.join(str(tmp_path), "lgb_ranker.champion.txt"))
+    assert versioning.read_champion(str(tmp_path), "lgb_ranker") == promoted
+    versioned = glob.glob(os.path.join(str(tmp_path), "lgb_ranker_*.pkl"))
+    assert len(versioned) <= versioning.KEEP_LAST
+    assert promoted in [os.path.basename(v) for v in versioned]  # champion never pruned

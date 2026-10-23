@@ -4,9 +4,10 @@ recsys_core.reranking
 Diversity and reranking algorithms including Maximal Marginal Relevance (MMR) and dynamic lambda.
 """
 
-from typing import List, Dict, Any, Optional, Set
 import math
 from collections import Counter
+from typing import Any, Dict, List, Set
+
 import numpy as np
 
 

@@ -49,7 +49,7 @@ def test_evaluate_ranking_metrics_perfect_ranking():
 
     assert metrics["Hit Ratio@10"] == 1.0
     assert metrics["NDCG@10"] == 1.0
-    assert metrics["MRR"] == 1.0
+    assert metrics["MRR@10"] == 1.0
 
 
 def test_evaluate_ranking_metrics_no_hits():
@@ -63,7 +63,7 @@ def test_evaluate_ranking_metrics_no_hits():
 
     assert metrics["Hit Ratio@10"] == 0.0
     assert metrics["NDCG@10"] == 0.0
-    assert metrics["MRR"] == 0.0
+    assert metrics["MRR@10"] == 0.0
 
 
 def test_reciprocal_rank_fusion():
@@ -100,3 +100,14 @@ def test_calculate_user_lambda():
     # 3. Diverse taste (all genres equally represented) -> high entropy -> lower lambda (near base_min=0.4)
     diverse_lambda = calculate_user_lambda(["Action", "Comedy", "Drama", "Horror", "Sci-Fi"], all_genres)
     assert pytest.approx(diverse_lambda, abs=1e-4) == 0.4
+
+
+def test_ensemble_weights_configured_and_normalized():
+    # P2: blending weights are config-sourced (recorded into the bundle at
+    # training time) instead of hardcoded serving-side constants.
+    try:
+        from pipelines.training.ml_training.src.configs import CFG
+    except ImportError:
+        from configs import CFG
+    ensemble = CFG.get("ensemble", {})
+    assert ensemble.get("catboost_weight", 0.6) + ensemble.get("lightgbm_weight", 0.4) == pytest.approx(1.0)

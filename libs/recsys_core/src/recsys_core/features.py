@@ -5,11 +5,21 @@ Standardized ranking feature schema and feature precomputation helpers.
 """
 
 import re
-from typing import Dict, Any, Optional, Set
+from datetime import date
+from typing import Any, Dict, Optional
+
 import numpy as np
 import pandas as pd
 
-# Standard 11-feature schema matching Stage 2 serving and continuous training
+# Standard 11-feature schema matching Stage 2 serving and continuous training.
+#
+# NOTE on `retrieval_score`: it is the *collaborative/ANN retrieval affinity*
+# score.  At training time it is the iALS user-item dot product; at serving
+# time it is the ANN similarity of the candidate (Qdrant cosine / Redis
+# precomputed similarity).  Both are "how strongly this candidate matches the
+# user's collaborative signal" and the model is trained on the same column
+# name, so train/serve stay schema-compatible.  The previous name `als_score`
+# was misleading because serving never had iALS factors in memory.
 RANKING_FEATURES = [
     "popularity",
     "vote_average",
@@ -20,12 +30,35 @@ RANKING_FEATURES = [
     "recency_decay_score",
     "user_activity",
     "user_bias",
-    "als_score",
+    "retrieval_score",
     "cb_score",
 ]
 
 # Single TF-IDF vocab size shared by CT and batch (no skew).
 TFIDF_MAX_FEATURES = 50
+
+# Canonical genre vocabulary (MovieLens 19 genres).  Used by the MMR/λ entropy
+# calculation, the cold-start ranking features and the ML bundle cold-start
+# priors.  Always import it from here — never re-declare a genre list.
+ALL_GENRES = [
+    "Action", "Adventure", "Animation", "Children", "Comedy", "Crime",
+    "Documentary", "Drama", "Fantasy", "Film-Noir", "Horror", "Musical",
+    "Mystery", "Romance", "Sci-Fi", "Thriller", "War", "Western", "IMAX",
+]
+NUM_GENRES = len(ALL_GENRES)
+
+# Reference year for the recency-decay feature.  Overridable so that
+# back-tests stay reproducible across calendar years; defaults to the current
+# year (never hard-code a literal year).
+DEFAULT_REFERENCE_YEAR: Optional[int] = None
+
+# Half-life of the recency decay in years (exp(-ln2/15 * years_ago)).
+RECENCY_DECAY_HALFLIFE_YEARS = 15.0
+
+
+def reference_year() -> int:
+    """Reference year used by the recency-decay feature (current year by default)."""
+    return DEFAULT_REFERENCE_YEAR if DEFAULT_REFERENCE_YEAR is not None else date.today().year
 
 
 def build_ranking_row(meta: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, float]:
@@ -36,18 +69,21 @@ def build_ranking_row(meta: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str
     genre_affinity_pct = float(overlap / max(len(prof_genres), 1))
     cb_score = genre_affinity_pct
 
-    # Recency decay feature: exponential decay centered on 2026 reference
+    # Recency decay feature: exponential decay with a ~15 year half-life.
     rel_year = float(meta.get("release_year", 2010.0))
-    # Half-life of ~15 years: exp(-ln(2)/15 * (2026 - year))
-    years_ago = max(0.0, 2026.0 - rel_year)
-    recency_decay = float(np.exp(-0.046 * years_ago))
+    years_ago = max(0.0, float(reference_year()) - rel_year)
+    recency_decay = float(np.exp(-np.log(2.0) / RECENCY_DECAY_HALFLIFE_YEARS * years_ago))
 
-    als_score = 0.0
-    if profile.get("als_vec") is not None and meta.get("als_vec") is not None:
-        try:
-            als_score = float(np.dot(profile["als_vec"], meta["als_vec"]))
-        except Exception:
-            als_score = 0.0
+    # Collaborative / ANN retrieval affinity.  Training passes iALS factors,
+    # serving passes the ANN similarity directly via meta["retrieval_score"].
+    retrieval_score = meta.get("retrieval_score")
+    if retrieval_score is None:
+        retrieval_score = 0.0
+        if profile.get("als_vec") is not None and meta.get("als_vec") is not None:
+            try:
+                retrieval_score = float(np.dot(profile["als_vec"], meta["als_vec"]))
+            except Exception:
+                retrieval_score = 0.0
 
     return {
         "popularity": float(meta.get("popularity", 1.0)),
@@ -59,7 +95,7 @@ def build_ranking_row(meta: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str
         "recency_decay_score": recency_decay,
         "user_activity": float(profile.get("activity", 1.0)),
         "user_bias": float(profile.get("bias", 0.0)),
-        "als_score": als_score,
+        "retrieval_score": float(retrieval_score),
         "cb_score": cb_score,
     }
 

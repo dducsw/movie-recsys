@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -25,19 +26,60 @@ def validate_ratings(df: pd.DataFrame) -> None:
     missing = {"userId", "movieId", "rating"} - set(df.columns)
     if missing:
         raise ValueError(f"ratings missing columns: {sorted(missing)}.")
-    if ((df["rating"] < 0.5) | (df["rating"] > 5.0)).any():
+
+    rating = pd.to_numeric(df["rating"], errors="coerce")
+    if rating.isna().any():
+        n_bad = int(df["rating"].isna().sum())
+        raise ValueError(
+            f"rating contains {n_bad} null/non-numeric values; "
+            "these would silently poison training targets."
+        )
+    if ((rating < 0.5) | (rating > 5.0)).any():
         raise ValueError("rating out of range [0.5, 5.0].")
     if df[["userId", "movieId"]].isna().any().any():
         raise ValueError("userId/movieId contain nulls.")
+    # A duplicated (user, movie) pair corrupts both the LOO split (the "last"
+    # interaction may not be the last) and per-user aggregates.
+    dup_mask = df.duplicated(subset=["userId", "movieId"], keep="last")
+    if dup_mask.any():
+        n_dup = int(dup_mask.sum())
+        sample = df.loc[dup_mask, ["userId", "movieId"]].head(5).to_dict("records")
+        raise ValueError(
+            f"ratings contain {n_dup} duplicated (userId, movieId) pairs "
+            f"(keeping last). Examples: {sample}."
+        )
     if "timestamp" in df.columns and df["timestamp"].isna().all():
         raise ValueError("timestamp all null; LOO split needs ordering.")
+
+
+def validate_referential_integrity(
+    df_ratings: pd.DataFrame,
+    df_movies: pd.DataFrame,
+) -> int:
+    """Raise ValueError when interactions reference movies absent from the catalog.
+
+    Returns the number of orphan rows. An orphan in training means a feature
+    row built without metadata; at serving time the same movie can never be
+    retrieved again — the whitelist is silently inconsistent with the data.
+    """
+    catalog_ids = set(pd.to_numeric(df_movies["movieId"]).astype("int64"))
+    rate_ids = pd.to_numeric(df_ratings["movieId"]).astype("int64")
+    orphans = df_ratings[~rate_ids.isin(catalog_ids)]
+    if not orphans.empty:
+        sample = orphans["movieId"].astype(int).head(5).tolist()
+        raise ValueError(
+            f"{len(orphans)} interaction(s) reference movieId(s) missing from "
+            f"the movie catalog. Examples: {sample}. "
+            "Refresh the catalog or drop these rows before training."
+        )
+    return 0
 
 
 def calculate_psi(
     expected: np.ndarray,
     actual: np.ndarray,
     num_buckets: int = 10,
-    epsilon: float = 1e-4
+    epsilon: float = 1e-4,
 ) -> float:
     """
     Calculate Population Stability Index (PSI) between expected and actual distributions.
@@ -69,12 +111,17 @@ def check_data_drift(
     reference_ratings: pd.DataFrame | None = None,
     null_threshold: float = 0.05,
     psi_threshold: float = 0.25,
+    raise_on_drift: bool = True,
 ) -> dict[str, Any]:
     """
     Audit data & feature distributions before model training.
-    Logs warnings or alerts if rating distribution or null rates drift beyond tolerance.
+
+    Returns the drift report. When ``raise_on_drift`` is True (default) a
+    ``DRIFT_ALERT`` stops the pipeline — downstream training would otherwise
+    fit a model whose evaluation no longer resembles the sample it will face.
     """
     import logging
+
     logger = logging.getLogger("DataDriftMonitor")
 
     report: dict[str, Any] = {
@@ -83,7 +130,7 @@ def check_data_drift(
         "null_rates": {},
         "rating_psi": 0.0,
         "mean_rating_current": float(current_ratings["rating"].mean()) if not current_ratings.empty else 0.0,
-        "alerts": []
+        "alerts": [],
     }
 
     # 1. Null rate validation
@@ -112,5 +159,8 @@ def check_data_drift(
             logger.warning("ALERT: %s", msg)
         elif psi >= 0.10:
             logger.info("Moderate rating distribution shift observed (PSI=%.4f).", psi)
+
+    if raise_on_drift and report["status"] == "DRIFT_ALERT":
+        raise ValueError("; ".join(report["alerts"]))
 
     return report

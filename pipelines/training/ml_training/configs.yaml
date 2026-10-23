@@ -33,6 +33,13 @@ lgbm:
   n_estimators: 3000
   early_stopping_rounds: 100
   verbose: -1
+  # Reproducibility: every RNG used by LightGBM is pinned here.
+  seed: 42
+  bagging_seed: 42
+  feature_fraction_seed: 42
+  data_random_seed: 42
+  deterministic: true
+  force_row_wise: true
 
 catboost:
   loss_function: "RMSE"
@@ -42,9 +49,40 @@ catboost:
   l2_leaf_reg: 3.0
   iterations: 3000
   early_stopping_rounds: 100
-  task_type: "cuda"
+  # "CPU" is the safe default (the Docker Compose stack has no verified GPU
+  # passthrough).  Switch to "GPU" only on hosts with a verified GPU.
+  task_type: "CPU"
   random_seed: 42
   verbose: 200
+
+tuning:
+  n_trials: 30
+  seed: 42
+  study_prefix: "movie-recsys"
+
+quality_gates:
+  # Absolute thresholds.
+  min_rmse: 1.05
+  min_ndcg: 0.05
+  min_hr: 0.15
+  min_users_evaluated: 20
+  # Relative comparison against the currently promoted model.
+  min_rmse_improvement_pct: 0.005
+  max_ndcg_regression: 0.003
+
+evaluation:
+  k: 10
+  relevance_threshold: 4.0
+  bootstrap_iters: 1000
+
+ensemble:
+  # Stage 2 blending weights (validated offline via A/B NDCG@10 comparing
+  # CatBoost ranking quality vs. LightGBM speed).  Recorded into the published
+  # bundle as ``ensemble_weights`` so serving follows training by default;
+  # ops can still override per-deployment via ``RECSYS_CB_WEIGHT`` /
+  # ``RECSYS_LGB_WEIGHT``.
+  catboost_weight: 0.6
+  lightgbm_weight: 0.4
 
 recommend:
   top_k: 10

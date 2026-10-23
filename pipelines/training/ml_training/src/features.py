@@ -1,7 +1,10 @@
-import re, json, ast
+import ast
+import re
+
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
+
 try:
     from configs import CFG
 except ImportError:

@@ -19,7 +19,7 @@ Designed with pure NumPy inference for zero PyTorch/GPU overhead in online SLA b
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+
 import numpy as np
 
 

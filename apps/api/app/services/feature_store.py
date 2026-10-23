@@ -4,45 +4,70 @@ web_app/backend/app/services/feature_store.py
 Online Feature Store Service leveraging Feast with graceful fallback.
 """
 
-import os
 import logging
-from typing import List, Dict, Any, Optional
+import os
+import threading
+import time
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-_feast_store = None
-_feast_initialized = False
+_feast_store: Optional[Any] = None
+_feast_lock = threading.Lock()
+
+# A transient failure (e.g. Redis/Redis-backed repo briefly unavailable) must
+# degrade Feast for a bounded window, not forever — so unlike the old
+# "set the initialized flag first" pattern, failures are retried after a TTL.
+_FEAST_RETRY_SECONDS = 60.0
+_FEAST_LAST_FAILURE = 0.0
 
 
 def get_feast_store():
-    """Lazy initialize Feast FeatureStore singleton."""
-    global _feast_store, _feast_initialized
-    if _feast_initialized:
+    """Lazily initialize the Feast FeatureStore singleton (retry-safe, locked)."""
+    global _feast_store, _FEAST_LAST_FAILURE
+
+    if _feast_store is not None:
         return _feast_store
 
-    _feast_initialized = True
-    try:
-        from feast import FeatureStore
-        curr = os.path.dirname(os.path.abspath(__file__))
-        repo_root = curr
-        while repo_root and not (os.path.exists(os.path.join(repo_root, "pipelines", "feature_store", "feast_repo")) or os.path.exists(os.path.join(repo_root, ".git"))):
-            parent = os.path.dirname(repo_root)
-            if parent == repo_root:
-                break
-            repo_root = parent
+    with _feast_lock:
+        if _feast_store is not None:
+            return _feast_store
+        if _FEAST_LAST_FAILURE and (time.time() - _FEAST_LAST_FAILURE) < _FEAST_RETRY_SECONDS:
+            return None
 
-        feast_repo_path = os.path.join(repo_root, "pipelines", "feature_store", "feast_repo")
-        if os.path.exists(feast_repo_path):
+        try:
+            from feast import FeatureStore
+
+            curr = os.path.dirname(os.path.abspath(__file__))
+            repo_root = curr
+            while repo_root and not (
+                os.path.exists(os.path.join(repo_root, "pipelines", "feature_store", "feast_repo"))
+                or os.path.exists(os.path.join(repo_root, ".git"))
+            ):
+                parent = os.path.dirname(repo_root)
+                if parent == repo_root:
+                    break
+                repo_root = parent
+
+            feast_repo_path = os.path.join(repo_root, "pipelines", "feature_store", "feast_repo")
             _feast_store = FeatureStore(repo_path=feast_repo_path)
-            logger.info(f"Connected to Feast Feature Store at {feast_repo_path}")
-        else:
-            logger.warning(f"Feast repo not found at {feast_repo_path}. Using fallback.")
+            logger.info("Connected to Feast Feature Store at %s", feast_repo_path)
+        except Exception as e:
+            logger.warning("Failed to initialize Feast Feature Store: %s. Retrying in %.0fs.",
+                           e, _FEAST_RETRY_SECONDS)
             _feast_store = None
-    except Exception as e:
-        logger.warning(f"Failed to initialize Feast Feature Store: {e}. Using fallback.")
-        _feast_store = None
+            _FEAST_LAST_FAILURE = time.time()
+            return None
 
-    return _feast_store
+        return _feast_store
+
+
+def reset_feast_state() -> None:
+    """Test hook: drop the cached Feast store so state is not shared across tests."""
+    global _feast_store, _FEAST_LAST_FAILURE
+    with _feast_lock:
+        _feast_store = None
+        _FEAST_LAST_FAILURE = 0.0
 
 
 class FeatureStoreService:

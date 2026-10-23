@@ -1,9 +1,10 @@
-import time
 import logging
-from typing import Optional, Dict, Any
-from fastapi import Header, HTTPException, Depends, Request, Response
+import time
+from typing import Any, Dict, Optional
+
 import bcrypt
 import jwt
+from fastapi import Depends, Header, HTTPException, Request, Response
 
 from app.config.settings import get_settings
 from app.models.user import UserModel

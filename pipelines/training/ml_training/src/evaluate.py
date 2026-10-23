@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from collections import defaultdict
+
 
 def _dcg(scores):
     return sum(s / np.log2(i+2) for i, s in enumerate(scores))
@@ -13,7 +13,8 @@ def evaluate_ranking(eval_df: pd.DataFrame, k: int = 10,
     """
     precisions, recalls, ndcgs = [], [], []
     for uid, g in eval_df.groupby("userId"):
-        if len(g) < 2: continue
+        if len(g) < 2:
+            continue
         g = g.sort_values("pred", ascending=False)
         topk = g.head(k)
         rel_pred = (topk["rating"] >= relevance_threshold).astype(int).tolist()

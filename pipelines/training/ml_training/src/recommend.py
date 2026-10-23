@@ -1,72 +1,117 @@
-import numpy as np
+"""
+pipelines.training.ml_training.src.recommend
+---------------------------------------------
+Offline recommendation generation from the published ``models.joblib``.
+
+Encoding contract (must match ``models.py``):
+    * LightGBM is predicted through ``prepare_lgb_prediction_data`` using the
+      persisted ``category_maps`` — the *training* vocabulary.  Casting to
+      ``str`` and re-deriving categories from the candidate pool silently
+      turns every row into "all categories missing".
+    * CatBoost gets its own frame with categoricals cast to ``str``.
+
+Usage::
+
+    python src/recommend.py --user-id 1 --top-k 10
+"""
+
+import argparse
+import os
+from typing import Dict, List, Optional
+
 import pandas as pd
-import joblib
-import sys
+from models import (
+    feature_cols,
+    prepare_catboost_prediction_data,
+    prepare_lgb_prediction_data,
+)
 
-def recommend_for_user(user_id: int, top_k: int = 10):
-    bundle = joblib.load("models.joblib")
-    lgb_model  = bundle["lgbm"]
-    cb_model   = bundle["catboost"]
+try:
+    from configs import CFG
+except ImportError:
+    from .configs import CFG
+
+_CB_ENSEMBLE_WEIGHT = 0.5
+_LGB_ENSEMBLE_WEIGHT = 0.5
+
+
+def _bundle_path() -> str:
+    ml_training_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(ml_training_dir, "models.joblib")
+
+
+def load_bundle(path: Optional[str] = None):
+    import joblib
+
+    path = path or _bundle_path()
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Bundle not found: {path}")
+    return joblib.load(path)
+
+
+def build_candidate_frame(
+    bundle: Dict,
+    user_id: int,
+    liked_movie_ids: Optional[List[int]] = None,
+) -> pd.DataFrame:
+    """Candidate pool = the full catalog, enriched with the user's profile."""
     user_feats = bundle["user_feats"]
-    movie_feats= bundle["movie_feats"]
-    cfg        = bundle["config"]
+    movie_feats = bundle["movie_feats"]
 
-    # Check if user exists, handle cold start
-    if user_id not in user_feats["userId"].values:
-        uf_row = {c: 0 for c in user_feats.columns if c != "userId"}
-    else:
+    if user_feats is not None and user_id in user_feats["userId"].values:
         uf_row = user_feats[user_feats["userId"] == user_id].iloc[0].to_dict()
+    else:
+        uf_row = {c: 0.0 for c in (user_feats.columns if user_feats is not None else []) if c != "userId"}
+        uf_row["userId"] = user_id
 
-    # Candidate pool: all movies
     cand = movie_feats.copy()
-    
-    # Add user features to all candidate movies
     for c, v in uf_row.items():
         cand[c] = v
+    return cand
 
-    cols_lgb = bundle["lgbm_cols"]
-    cols_cb  = bundle["cb_cols"]
-    
-    # Fill any missing columns with 0
-    for c in cols_lgb:
-        if c not in cand.columns: cand[c] = 0
-    for c in cols_cb:
-        if c not in cand.columns: cand[c] = 0
 
-    # --- Fix Datatypes for Categorical Features ---
-    cat_cols_int = ["movieId", "userId"]
-    cat_cols_str = ["primary_director", "primary_actor"]
+def recommend_for_user(user_id: int, top_k: int = 10, bundle=None):
+    bundle = bundle or load_bundle()
+    top_k = top_k or int(CFG.get("recommend", {}).get("top_k", 10))
 
-    # For CatBoost: Must be string. Convert float/int to Int64 first to avoid "42.0", then to string
-    for c in cat_cols_int:
-        if c in cand.columns:
-            cand[c] = cand[c].astype("Int64").astype(str).replace("<NA>", "nan")
-    for c in cat_cols_str:
-        if c in cand.columns:
-            cand[c] = cand[c].astype(str)
+    lgb_model = bundle["lgbm"]
+    cb_model = bundle["catboost"]
+    lgb_cols = bundle["lgbm_cols"]
+    cb_cols = bundle["cb_cols"]
+    _, cb_cats = feature_cols(bundle.get("movie_feats"))
 
-    # Predict CatBoost
-    pred_cb = cb_model.predict(cand[cols_cb])
+    cand = build_candidate_frame(bundle, user_id)
 
-    # For LightGBM: Safely cast to category
-    for c in cat_cols_int + cat_cols_str:
-        if c in cand.columns:
-            # LightGBM handles missing categories natively if dtype is category
-            cand[c] = cand[c].astype("category")
+    for c in set(cb_cols + lgb_cols):
+        if c not in cand.columns:
+            cand[c] = 0.0
 
-    # Predict LightGBM
-    pred_lgb = lgb_model.predict(cand[cols_lgb], num_iteration=lgb_model.best_iteration)
+    # --- CatBoost frame: categoricals as str (exactly like training) --------
+    X_cb = prepare_catboost_prediction_data(cand, cb_cols, cb_cats)
+    pred_cb = cb_model.predict(X_cb)
 
-    # Ensemble predictions (Average)
-    cand["score"] = 0.5 * pred_lgb + 0.5 * pred_cb
+    # --- LightGBM frame: training vocabulary, values untouched --------------
+    X_lgb = prepare_lgb_prediction_data(cand, lgb_cols, bundle["lgb_category_maps"])
+    pred_lgb = lgb_model.predict(X_lgb, num_iteration=lgb_model.best_iteration)
 
-    # Get Top K
+    cand["score"] = _CB_ENSEMBLE_WEIGHT * pred_cb + _LGB_ENSEMBLE_WEIGHT * pred_lgb
+
     top = (cand.sort_values("score", ascending=False)
                .head(top_k)[["movieId", "title", "score"]])
-    
     return top.reset_index(drop=True)
 
+
+def main():
+    parser = argparse.ArgumentParser(description="Offline recommendations from models.joblib")
+    parser.add_argument("--user-id", type=int, default=1, help="User to build recommendations for")
+    parser.add_argument("--top-k", type=int, default=None, help="Number of recommendations")
+    parser.add_argument("--bundle", type=str, default=None, help="Path to models.joblib")
+    args = parser.parse_args()
+
+    top_k = args.top_k or int(CFG.get("recommend", {}).get("top_k", 10))
+    print(f"Top {top_k} recommendations for User {args.user_id}:")
+    print(recommend_for_user(args.user_id, top_k=top_k, bundle=load_bundle(args.bundle)))
+
+
 if __name__ == "__main__":
-    uid = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-    print(f"Top {10} recommendations for User {uid}:")
-    print(recommend_for_user(uid, top_k=10))
+    main()

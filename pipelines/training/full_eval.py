@@ -27,17 +27,16 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, "libs", "recsys_core", "src"))
 
-from recsys_core.features import (
-    RANKING_FEATURES,
-    build_movie_meta,
-    build_user_profiles,
-)
-
-from pipelines.training.train_pipeline import (
+from pipelines.training.train_pipeline import (  # noqa: E402  (after sys.path bootstrap)
     _default_meta,
     _jaccard,
     _ranking_feature_row,
     load_and_split_data,
+)
+from recsys_core.features import (  # noqa: E402
+    RANKING_FEATURES,
+    build_movie_meta,
+    build_user_profiles,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
