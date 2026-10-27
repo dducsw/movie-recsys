@@ -13,14 +13,12 @@ export const getAccessToken = () => {
 
 export const resetSessionId = () => {
   const newSid = crypto.randomUUID();
-  sessionStorage.setItem('movienex_sid', newSid);
-  localStorage.removeItem('movienex_sid');
-  localStorage.removeItem('cinemax_chat_history');
+  sessionStorage.setItem('mn_sid', newSid);
   return newSid;
 };
 
 export const getOrCreateSessionId = () => {
-  const KEY = 'movienex_sid';
+  const KEY = 'mn_sid';
   let sid = sessionStorage.getItem(KEY);
   if (!sid) {
     sid = crypto.randomUUID();

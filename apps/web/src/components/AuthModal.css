@@ -15,7 +15,7 @@
   background: var(--modal-bg);
   backdrop-filter: blur(32px);
   border: 1px solid var(--border-color);
-  border-radius: 28px;
+  border-radius: var(--radius-lg);
   width: 100%;
   max-width: 440px;
   padding: 36px 32px;
@@ -48,7 +48,7 @@
 
 .auth-modal-title {
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.4px;
 }
@@ -107,7 +107,7 @@
 .auth-input:focus {
   background: var(--bg-card);
   border-color: var(--accent-blue);
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
 }
 
 .auth-submit-btn {
@@ -157,4 +157,18 @@
 
 .auth-toggle-btn:hover {
   text-decoration: underline;
+}
+
+.auth-modal-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.auth-submit-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.auth-modal-header {
+  margin-bottom: 4px;
 }

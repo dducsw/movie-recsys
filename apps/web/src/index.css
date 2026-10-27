@@ -1,59 +1,63 @@
 :root {
-  /* 🌌 Premium Apple TV+ / HBO Max Streaming Obsidian Theme (Default) */
-  --bg-body: #07090e;
-  --bg-topnav-glass: rgba(7, 9, 14, 0.88);
-  --bg-dock: rgba(18, 24, 38, 0.65);
-  --bg-card: #101524;
-  --bg-card-hover: #161e33;
-  --modal-bg: rgba(13, 17, 28, 0.96);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.04);
-  --border-hover: rgba(14, 165, 233, 0.4);
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  /* Calm dark theme — single accent, no glows, no gradients */
+  --bg-body: #0b0d12;
+  --bg-topnav-glass: rgba(11, 13, 18, 0.92);
+  --bg-dock: #14161d;
+  --bg-card: #14161d;
+  --bg-card-hover: #1a1d26;
+  --modal-bg: #171a22;
+  --border-color: rgba(255, 255, 255, 0.09);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-hover: rgba(255, 255, 255, 0.22);
+  --text-primary: #f4f5f7;
+  --text-secondary: #9aa1ae;
+  --text-muted: #6b7280;
   --hover-bg: rgba(255, 255, 255, 0.06);
 
-  /* Vibrant Ocean & Electric Cyan Accents */
-  --accent-blue: #0ea5e9;
+  /* Single accent (legacy names kept: solid values, so old rules degrade gracefully) */
+  --accent-blue: #3b82f6;
   --accent-blue-deep: #2563eb;
-  --accent-cyan: #38bdf8;
-  --accent-gradient: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
-  --accent-gradient-hover: linear-gradient(135deg, #38bdf8 0%, #1d4ed8 100%);
-  --accent-glow: 0 0 28px rgba(14, 165, 233, 0.4);
-  --accent-glow-subtle: 0 0 16px rgba(14, 165, 233, 0.2);
-  --card-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.65);
-  --card-shadow-hover: 0 20px 40px -4px rgba(14, 165, 233, 0.3);
-  
+  --accent-cyan: #3b82f6;
+  --accent-gradient: #3b82f6;
+  --accent-gradient-hover: #2563eb;
+  --accent-glow: none;
+  --accent-glow-subtle: none;
+  --card-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --card-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --topnav-fade: linear-gradient(180deg, rgba(11, 13, 18, 0.9) 0%, rgba(11, 13, 18, 0.6) 60%, transparent 100%);
+
+  /* Shared scale */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
   --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --transition-speed: 0.25s;
 }
 
 [data-theme="light"] {
-  /* ☀️ Clean Ice & Royal Blue Light Theme */
-  --bg-body: #f4f6fa;
-  --bg-topnav-glass: rgba(244, 246, 250, 0.94);
-  --bg-dock: rgba(255, 255, 255, 0.95);
+  --bg-body: #f5f6f8;
+  --bg-topnav-glass: rgba(245, 246, 248, 0.94);
+  --bg-dock: #ffffff;
   --bg-card: #ffffff;
-  --bg-card-hover: #f8fafc;
-  --modal-bg: rgba(255, 255, 255, 0.98);
-  --border-color: rgba(15, 23, 42, 0.08);
-  --border-subtle: rgba(15, 23, 42, 0.04);
-  --border-hover: rgba(2, 132, 199, 0.4);
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --hover-bg: rgba(15, 23, 42, 0.04);
+  --bg-card-hover: #f6f7f9;
+  --modal-bg: #ffffff;
+  --border-color: rgba(15, 23, 42, 0.1);
+  --border-subtle: rgba(15, 23, 42, 0.05);
+  --border-hover: rgba(15, 23, 42, 0.25);
+  --text-primary: #16181d;
+  --text-secondary: #565d6b;
+  --text-muted: #9299a5;
+  --hover-bg: rgba(15, 23, 42, 0.05);
 
-  --accent-blue: #0284c7;
+  --accent-blue: #2563eb;
   --accent-blue-deep: #1d4ed8;
-  --accent-cyan: #0ea5e9;
-  --accent-gradient: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
-  --accent-gradient-hover: linear-gradient(135deg, #38bdf8 0%, #0369a1 100%);
-  --accent-glow: 0 0 20px rgba(2, 132, 199, 0.25);
-  --accent-glow-subtle: 0 0 10px rgba(2, 132, 199, 0.12);
-  --card-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
-  --card-shadow-hover: 0 14px 28px rgba(2, 132, 199, 0.15);
+  --accent-cyan: #2563eb;
+  --accent-gradient: #2563eb;
+  --accent-gradient-hover: #1d4ed8;
+  --card-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  --card-shadow-hover: 0 6px 18px rgba(15, 23, 42, 0.1);
+  --topnav-fade: linear-gradient(180deg, rgba(245, 246, 248, 0.94) 0%, rgba(245, 246, 248, 0.65) 60%, transparent 100%);
 }
 
 * {
@@ -98,11 +102,19 @@ html, body, #root {
   margin: 0 auto;
 }
 
-/* Base Page Padding for Subpages (Explore, Detail, Watchlist, Chatbot) */
-.page-standard-padded {
-  padding: 96px 48px 60px 48px;
-  max-width: 1600px;
+/* Shared page container — one content width for every page */
+.page-container {
+  max-width: 1440px;
   margin: 0 auto;
+  padding-left: 48px;
+  padding-right: 48px;
+}
+
+@media (max-width: 768px) {
+  .page-container {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
 }
 
 /* Custom Scrollbars */
@@ -122,11 +134,4 @@ html, body, #root {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
-}
-
-/* 📱 Responsive Mobile Rules */
-@media (max-width: 768px) {
-  .page-standard-padded {
-    padding: 80px 16px 40px 16px;
-  }
 }

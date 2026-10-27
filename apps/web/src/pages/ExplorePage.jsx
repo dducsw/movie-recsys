@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import MovieCard from '../components/MovieCard/MovieCard';
-import { API_BASE_URL, apiFetch } from '../api/client';
-import { t } from '../i18n';
+import { apiFetch } from '../api/client';
 import { useWatchlist } from '../context/WatchlistContext';
 import './ExplorePage.css';
 
@@ -13,7 +12,7 @@ export default function ExplorePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { likedMovies } = useWatchlist();
 
-  // TopNav writes ?query=, legacy links use ?search= — accept both.
+  // TopNav ghi ?query=, link cũ dùng ?search= — nhận cả hai.
   const searchQuery = searchParams.get('search') || searchParams.get('query') || '';
   const filterType = searchParams.get('filter') || 'trending';
   const genreParam = searchParams.get('genre') || 'all';
@@ -22,7 +21,6 @@ export default function ExplorePage() {
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
 
   const [movies, setMovies] = useState([]);
-  const [totalMovies, setTotalMovies] = useState(0);
   const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -30,7 +28,6 @@ export default function ExplorePage() {
     setLoading(true);
     setVisibleCount(PAGE_SIZE);
     const controller = new AbortController();
-    // Debounce fast filter typing to avoid request race.
     const timer = setTimeout(() => {
       let path = `/movies/trending?page=${pageParam}&limit=24`;
 
@@ -45,14 +42,12 @@ export default function ExplorePage() {
         path = `/movies/latest?page=${pageParam}&limit=24`;
       } else if (filterType === 'recommendations') {
         const ids = likedMovies.slice(0, 50);
-        const q = ids.length > 0 ? `?movie_ids=${ids.join(',')}&limit=40` : '?limit=40';
-        path = `/recommendations${q}`;
+        path = `/recommendations${ids.length > 0 ? `?movie_ids=${ids.join(',')}&limit=40` : '?limit=40'}`;
       }
 
       apiFetch(path, { signal: controller.signal })
-        .then(data => {
+        .then((data) => {
           setMovies(data.results || []);
-          setTotalMovies(data.total_movies || data.results?.length || 0);
         })
         .catch((err) => {
           if (err?.name === 'AbortError') return;
@@ -76,38 +71,35 @@ export default function ExplorePage() {
   const getPageTitle = () => {
     if (searchQuery) return `Search results for "${searchQuery}"`;
     if (genreParam !== 'all') return `${genreParam} Movies`;
-    if (filterType === 'recommendations') return 'AI Personalized Recommendations';
+    if (filterType === 'recommendations') return 'Recommendations For You';
     if (filterType === 'latest') return 'New & Upcoming Releases';
-    return 'Explore Trending Movies';
+    return 'Trending Movies';
   };
 
   return (
     <div className="explore-page-container">
-      {/* Header */}
       <div className="explore-page-header">
         <div className="explore-title-group">
           <div className="explore-title-row">
-            {filterType === 'recommendations' && <Sparkles className="w-5 h-5 text-yellow-400" />}
+            {filterType === 'recommendations' && <Sparkles className="explore-recommend-icon" />}
             <h1 className="explore-main-title">{getPageTitle()}</h1>
           </div>
           <p className="explore-sub-count">
-            {t('showing', movies.length)}
+            {loading ? 'Loading…' : `${movies.length} movies`}
           </p>
         </div>
       </div>
 
-      {/* Movies Grid */}
       {loading ? (
         <div className="spinner-container">
           <div className="spinner" />
-          <p className="explore-sub-count">{t('loading')} catalog...</p>
         </div>
       ) : movies.length === 0 ? (
         <div className="explore-empty-state">
           <Search className="explore-empty-icon" />
-          <h3 className="explore-empty-title">{t('noMovies')}</h3>
+          <h3 className="explore-empty-title">No movies found</h3>
           <p className="explore-empty-desc">
-            {t('noMoviesDesc')}
+            Try a different keyword, genre, or browse trending movies.
           </p>
         </div>
       ) : (
@@ -123,20 +115,16 @@ export default function ExplorePage() {
             ))}
           </div>
           {visibleCount < movies.length && (
-            <div style={{ textAlign: 'center', marginTop: 24 }}>
-              <button
-                className="explore-nav-btn"
-                onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-              >
-                {t('showMore')} ({movies.length - visibleCount})
+            <div className="explore-show-more">
+              <button className="explore-nav-btn" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
+                Show more ({movies.length - visibleCount})
               </button>
             </div>
           )}
         </>
       )}
 
-      {/* Centered Modern Pagination Dock */}
-      {(movies.length >= 20 || pageParam > 1) && (
+      {movies.length >= 20 && (
         <div className="explore-pagination-wrapper">
           <div className="explore-pagination-dock">
             <button
@@ -145,51 +133,19 @@ export default function ExplorePage() {
               disabled={pageParam <= 1}
               title="Previous Page"
             >
-              <ChevronLeft className="w-4 h-4" />
-              <span>{t('prev')}</span>
+              <ChevronLeft />
+              <span>Prev</span>
             </button>
 
-            {pageParam > 2 && (
-              <button
-                className="explore-page-num-btn"
-                onClick={() => handlePageChange(1)}
-              >
-                1
-              </button>
-            )}
-
-            {pageParam > 3 && <span className="explore-dots">...</span>}
-
-            {pageParam > 1 && (
-              <button
-                className="explore-page-num-btn"
-                onClick={() => handlePageChange(pageParam - 1)}
-              >
-                {pageParam - 1}
-              </button>
-            )}
-
-            <span className="explore-page-active-pill">
-              {pageParam}
-            </span>
-
-            {movies.length >= 20 && (
-              <button
-                className="explore-page-num-btn"
-                onClick={() => handlePageChange(pageParam + 1)}
-              >
-                {pageParam + 1}
-              </button>
-            )}
+            <span className="explore-page-indicator">Page {pageParam}</span>
 
             <button
-              className="explore-nav-btn next-btn"
+              className="explore-nav-btn"
               onClick={() => handlePageChange(pageParam + 1)}
-              disabled={movies.length < 20}
               title="Next Page"
             >
-              <span>{t('next')}</span>
-              <ChevronRight className="w-4 h-4" />
+              <span>Next</span>
+              <ChevronRight />
             </button>
           </div>
         </div>

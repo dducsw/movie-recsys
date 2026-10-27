@@ -4,48 +4,58 @@ import { useAuth } from './AuthContext';
 
 const WatchlistContext = createContext();
 
+const LIKED_KEY = 'mn_liked';
+const RATINGS_KEY = 'mn_ratings';
+
+// localStorage có thể bị hỏng/thay bởi extension — fail về rỗng, không crash app.
+const readJson = (key, fallback) => {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 export function WatchlistProvider({ children }) {
   const { user } = useAuth();
 
-  const [likedMovies, setLikedMovies] = useState(() => {
-    const saved = localStorage.getItem('tmdb_recsys_liked');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [userRatings, setUserRatings] = useState(() => {
-    const saved = localStorage.getItem('tmdb_recsys_ratings');
-    return saved ? JSON.parse(saved) : {};
-  });
+  const [likedMovies, setLikedMovies] = useState(() => readJson(LIKED_KEY, []));
+  const [userRatings, setUserRatings] = useState(() => readJson(RATINGS_KEY, {}));
 
   useEffect(() => {
-    localStorage.setItem('tmdb_recsys_liked', JSON.stringify(likedMovies));
+    localStorage.setItem(LIKED_KEY, JSON.stringify(likedMovies));
   }, [likedMovies]);
 
   useEffect(() => {
-    localStorage.setItem('tmdb_recsys_ratings', JSON.stringify(userRatings));
+    localStorage.setItem(RATINGS_KEY, JSON.stringify(userRatings));
   }, [userRatings]);
 
-  // Sync with backend if logged in
-  useEffect(() => {
-    if (user) {
-      apiFetch('/auth/me')
-        .then(data => {
-          if (data && data.watchlist && Array.isArray(data.watchlist)) {
-            const movieIds = data.watchlist.map(w => w.movie_id || w.movieId).filter(Boolean);
-            if (movieIds.length > 0) {
-              setLikedMovies(prev => Array.from(new Set([...prev, ...movieIds])));
-            }
-          }
-          if (data && data.ratings && Array.isArray(data.ratings)) {
-            const ratingsMap = {};
-            data.ratings.forEach(r => {
-              if (r.movie_id) ratingsMap[r.movie_id] = r.rating;
-            });
-            setUserRatings(prev => ({ ...prev, ...ratingsMap }));
-          }
-        })
-        .catch(() => {});
+  // Gộp watchlist/rating từ server vào local state (dùng khi login & sau onboarding).
+  const reloadPreferences = async () => {
+    if (!user) return;
+    try {
+      const data = await apiFetch('/auth/me');
+      if (Array.isArray(data?.watchlist) && data.watchlist.length > 0) {
+        const movieIds = data.watchlist.map((w) => w.movie_id || w.movieId).filter(Boolean);
+        setLikedMovies((prev) => Array.from(new Set([...prev, ...movieIds])));
+      }
+      if (Array.isArray(data?.ratings) && data.ratings.length > 0) {
+        const ratingsMap = {};
+        data.ratings.forEach((r) => {
+          if (r.movie_id) ratingsMap[r.movie_id] = r.rating;
+        });
+        setUserRatings((prev) => ({ ...prev, ...ratingsMap }));
+      }
+    } catch {
+      // Server chưa sẵn sàng — giữ state local.
     }
+  };
+
+  // Sync 1 lần khi có user (login/refresh).
+  useEffect(() => {
+    reloadPreferences();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const toggleLike = (movieId) => {
@@ -82,22 +92,6 @@ export function WatchlistProvider({ children }) {
 
   const isLiked = (movieId) => likedMovies.includes(Number(movieId));
   const getRating = (movieId) => userRatings[Number(movieId)] || 0;
-
-  const reloadPreferences = async () => {
-    if (user) {
-      try {
-        const data = await apiFetch('/auth/me');
-        if (data && data.watchlist && Array.isArray(data.watchlist)) {
-          const movieIds = data.watchlist.map(w => w.movie_id || w.movieId).filter(Boolean);
-          if (movieIds.length > 0) {
-            setLikedMovies(prev => Array.from(new Set([...prev, ...movieIds])));
-          }
-        }
-      } catch {
-        // Ignored
-      }
-    }
-  };
 
   return (
     <WatchlistContext.Provider value={{

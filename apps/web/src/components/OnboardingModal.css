@@ -15,7 +15,7 @@
   background: var(--modal-bg);
   backdrop-filter: blur(32px);
   border: 1px solid var(--border-color);
-  border-radius: 28px;
+  border-radius: var(--radius-lg);
   width: 100%;
   max-width: 540px;
   max-height: 90vh;
@@ -35,22 +35,9 @@
   gap: 8px;
 }
 
-.onboarding-icon-badge {
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
-  background: rgba(14, 165, 233, 0.15);
-  border: 1px solid rgba(14, 165, 233, 0.4);
-  color: var(--accent-cyan);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: var(--accent-glow-subtle);
-}
-
 .onboarding-title {
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.4px;
 }
@@ -133,9 +120,8 @@
 }
 
 .onboarding-movie-btn.active {
-  background: rgba(14, 165, 233, 0.15);
+  background: rgba(59, 130, 246, 0.12);
   border-color: var(--accent-blue);
-  box-shadow: 0 0 12px rgba(14, 165, 233, 0.15);
 }
 
 .onboarding-movie-info {
@@ -201,4 +187,20 @@
   background: var(--accent-gradient-hover);
   box-shadow: var(--accent-glow);
   transform: translateY(-1px);
+}
+
+.onboarding-check {
+  width: 16px;
+  height: 16px;
+  color: var(--accent-cyan);
+}
+
+.onboarding-arrow {
+  width: 16px;
+  height: 16px;
+}
+
+.auth-submit-icon {
+  width: 16px;
+  height: 16px;
 }

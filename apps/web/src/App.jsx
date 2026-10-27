@@ -19,7 +19,7 @@ const ChatbotPage = lazy(() => import('./pages/ChatbotPage'));
 
 import './App.css';
 
-const PageFallback = () => <div style={{ padding: 32, color: '#fff' }}>Loading…</div>;
+const PageFallback = () => <div style={{ padding: 32, color: 'var(--text-muted)' }}>Loading…</div>;
 
 function MainLayout() {
   const { isAuthModalOpen, openAuthModal, closeAuthModal, isOnboardingOpen, setIsOnboardingOpen, handleAuthSuccess } = useAuth();
@@ -39,11 +39,9 @@ function MainLayout() {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/explore" element={<ExplorePage />} />
-              <Route path="/genres" element={<ExplorePage />} />
               <Route path="/movie/:id" element={<MovieDetailPage />} />
               <Route path="/watchlist" element={<WatchlistPage />} />
               <Route path="/chatbot" element={<ChatbotPage />} />
-              <Route path="/ai-assistant" element={<ChatbotPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

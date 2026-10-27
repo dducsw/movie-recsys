@@ -5,7 +5,6 @@ const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
@@ -15,28 +14,16 @@ export function AuthProvider({ children }) {
     refreshAccessToken()
       .then((data) => {
         if (!isMounted) return;
-        if (data && data.user) {
-          setUser(data.user);
-        } else {
-          setUser(null);
-        }
+        setUser(data?.user || null);
       })
       .catch(() => {
         if (isMounted) setUser(null);
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
       });
 
     return () => {
       isMounted = false;
     };
   }, []);
-
-  const login = (token, userData) => {
-    setAccessToken(token);
-    setUser(userData);
-  };
 
   const logout = async () => {
     try {
@@ -68,8 +55,6 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user,
       setUser,
-      loading,
-      login,
       logout,
       isAuthModalOpen,
       setIsAuthModalOpen,

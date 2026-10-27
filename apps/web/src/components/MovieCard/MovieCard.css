@@ -1,33 +1,33 @@
 .streamix-movie-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
   user-select: none;
   position: relative;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.2s ease;
 }
 
 .streamix-movie-card:hover {
-  transform: translateY(-6px) scale(1.04);
+  transform: translateY(-3px);
 }
 
 /* Poster Media Card */
 .streamix-poster-box {
   width: 100%;
   aspect-ratio: 2 / 3;
-  border-radius: 18px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   position: relative;
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
   box-shadow: var(--card-shadow);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .streamix-movie-card:hover .streamix-poster-box {
-  border-color: var(--accent-blue);
-  box-shadow: 0 16px 36px -4px rgba(14, 165, 233, 0.35);
+  border-color: var(--border-hover);
+  box-shadow: var(--card-shadow-hover);
 }
 
 .streamix-poster-img {
@@ -44,49 +44,36 @@
 /* Top Right Heart Favorite Button */
 .streamix-heart-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
   background: rgba(7, 9, 14, 0.65);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 10;
-  transition: all 0.2s ease;
+  color: #ffffff;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .streamix-heart-btn:hover {
-  background: rgba(14, 165, 233, 0.25);
-  border-color: var(--accent-cyan);
-  transform: scale(1.1);
+  background: rgba(7, 9, 14, 0.85);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 
 .streamix-heart-btn.liked {
-  background: rgba(239, 68, 68, 0.25);
-  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.85);
+  border-color: rgba(239, 68, 68, 0.9);
 }
 
-/* 4K Tech Badge on Poster */
-.streamix-tech-badge {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  background: rgba(7, 9, 14, 0.7);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  font-size: 9.5px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  z-index: 10;
+.streamix-heart-btn.liked svg {
+  fill: currentColor;
 }
 
 /* Hover Play Action Overlay */
@@ -106,21 +93,14 @@
 }
 
 .streamix-play-badge {
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
-  background: var(--accent-gradient);
+  background: var(--accent-blue);
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--accent-glow);
-  transform: scale(0.85);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.streamix-movie-card:hover .streamix-play-badge {
-  transform: scale(1);
 }
 
 /* Metadata Text */
@@ -131,18 +111,13 @@
 }
 
 .streamix-card-title {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: -0.2px;
-  transition: color 0.2s ease;
-}
-
-.streamix-movie-card:hover .streamix-card-title {
-  color: var(--accent-cyan);
+  letter-spacing: -0.1px;
 }
 
 .streamix-card-subline {
@@ -159,4 +134,23 @@
   gap: 3px;
   color: #fbbf24;
   font-weight: 700;
+}
+
+/* Icon sizes */
+.streamix-heart-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.streamix-play-badge svg {
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
+  fill: currentColor;
+}
+
+.card-rating-badge svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
 }

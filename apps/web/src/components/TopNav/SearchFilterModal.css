@@ -18,7 +18,7 @@
   background-color: var(--modal-bg);
   backdrop-filter: blur(32px);
   border: 1px solid var(--border-color);
-  border-radius: 24px;
+  border-radius: var(--radius-lg);
   width: 100%;
   max-width: 520px;
   max-height: 85vh;
@@ -50,15 +50,9 @@
 
 .filter-header-title {
   font-size: 17px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text-primary);
   margin: 0;
-}
-
-.filter-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .btn-filter-reset {
@@ -138,10 +132,10 @@
   font-size: 12.5px;
   font-weight: 600;
   padding: 7px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
 .filter-chip:hover {
@@ -151,11 +145,10 @@
 }
 
 .filter-chip.active {
-  background: var(--accent-gradient);
+  background: var(--accent-blue);
   border-color: transparent;
   color: #ffffff;
-  font-weight: 700;
-  box-shadow: var(--accent-glow-subtle);
+  font-weight: 600;
 }
 
 .filter-modal-footer {
@@ -163,23 +156,22 @@
   border-top: 1px solid var(--border-color);
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
 }
 
-.btn-filter-apply {
-  background: var(--accent-gradient);
+.btn-apply-filters {
+  background: var(--accent-blue);
   border: none;
   color: #ffffff;
-  font-size: 14px;
-  font-weight: 700;
-  padding: 11px 28px;
-  border-radius: 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 10px 24px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  box-shadow: var(--accent-glow-subtle);
-  transition: all 0.25s ease;
+  transition: background 0.2s ease;
 }
 
-.btn-filter-apply:hover {
+.btn-apply-filters:hover {
   background: var(--accent-gradient-hover);
-  box-shadow: var(--accent-glow);
-  transform: translateY(-1px);
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Check, ArrowRight } from 'lucide-react';
+import { Check, ArrowRight } from 'lucide-react';
 import { apiFetch } from '../api/client';
 import { useWatchlist } from '../context/WatchlistContext';
 import './OnboardingModal.css';
@@ -72,10 +72,7 @@ export default function OnboardingModal({ isOpen, onClose, onFinish }) {
     <div className="onboarding-overlay" onClick={onClose}>
       <div className="onboarding-card" onClick={(e) => e.stopPropagation()}>
         <div className="onboarding-header">
-          <div className="onboarding-icon-badge">
-            <Sparkles className="w-6 h-6" />
-          </div>
-          <h2 className="onboarding-title">Personalize Your AI Taste</h2>
+          <h2 className="onboarding-title">Personalize Your Recommendations</h2>
           <p className="onboarding-subtitle">
             Select your preferred genres and starter movies to instantly personalize your recommendations feed.
           </p>
@@ -118,7 +115,7 @@ export default function OnboardingModal({ isOpen, onClose, onFinish }) {
                     <span className="onboarding-movie-title">{m.title}</span>
                     <span className="onboarding-movie-year">{m.year}</span>
                   </div>
-                  {active && <Check className="w-4 h-4 text-cyan-400 shrink-0" color="var(--accent-cyan)" />}
+                  {active && <Check className="onboarding-check" />}
                 </button>
               );
             })}
@@ -141,7 +138,7 @@ export default function OnboardingModal({ isOpen, onClose, onFinish }) {
             onClick={handleSubmit}
           >
             <span>{submitting ? 'Saving...' : 'Start Watching'}</span>
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="onboarding-arrow" />
           </button>
         </div>
       </div>

@@ -9,9 +9,8 @@
   padding: 24px;
   background: var(--bg-card, rgba(18, 24, 38, 0.6));
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
-  border-radius: 16px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
 }
 
 .fb-comments-header {
@@ -239,7 +238,7 @@
   padding: 10px 16px;
   background: var(--bg-bubble, rgba(255, 255, 255, 0.07));
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
-  border-radius: 18px;
+  border-radius: var(--radius-md);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
@@ -362,7 +361,7 @@
   align-items: center;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   padding: 4px 8px 4px 14px;
   transition: border-color 0.2s ease;
 }
@@ -465,4 +464,62 @@
   .fb-comment-bubble {
     max-width: 100%;
   }
+}
+
+/* Icon sizes */
+.fb-title-icon {
+  width: 18px;
+  height: 18px;
+  color: #3b82f6;
+}
+
+.fb-empty-icon {
+  width: 36px;
+  height: 36px;
+  opacity: 0.4;
+  margin-bottom: 8px;
+}
+
+.fb-comment-actions svg,
+.fb-toggle-replies-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.fb-bubble-like-counter svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.fb-btn-submit svg,
+.fb-btn-send-reply svg {
+  width: 14px;
+  height: 14px;
+}
+
+.fb-prompt-avatar-placeholder svg {
+  width: 20px;
+  height: 20px;
+}
+
+.fb-reply-arrow {
+  width: 14px;
+  height: 14px;
+  width: 14px;
+  color: var(--text-muted);
+  align-self: flex-start;
+}
+
+.fb-comment-time svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+  vertical-align: -2px;
+  margin-right: 3px;
+}
+
+.fb-empty-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
 }

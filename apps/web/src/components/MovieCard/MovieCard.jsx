@@ -1,8 +1,8 @@
-import React, { memo, useRef, useEffect } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, Play, Star } from 'lucide-react';
 import { queueImpression, trackClick, trackDwell } from '../../api/client';
-import { formatRating, posterUrl } from '../../utils/format';
+import { formatRating, posterUrl, releaseYear } from '../../utils/format';
 import { useWatchlist } from '../../context/WatchlistContext';
 import './MovieCard.css';
 
@@ -20,53 +20,46 @@ function MovieCard({
   const movieId = movie?.movieId || movie?.id;
   const liked = isLiked(movieId);
 
+  // Impression: 1 lần khi card hiển thị >50%.
   useEffect(() => {
-    if (!cardRef.current || !movieId) return;
+    const el = cardRef.current;
+    if (!el || !movieId) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            queueImpression({ movieId, source: movie?.source || source, position });
-            observer.disconnect();
-          }
-        });
+        if (entries.some((entry) => entry.isIntersecting)) {
+          queueImpression({ movieId, source, position });
+          observer.disconnect();
+        }
       },
       { threshold: 0.5 }
     );
-    observer.observe(cardRef.current);
+    observer.observe(el);
     return () => observer.disconnect();
-  }, [movieId, source, position, movie?.source]);
+  }, [movieId, source, position]);
 
-  const year = movie?.release_date ? movie.release_date.split('-')[0] : '2025';
-  const voteScore = formatRating(movie?.vote_average);
-  const posterSrc = posterUrl(movie?.poster_url);
+  const year = releaseYear(movie?.release_date);
+  const rating = formatRating(movie?.vote_average);
 
   const handleMouseEnter = () => {
     hoverStartRef.current = Date.now();
   };
 
   const handleMouseLeave = () => {
-    if (hoverStartRef.current) {
-      const elapsed = Date.now() - hoverStartRef.current;
-      hoverStartRef.current = null;
-      if (elapsed >= 1000) {
-        trackDwell(movieId, elapsed, movie?.source || source, position);
-      }
+    if (!hoverStartRef.current) return;
+    const elapsed = Date.now() - hoverStartRef.current;
+    hoverStartRef.current = null;
+    if (elapsed >= 1000) {
+      trackDwell(movieId, elapsed, source, position);
     }
   };
 
   const handleCardClick = () => {
-    trackClick(movieId, movie?.source || source, position);
+    trackClick(movieId, source, position);
     if (onClick) {
       onClick(movie);
     } else {
       navigate(`/movie/${movieId}`);
     }
-  };
-
-  const handleLikeClick = (e) => {
-    e.stopPropagation();
-    toggleLike(movieId, movie);
   };
 
   return (
@@ -80,55 +73,54 @@ function MovieCard({
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter') handleCardClick(); }}
     >
-      {/* Poster Box */}
       <div className="streamix-poster-box">
         <img
           className="streamix-poster-img"
-          src={posterSrc}
+          src={posterUrl(movie?.poster_url)}
           alt={movie.title}
           loading="lazy"
           decoding="async"
           onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = posterUrl('');
+            e.currentTarget.onerror = null; // tránh loop nếu placeholder lỗi
+            e.currentTarget.src = posterUrl('');
           }}
         />
 
-        {/* Favorite Heart Button */}
         <button
           className={`streamix-heart-btn ${liked ? 'liked' : ''}`}
-          onClick={handleLikeClick}
-          title={liked ? "Remove from Favorites" : "Add to Favorites"}
-          aria-label={liked ? "Remove from Favorites" : "Add to Favorites"}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleLike(movieId, movie);
+          }}
+          title={liked ? 'Remove from Favourites' : 'Add to Favourites'}
+          aria-label={liked ? 'Remove from Favourites' : 'Add to Favourites'}
         >
-          <Heart 
-            className="w-4 h-4" 
-            fill={liked ? "#ef4444" : "none"}
-            color={liked ? "#ef4444" : "#ffffff"}
-          />
+          <Heart />
         </button>
 
-        {/* Hover Play Badge */}
         <div className="streamix-card-hover">
           <div className="streamix-play-badge">
-            <Play className="w-5 h-5 fill-current ml-0.5" />
+            <Play />
           </div>
         </div>
       </div>
 
-      {/* Metadata (Title & Year / Rating) */}
       <div className="streamix-card-info">
         <h4 className="streamix-card-title" title={movie.title}>
           {movie.title}
         </h4>
-        
+
         <div className="streamix-card-subline">
-          <span>{year}</span>
-          <span>•</span>
-          <div className="card-rating-badge">
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            <span>{voteScore}</span>
-          </div>
+          <span>{year || '—'}</span>
+          {rating && (
+            <>
+              <span>•</span>
+              <div className="card-rating-badge">
+                <Star />
+                <span>{rating}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

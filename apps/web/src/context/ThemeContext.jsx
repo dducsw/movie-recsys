@@ -1,29 +1,24 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 
 const ThemeContext = createContext();
 
+const readTheme = () => (localStorage.getItem('mn_theme') === 'light' ? 'light' : 'dark');
+
 export function ThemeProvider({ children }) {
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('cinemax_dark_mode');
-    return saved !== null ? JSON.parse(saved) : true;
-  });
+  const [theme, setTheme] = useState(readTheme);
 
   useEffect(() => {
-    localStorage.setItem('cinemax_dark_mode', JSON.stringify(darkMode));
-    if (darkMode) {
-      document.documentElement.removeAttribute('data-theme');
-    } else {
+    localStorage.setItem('mn_theme', theme);
+    if (theme === 'light') {
       document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
     }
-  }, [darkMode]);
+  }, [theme]);
 
-  const toggleTheme = () => setDarkMode(prev => !prev);
+  const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
 
-  return (
-    <ThemeContext.Provider value={{ darkMode, setDarkMode, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
 }
 
 export const useTheme = () => useContext(ThemeContext);

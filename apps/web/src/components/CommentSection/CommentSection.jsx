@@ -17,7 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import './CommentSection.css';
 
 function formatRelativeTime(isoString) {
-  if (!isoString) return 'Vừa xong';
+  if (!isoString) return 'Just now';
   try {
     let dateStr = String(isoString).trim();
     // Nếu chuỗi datetime không có múi giờ (không có Z và không có +/- offset), ép về UTC
@@ -28,16 +28,16 @@ function formatRelativeTime(isoString) {
     const past = new Date(dateStr);
     const diffSeconds = Math.floor((now.getTime() - past.getTime()) / 1000);
 
-    if (diffSeconds < 60) return 'Vừa xong';
+    if (diffSeconds < 60) return 'Just now';
     const diffMinutes = Math.floor(diffSeconds / 60);
-    if (diffMinutes < 60) return `${diffMinutes} phút trước`;
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
     const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours} giờ trước`;
+    if (diffHours < 24) return `${diffHours}h ago`;
     const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 30) return `${diffDays} ngày trước`;
-    return past.toLocaleDateString('vi-VN');
-  } catch (e) {
-    return 'Vừa xong';
+    if (diffDays < 30) return `${diffDays}d ago`;
+    return past.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return 'Just now';
   }
 }
 
@@ -64,19 +64,19 @@ export default function CommentSection({ movieId, movieTitle }) {
   const [submitting, setSubmitting] = useState(false);
   const [showRepliesMap, setShowRepliesMap] = useState({});
 
-  // Fetch comments for this movie
-  const fetchComments = async () => {
-    try {
-      const data = await apiFetch(`/movies/${movieId}/comments`);
-      setComments(data.comments || []);
-    } catch (err) {
-      console.error('Failed to fetch comments:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Load comments mỗi khi đổi phim.
   useEffect(() => {
+    const fetchComments = async () => {
+      try {
+        const data = await apiFetch(`/movies/${movieId}/comments`);
+        setComments(data.comments || []);
+      } catch (err) {
+        console.error('Failed to fetch comments:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     if (movieId) {
       setLoading(true);
       fetchComments();
@@ -102,7 +102,7 @@ export default function CommentSection({ movieId, movieTitle }) {
       setComments([data.comment, ...comments]);
       setNewCommentText('');
     } catch (err) {
-      alert(err.message || 'Lỗi khi đăng bình luận.');
+      alert(err.message || 'Failed to post comment.');
     } finally {
       setSubmitting(false);
     }
@@ -139,7 +139,7 @@ export default function CommentSection({ movieId, movieTitle }) {
       // Ensure replies are expanded
       setShowRepliesMap(prev => ({ ...prev, [parentId]: true }));
     } catch (err) {
-      alert(err.message || 'Lỗi khi gửi phản hồi.');
+      alert(err.message || 'Failed to post reply.');
     } finally {
       setSubmitting(false);
     }
@@ -178,7 +178,7 @@ export default function CommentSection({ movieId, movieTitle }) {
 
   // Handle Delete Comment
   const handleDeleteComment = async (commentId, isReply = false, parentId = null) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa bình luận này không?')) return;
+    if (!window.confirm('Delete this comment? This cannot be undone.')) return;
 
     try {
       await apiFetch(`/comments/${commentId}`, {
@@ -196,7 +196,7 @@ export default function CommentSection({ movieId, movieTitle }) {
         }));
       }
     } catch (err) {
-      alert(err.message || 'Lỗi khi xóa bình luận.');
+      alert(err.message || 'Failed to delete comment.');
     }
   };
 
@@ -213,12 +213,12 @@ export default function CommentSection({ movieId, movieTitle }) {
     <section className="fb-comments-section" id="movie-comments-section">
       <div className="fb-comments-header">
         <div className="fb-comments-title-row">
-          <MessageSquare className="w-5 h-5 text-blue-500" />
-          <h3 className="fb-comments-title">Bình Luận Khán Giả</h3>
+          <MessageSquare className="fb-title-icon" />
+          <h3 className="fb-comments-title">Audience Reviews</h3>
           <span className="fb-comments-badge">{totalCommentsCount}</span>
         </div>
         <p className="fb-comments-subtitle">
-          Thảo luận, đánh giá và chia sẻ cảm nghĩ của bạn về bộ phim <strong>{movieTitle}</strong>
+          Discuss, rate, and share your thoughts on <strong>{movieTitle}</strong>
         </p>
       </div>
 
@@ -235,21 +235,21 @@ export default function CommentSection({ movieId, movieTitle }) {
             <form onSubmit={handlePostComment} className="fb-comment-form">
               <textarea
                 className="fb-comment-textarea"
-                placeholder="Viết bình luận công khai của bạn về bộ phim..."
+                placeholder="Write a public comment about this movie…"
                 value={newCommentText}
                 onChange={(e) => setNewCommentText(e.target.value)}
                 rows={2}
                 disabled={submitting}
               />
               <div className="fb-comment-form-footer">
-                <span className="fb-input-hint">Nhấn Đăng để chia sẻ cảm nghĩ của bạn</span>
+                <span className="fb-input-hint">Press Post to share your thoughts</span>
                 <button
                   type="submit"
                   className="fb-btn-submit"
                   disabled={submitting || !newCommentText.trim()}
                 >
-                  <Send className="w-4 h-4" />
-                  <span>{submitting ? 'Đang gửi...' : 'Đăng'}</span>
+                  <Send />
+                  <span>{submitting ? 'Posting…' : 'Post'}</span>
                 </button>
               </div>
             </form>
@@ -258,13 +258,13 @@ export default function CommentSection({ movieId, movieTitle }) {
           <div className="fb-auth-prompt">
             <div className="fb-auth-prompt-info">
               <div className="fb-prompt-avatar-placeholder">
-                <User className="w-5 h-5" />
+                <User />
               </div>
-              <span>Đăng nhập để tham gia bình luận và chia sẻ cảm xúc cùng cộng đồng!</span>
+              <span>Sign in to join the discussion and share your thoughts.</span>
             </div>
             <button className="fb-btn-login-prompt" onClick={openAuthModal}>
-              <LogIn className="w-4 h-4" />
-              <span>Đăng Nhập Ngay</span>
+              <LogIn />
+              <span>Sign In</span>
             </button>
           </div>
         )}
@@ -275,13 +275,13 @@ export default function CommentSection({ movieId, movieTitle }) {
         {loading ? (
           <div className="fb-comments-loading">
             <div className="spinner" />
-            <span>Đang tải bình luận...</span>
+            <span>Loading comments…</span>
           </div>
         ) : comments.length === 0 ? (
           <div className="fb-comments-empty">
-            <MessageSquare className="w-10 h-10 text-muted opacity-40 mb-2" />
-            <p className="font-medium text-foreground">Chưa có bình luận nào</p>
-            <p className="text-sm text-muted">Hãy là người đầu tiên để lại cảm nghĩ về bộ phim này!</p>
+            <MessageSquare className="fb-empty-icon" />
+            <p>No comments yet</p>
+            <p className="fb-empty-hint">Be the first to share your thoughts about this movie!</p>
           </div>
         ) : (
           comments.map((comment) => {
@@ -306,7 +306,7 @@ export default function CommentSection({ movieId, movieTitle }) {
                       <div className="fb-author-row">
                         <span className="fb-author-name">{comment.username}</span>
                         {comment.user_id === user?.id && (
-                          <span className="fb-badge-author">Bạn</span>
+                          <span className="fb-badge-author">You</span>
                         )}
                       </div>
                       <p className="fb-comment-text">{comment.content}</p>
@@ -314,7 +314,7 @@ export default function CommentSection({ movieId, movieTitle }) {
                       {/* Floating like counter on bubble */}
                       {comment.likes_count > 0 && (
                         <div className="fb-bubble-like-counter">
-                          <ThumbsUp className="w-3 h-3 fill-current text-blue-500" />
+                          <ThumbsUp />
                           <span>{comment.likes_count}</span>
                         </div>
                       )}
@@ -326,7 +326,7 @@ export default function CommentSection({ movieId, movieTitle }) {
                         className={`fb-action-btn ${comment.is_liked ? 'liked' : ''}`}
                         onClick={() => handleToggleLike(comment.id, false)}
                       >
-                        <ThumbsUp className="w-3.5 h-3.5" fill={comment.is_liked ? "currentColor" : "none"} />
+                        <ThumbsUp fill={comment.is_liked ? 'currentColor' : 'none'} />
                         <span>Thích</span>
                       </button>
 
@@ -337,35 +337,35 @@ export default function CommentSection({ movieId, movieTitle }) {
                           setReplyText('');
                         }}
                       >
-                        <Reply className="w-3.5 h-3.5" />
-                        <span>Phản hồi</span>
+                        <Reply />
+                        <span>Reply</span>
                       </button>
 
                       {user && user.id === comment.user_id && (
                         <button 
                           className="fb-action-btn delete"
                           onClick={() => handleDeleteComment(comment.id, false)}
-                          title="Xóa bình luận này"
+                          title="Delete this comment"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Xóa</span>
+                          <Trash2 />
+                          <span>Delete</span>
                         </button>
                       )}
 
                       <span className="fb-comment-time">
-                        <Clock className="w-3 h-3 inline mr-1 opacity-70" />
+                        <Clock />
                         {formatRelativeTime(comment.created_at)}
                       </span>
                     </div>
 
                     {/* Inline Reply Input Form */}
                     {isReplying && (
-                      <div className="fb-reply-box animate-in fade-in duration-150">
-                        <CornerDownRight className="w-4 h-4 text-blue-400 mt-2" />
+                      <div className="fb-reply-box animate-fade-in">
+                        <CornerDownRight className="fb-reply-arrow" />
                         <div className="fb-reply-input-wrapper">
                           <input
                             type="text"
-                            placeholder={`Trả lời ${comment.username}...`}
+                            placeholder={`Reply to ${comment.username}…`}
                             value={replyText}
                             onChange={(e) => setReplyText(e.target.value)}
                             className="fb-reply-input"
@@ -382,7 +382,7 @@ export default function CommentSection({ movieId, movieTitle }) {
                             disabled={!replyText.trim() || submitting}
                             onClick={() => handlePostReply(comment.id)}
                           >
-                            <Send className="w-3.5 h-3.5" />
+                            <Send />
                           </button>
                         </div>
                       </div>
@@ -395,11 +395,11 @@ export default function CommentSection({ movieId, movieTitle }) {
                           className="fb-toggle-replies-btn"
                           onClick={() => toggleReplies(comment.id)}
                         >
-                          {areRepliesVisible ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          {areRepliesVisible ? <ChevronUp /> : <ChevronDown />}
                           <span>
                             {areRepliesVisible 
-                              ? `Ẩn ${comment.replies.length} phản hồi` 
-                              : `Xem ${comment.replies.length} phản hồi`}
+                              ? `Hide ${comment.replies.length} ${comment.replies.length === 1 ? 'reply' : 'replies'}` 
+                              : `View ${comment.replies.length} ${comment.replies.length === 1 ? 'reply' : 'replies'}`}
                           </span>
                         </button>
 
@@ -418,14 +418,14 @@ export default function CommentSection({ movieId, movieTitle }) {
                                     <div className="fb-author-row">
                                       <span className="fb-author-name">{reply.username}</span>
                                       {reply.user_id === user?.id && (
-                                        <span className="fb-badge-author">Bạn</span>
+                                        <span className="fb-badge-author">You</span>
                                       )}
                                     </div>
                                     <p className="fb-comment-text">{reply.content}</p>
 
                                     {reply.likes_count > 0 && (
                                       <div className="fb-bubble-like-counter">
-                                        <ThumbsUp className="w-2.5 h-2.5 fill-current text-blue-500" />
+                                        <ThumbsUp />
                                         <span>{reply.likes_count}</span>
                                       </div>
                                     )}
@@ -436,7 +436,7 @@ export default function CommentSection({ movieId, movieTitle }) {
                                       className={`fb-action-btn ${reply.is_liked ? 'liked' : ''}`}
                                       onClick={() => handleToggleLike(reply.id, true, comment.id)}
                                     >
-                                      <ThumbsUp className="w-3 h-3" fill={reply.is_liked ? "currentColor" : "none"} />
+                                      <ThumbsUp fill={reply.is_liked ? 'currentColor' : 'none'} />
                                       <span>Thích</span>
                                     </button>
 
@@ -445,8 +445,8 @@ export default function CommentSection({ movieId, movieTitle }) {
                                         className="fb-action-btn delete"
                                         onClick={() => handleDeleteComment(reply.id, true, comment.id)}
                                       >
-                                        <Trash2 className="w-3 h-3" />
-                                        <span>Xóa</span>
+                                        <Trash2 />
+                                        <span>Delete</span>
                                       </button>
                                     )}
 

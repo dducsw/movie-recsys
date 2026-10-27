@@ -39,8 +39,13 @@
   background: rgba(245, 158, 11, 0.45);
 }
 
+.retry-icon {
+  width: 14px;
+  height: 14px;
+}
+
 .home-genres-dock {
-  padding: 10px 54px 20px 54px;
+  padding: 10px 48px 16px 48px;
 }
 
 @media (max-width: 768px) {
