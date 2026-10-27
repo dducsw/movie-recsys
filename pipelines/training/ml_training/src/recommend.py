@@ -31,8 +31,19 @@ try:
 except ImportError:
     from .configs import CFG
 
-_CB_ENSEMBLE_WEIGHT = 0.5
-_LGB_ENSEMBLE_WEIGHT = 0.5
+
+def ensemble_weights(bundle: Dict) -> Dict[str, float]:
+    """Blending weights recorded in the bundle (also used by serving).
+
+    Serving reads these first, so the offline CLI must respect the same
+    weights — hardcoded 0.5/0.5 here would reproduce recommendations that
+    diverge from production.
+    """
+    weights = bundle.get("ensemble_weights") or {}
+    cb = float(weights.get("catboost", 0.6))
+    lgb = float(weights.get("lightgbm", 0.4))
+    total = cb + lgb or 1.0
+    return {"catboost": cb / total, "lightgbm": lgb / total}
 
 
 def _bundle_path() -> str:
@@ -81,7 +92,7 @@ def recommend_for_user(user_id: int, top_k: int = 10, bundle=None):
     _, cb_cats = feature_cols(bundle.get("movie_feats"))
 
     cand = build_candidate_frame(bundle, user_id)
-
+    w_cb = ensemble_weights(bundle)
     for c in set(cb_cols + lgb_cols):
         if c not in cand.columns:
             cand[c] = 0.0
@@ -94,7 +105,7 @@ def recommend_for_user(user_id: int, top_k: int = 10, bundle=None):
     X_lgb = prepare_lgb_prediction_data(cand, lgb_cols, bundle["lgb_category_maps"])
     pred_lgb = lgb_model.predict(X_lgb, num_iteration=lgb_model.best_iteration)
 
-    cand["score"] = _CB_ENSEMBLE_WEIGHT * pred_cb + _LGB_ENSEMBLE_WEIGHT * pred_lgb
+    cand["score"] = w_cb["catboost"] * pred_cb + w_cb["lightgbm"] * pred_lgb
 
     top = (cand.sort_values("score", ascending=False)
                .head(top_k)[["movieId", "title", "score"]])

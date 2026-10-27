@@ -5,11 +5,17 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 
 logger = logging.getLogger(__name__)
 
+# A transient outage must degrade Redis for a bounded window, not forever —
+# failures are retried after this TTL (same contract as Feast / the bundle).
+_RETRY_SECONDS = 60.0
+
 _lock = threading.Lock()
 _clients: dict[int, object] = {}
+_last_failure: dict[int, float] = {}
 
 
 def _settings() -> tuple[str, int]:
@@ -19,11 +25,13 @@ def _settings() -> tuple[str, int]:
 
 
 def get_redis(db: int = 0, timeout: float = 0.5):
-    """Return shared Redis client for db, or None if unavailable."""
+    """Return shared Redis client for ``db``, or None if unavailable."""
     with _lock:
-        if db in _clients:
-            client = _clients[db]
-            return None if client is False else client
+        client = _clients.get(db)
+        if client is not None:
+            return client
+        if time.time() - _last_failure.get(db, 0.0) < _RETRY_SECONDS:
+            return None
         try:
             import redis
 
@@ -37,8 +45,9 @@ def get_redis(db: int = 0, timeout: float = 0.5):
             logger.info("Redis connected db=%s at %s:%s", db, host, port)
             return client
         except Exception as exc:
-            logger.warning("Redis unavailable db=%s (%s)", db, exc)
-            _clients[db] = False
+            logger.warning("Redis unavailable db=%s (%s); retrying in %.0fs",
+                           db, exc, _RETRY_SECONDS)
+            _last_failure[db] = time.time()
             return None
 
 
@@ -46,3 +55,4 @@ def reset_redis_for_tests() -> None:
     """Clear cached clients (tests only)."""
     with _lock:
         _clients.clear()
+        _last_failure.clear()

@@ -1,0 +1,19 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "default-next"
+  group_by: ["alertname", "source", "endpoint"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity =~ "warning|critical"
+      receiver: "default-next"
+
+receivers:
+  # Local stacks: alerts surface in Prometheus UI (/alerts) and the Alertmanager
+  # API. Wire real channels (Slack/PagerDuty/email) per deployment by editing
+  # this receiver — the routing/grouping above is deployment-independent.
+  - name: "default-next"

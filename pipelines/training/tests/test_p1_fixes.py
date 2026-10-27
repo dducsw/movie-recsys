@@ -251,3 +251,99 @@ def test_check_data_drift_raises_on_drift_alert():
     # No drift vs same distribution -> PASS, does not raise.
     same = pd.DataFrame({"rating": np.random.default_rng(1).normal(3.5, 0.5, 5000)})
     assert check_data_drift(same, reference)["status"] == "PASS"
+
+
+# ── 6. Negative-sampling ranking evaluation (anti-degenerate HR@k) ───────────
+
+def _pools_helpers():
+    try:
+        from pipelines.training.ml_training.src.train import (
+            build_negative_pools, latency_stats)
+    except ImportError:
+        import os
+        import sys
+        src = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "ml_training", "src")
+        if src not in sys.path:
+            sys.path.insert(0, src)
+        from train import build_negative_pools, latency_stats
+    return build_negative_pools, latency_stats
+
+
+def _pool_fixture():
+    build_negative_pools, _ = _pools_helpers()
+    ratings = pd.DataFrame({
+        "userId": [1, 1],
+        "movieId": [10, 11],
+        "rating": [4.0, 2.0],
+        "timestamp": [1, 2],
+    })
+    target = pd.DataFrame({
+        "userId": [1],
+        "movieId": [10],
+        "rating": [4.0],
+        "timestamp": [2],
+    })
+    catalog = [10, 11, 12, 13, 14]
+    return build_negative_pools(ratings, target, catalog, n_negatives=99, seed=42), target, catalog
+
+
+def test_negative_pools_exclude_rated_and_keep_ground_truth():
+    pools, target, catalog = _pool_fixture()
+    movie_ids = set(pools[pools["userId"] == 1]["movieId"])
+    # GT row survives; sampled negatives are unrated catalog entries only.
+    assert movie_ids == {10, 12, 13, 14}
+    assert movie_ids.isdisjoint({11})
+
+
+def test_negative_pools_deterministic_and_shared():
+    build_negative_pools, _ = _pools_helpers()
+    ratings = pd.DataFrame({
+        "userId": [1, 1, 2, 2],
+        "movieId": [10, 20, 11, 21],
+        "rating": [4.0, 3.0, 5.0, 4.0],
+        "timestamp": [1, 2, 3, 4],
+    })
+    target = ratings.iloc[[1, 3]].reset_index(drop=True)
+    catalog = list(range(10, 220))
+    pool_a = build_negative_pools(ratings, target, catalog, n_negatives=50, seed=42)
+    pool_b = build_negative_pools(ratings, target, catalog, n_negatives=50, seed=42)
+    pd.testing.assert_frame_equal(pool_a, pool_b)
+
+
+def test_metrics_on_negative_pool_are_not_degenerate():
+    # With own-holdout-only eval HR@10 is identically 1.0; inside a negative
+    # pool of size > k the metric must actually reflect ranking placement.
+    build_negative_pools, _ = _pools_helpers()
+    ratings = pd.DataFrame({
+        "userId": [1, 1],
+        "movieId": [10, 11],
+        "rating": [4.0, 2.0],
+        "timestamp": [1, 2],
+    })
+    target = pd.DataFrame({
+        "userId": [1], "movieId": [10], "rating": [4.0], "timestamp": [2]})
+    pools = build_negative_pools(
+        ratings, target, catalog_ids=list(range(10, 210)), n_negatives=99, seed=42)
+    assert len(pools) == 100  # 1 ground-truth + 99 negatives
+
+    # GT ranked dead last -> HR@10 == 0 even though k=10 >= holdout size.
+    worst = pools.drop(columns=["timestamp"]).copy()
+    worst["pred"] = np.where(worst["movieId"] == 10, -1.0, 0.0)
+    res = evaluate_ranking_metrics(worst, k=10, relevance_threshold=4.0)
+    assert res["HR@10"] == 0.0
+
+    # GT ranked first -> HR@10 == 1 (sanity direction).
+    best = pools.drop(columns=["timestamp"]).copy()
+    best["pred"] = np.where(best["movieId"] == 10, 1.0, 0.5)
+    res = evaluate_ranking_metrics(best, k=10, relevance_threshold=4.0)
+    assert res["HR@10"] == 1.0
+    assert res["n_users_evaluated"] == 1
+
+
+def test_latency_stats_percentiles():
+    build_negative_pools, latency_stats = _pools_helpers()
+    stats = latency_stats([10.0, 20.0, 30.0, 40.0])
+    assert stats["latency_p50_ms"] == pytest.approx(25.0)
+    assert stats["latency_p95_ms"] == pytest.approx(38.5)
+    assert latency_stats([])["avg_latency_ms"] == 0.0

@@ -1,0 +1,77 @@
+# Alert rules for the recsys serving layer (loaded by prometheus.yml).
+# Contract: alert on DEGRADED SERVICE SIGNALS, not on raw CPU/memory —
+# a Feast/Redis outage looks like "bad recommendations" in user reports but
+# degrades gracefully at the API level, so without these alerts it is silent.
+groups:
+  - name: recsys-serving
+    rules:
+      # A fallback rate above 20% per source means an upstream (Qdrant, Feast,
+      # the ML ensemble, DB trending...) is failing silently into its fallback.
+      - alert: RecsysFallbackRateHigh
+        expr: |
+          sum(rate(recsys_fallbacks_total[5m]))
+            /
+          sum(rate(recsys_requests_total[5m])) > 0.20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Recsys fallback rate {{ $value | humanizePercentage }} > 20% (5m)"
+          description: "Recommendations are served, but the 3-stage pipeline is heavily degraded. Break down by recsys_fallbacks_total{source} to find the failing upstream."
+
+      # Same check per source — catches a single failing channel even when
+      # aggregate fallback traffic is diluted across sources.
+      - alert: RecsysSourceFallbackRateHigh
+        expr: |
+          sum by (source) (rate(recsys_fallbacks_total{source!~"final_trending|no_history_trending|db_trending|heuristic_ranking"}[15m]))
+            /
+          sum(rate(recsys_requests_total[15m])) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Source {{ $labels.source }} fallback rate > 25% (15m)"
+          description: "One retrieval/ranking channel is degraded: {{ $labels.source }}."
+
+      # A sudden candidate-pool collapse signals an upstream source failing
+      # into its (much smaller) fallback — long before users complain.
+      - alert: RecsysCandidatesCollapsed
+        expr: |
+          sum by (stage) (rate(recsys_candidates_count_sum[5m]))
+            /
+          sum by (stage) (rate(recsys_candidates_count_count[5m])) < 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stage {{ $labels.stage }} returns < 5 candidates on average"
+          description: "The candidate pool collapsed in {{ $labels.stage }} — an upstream retrieval source is failing into a fallback."
+
+      # Latency: p95 per endpoint beyond the README SLA (50ms candidate scoring
+      # is the internal budget; the API end-to-end p95 budget is 300ms).
+      - alert: RecsysStageLatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (stage, endpoint, le) (rate(recsys_stage_latency_seconds_bucket[10m]))
+          ) > 0.3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stage {{ $labels.stage }} p95 latency > 300ms"
+          description: "Ranking/retrieval p95 is beyond the serving budget for {{ $labels.endpoint }}."
+
+      # The ranking model being unreachable structurally turns every request
+      # into heuristic ranking — service survives but personalization is gone.
+      - alert: RecsysHeuristicRankingActive
+        expr: |
+          sum by (endpoint) (rate(recsys_fallbacks_total{source="heuristic_ranking"}[10m]))
+            /
+          sum by (endpoint) (rate(recsys_requests_total[10m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Heuristic ranking serves > 5% of {{ $labels.endpoint }}"
+          description: "Both the ml_training ensemble AND the LambdaRanker are failing on the hot path. Check ranker model load and the ml_training bundle."

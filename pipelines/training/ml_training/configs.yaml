@@ -7,7 +7,6 @@ paths:
 split:
   method: "time_by_user"
   n_holdout_per_user: 5
-  val_frac_of_train: 0.1
   min_user_ratings: 5
   random_state: 42
 
@@ -66,6 +65,10 @@ quality_gates:
   min_ndcg: 0.05
   min_hr: 0.15
   min_users_evaluated: 20
+  # Per-request scoring latency (measured per user, unlike the ranker's
+  # borrowed mean-based default).
+  max_latency_ms: 30.0
+  max_latency_p95_ms: 30.0
   # Relative comparison against the currently promoted model.
   min_rmse_improvement_pct: 0.005
   max_ndcg_regression: 0.003
@@ -74,6 +77,9 @@ evaluation:
   k: 10
   relevance_threshold: 4.0
   bootstrap_iters: 1000
+  # Negatives sampled per user for ranking metrics (prevents the degenerate
+  # HR@k == 1.0 when k >= per-user holdout size).
+  ranking_negatives: 99
 
 ensemble:
   # Stage 2 blending weights (validated offline via A/B NDCG@10 comparing
@@ -86,4 +92,3 @@ ensemble:
 
 recommend:
   top_k: 10
-  candidate_pool_size: 500

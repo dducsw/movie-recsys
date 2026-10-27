@@ -1,0 +1,65 @@
+{
+  "title": "MovieNex Recsys — 3-Stage Serving",
+  "uid": "recsys-serving",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-3h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate by status (success / fallback / error)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum by (endpoint, status) (rate(recsys_requests_total[5m]))", "legendFormat": "{{endpoint}} / {{status}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Fallback rate by source (degradation hotspots)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "sum by (source) (rate(recsys_fallbacks_total[10m]))", "legendFormat": "{{source}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Stage latency p95 (s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (stage, endpoint, le) (rate(recsys_stage_latency_seconds_bucket[10m])))", "legendFormat": "p95 {{stage}} / {{endpoint}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Stage latency p50 (s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (stage, endpoint, le) (rate(recsys_stage_latency_seconds_bucket[10m])))", "legendFormat": "p50 {{stage}} / {{endpoint}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Candidates per stage (avg)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "sum by (stage) (rate(recsys_candidates_count_sum[5m])) / sum by (stage) (rate(recsys_candidates_count_count[5m]))", "legendFormat": "{{stage}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Cache hit ratio (per slate kind)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        { "expr": "sum by (cache_type) (rate(recsys_cache_hits_total[5m]))", "legendFormat": "hits {{cache_type}}" },
+        { "expr": "sum by (cache_type) (rate(recsys_cache_misses_total[5m]))", "legendFormat": "misses {{cache_type}}" }
+      ]
+    }
+  ]
+}

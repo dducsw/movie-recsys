@@ -63,6 +63,27 @@ class Settings(BaseSettings):
     RATE_LIMIT_REFRESH: str = Field(default="20/minute")
     RATE_LIMIT_CHATBOT: str = Field(default="30/minute")
 
+    # 3-Stage Recsys tuning — defaults mirror the shipped behaviour; overrides
+    # are env-only so the values train/serve on stay in one auditable place.
+    # Thin-pool floors: DB trending tops the candidate pool up below these.
+    RECSYS_POOL_FLOOR_SIMILAR: int = Field(default=20, description="Min candidates before DB trending fallback (similar endpoint)")
+    RECSYS_POOL_FLOOR_PERSONALIZED: int = Field(default=30, description="Min candidates before DB trending fallback (personalized endpoint)")
+    # zrevrange stop is INCLUSIVE — default 30 reproduces the shipped 31-item window.
+    RECSYS_TRENDING_ZSTOP: int = Field(default=30, description="Inclusive zrevrange stop for realtime:trending")
+    # Conservative retrieval-score floors for sources without a real score.
+    RECSYS_SCORE_REDIS_SIMILAR: float = Field(default=0.5, description="Score floor when a batch similarity entry has none")
+    RECSYS_SCORE_PERSONAL_SIMILAR: float = Field(default=0.4, description="Score floor for personalized redis_similar entries")
+    RECSYS_SCORE_TRENDING: float = Field(default=0.3, description="Fixed score of realtime trending candidates")
+    RECSYS_SCORE_DB_FALLBACK: float = Field(default=0.2, description="Fixed score of DB trending fallback candidates")
+    # Heuristic ranker weights (genre proximity, retrieval affinity, quality).
+    RECSYS_HEUR_W_GENRE: float = Field(default=10.0, description="Heuristic weight: genre overlap")
+    RECSYS_HEUR_W_RETRIEVAL: float = Field(default=5.0, description="Heuristic weight: retrieval affinity")
+    RECSYS_HEUR_W_QUALITY: float = Field(default=0.5, description="Heuristic weight: vote_average")
+    # Recommendation cache TTLs (Redis-backed recsys_cache).
+    RECSYS_CACHE_TTL_SIMILAR: int = Field(default=300, description="Cache TTL (s) for similar-movies slates")
+    RECSYS_CACHE_TTL_PERSONALIZED: int = Field(default=180, description="Cache TTL (s) for personalized slates")
+    RECSYS_CACHE_TTL_USER_RECS: int = Field(default=300, description="Cache TTL (s) for direct ML user recommendations")
+
     model_config = SettingsConfigDict(
         env_file=(".env", "../../.env", "../.env"),
         env_file_encoding="utf-8",

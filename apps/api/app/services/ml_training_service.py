@@ -16,6 +16,7 @@ with the categories missing).  CatBoost gets its own frame where the
 categoricals are cast to ``str`` — exactly like its training frames.
 """
 
+import hashlib
 import logging
 import os
 import sys
@@ -114,17 +115,33 @@ _BUNDLE_ABSENT_WARNED = False
 
 
 def _repo_root() -> str:
-    curr = os.path.dirname(os.path.abspath(__file__))
-    repo_root = curr
-    while repo_root and not (
-        os.path.exists(os.path.join(repo_root, ".git"))
-        or os.path.exists(os.path.join(repo_root, "docker-compose.yml"))
-    ):
-        parent = os.path.dirname(repo_root)
-        if parent == repo_root:
-            break
-        repo_root = parent
-    return repo_root
+    from app.services.paths import find_repo_root
+
+    return find_repo_root(".git", "docker-compose.yml")
+
+
+# Integrity gates mirroring the lgb_ranker.pkl path: joblib artifacts are
+# code-equivalent, so a pinned digest (RECSYS_BUNDLE_SHA256) is enforced when
+# provided, and a hard size cap guards against garbage files.
+_BUNDLE_MAX_BYTES = 256 * 1024 * 1024
+
+
+def _bundle_trusted(model_path: str) -> bool:
+    if os.path.getsize(model_path) > _BUNDLE_MAX_BYTES:
+        logger.error("Refusing bundle: %d bytes exceeds the %d byte limit.",
+                     os.path.getsize(model_path), _BUNDLE_MAX_BYTES)
+        return False
+    expected_sha = os.getenv("RECSYS_BUNDLE_SHA256")
+    if expected_sha:
+        import hashlib
+
+        with open(model_path, "rb") as f:
+            actual_sha = hashlib.sha256(f.read()).hexdigest()
+        if actual_sha.lower() != expected_sha.strip().lower():
+            logger.error("Bundle checksum mismatch! Expected %s, got %s.",
+                         expected_sha, actual_sha)
+            return False
+    return True
 
 
 def _bundle_path() -> Optional[str]:
@@ -175,6 +192,9 @@ def get_model_bundle() -> Optional[Dict[str, Any]]:
 
         try:
             t0 = time.time()
+            if not _bundle_trusted(model_path):
+                _BUNDLE_LAST_FAILURE = time.time()
+                return None
             logger.info("Loading ml_training model bundle from %s...", model_path)
             import joblib
 

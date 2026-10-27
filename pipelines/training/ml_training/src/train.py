@@ -67,6 +67,7 @@ def time_split_per_user(ratings, n_test=5, n_val=5, min_ratings=15):
 
 
 try:
+    from recsys_core.envinfo import git_sha
     from recsys_core.metrics import (
         bootstrap_ranking_ci,
         evaluate_ranking_metrics,
@@ -81,6 +82,7 @@ except ImportError:
     _core_path = os.path.join(_repo_root, "libs", "recsys_core", "src")
     if _core_path not in sys.path:
         sys.path.insert(0, _core_path)
+    from recsys_core.envinfo import git_sha
     from recsys_core.metrics import (
         bootstrap_ranking_ci,
         evaluate_ranking_metrics,
@@ -89,6 +91,71 @@ except ImportError:
         rmse_mae,
     )
     from recsys_core.quality_gate import QualityGateConfig, QualityGateError, check_quality_gate
+
+
+# ── Negative-sampling ranking evaluation (CT 99-neg protocol) ────────────────
+
+def build_negative_pools(
+    ratings: pd.DataFrame,
+    target_df: pd.DataFrame,
+    catalog_ids,
+    n_negatives: int,
+    seed: int,
+) -> pd.DataFrame:
+    """Per-user evaluation pool = ground-truth rows + ``n_negatives`` negatives.
+
+    Ranking only the user's own holdout rows is degenerate — HR@k is
+    identically 1.0 whenever k >= holdout size — so every ranking metric is
+    computed over a pool that also contains sampled **unrated** catalog
+    items, mirroring the CT 99-neg protocol.
+
+    Pools are deterministic and shared: every model is scored on the exact
+    same candidates for a split, which keeps the A/B comparison paired.
+    """
+    rng = np.random.default_rng(seed)
+    rated = ratings.groupby("userId")["movieId"].agg(
+        lambda s: set(s.astype(int))).to_dict()
+    catalog = np.asarray(sorted({int(m) for m in catalog_ids}), dtype=int)
+
+    frames = [target_df[["userId", "movieId", "rating", "timestamp"]]]
+    for uid, _gt in target_df.groupby("userId"):
+        avail = catalog[~np.isin(catalog, sorted(rated.get(uid, set())))]
+        picked = rng.choice(avail, size=min(n_negatives, len(avail)), replace=False)
+        frames.append(pd.DataFrame({
+            "userId": uid, "movieId": picked, "rating": 0.0, "timestamp": 0}))
+    return pd.concat(frames, ignore_index=True)
+
+
+def score_pools(pool_ratings, movie_feats, user_feats, prepare, predict):
+    """Score every user's pool separately; returns (eval_df, latency ms list).
+
+    Latency is measured **per user** (feature encoding + predict), mirroring
+    the serving hot path — a single batched predict divided by users hides
+    exactly the tail a p95 gate has to see.
+    """
+    pool = build_dataset(pool_ratings, movie_feats, user_feats)
+    eval_frames, latencies = [], []
+    for _uid, rows in pool.groupby("userId"):
+        features = rows.drop(
+            columns=[c for c in ("rating", "timestamp") if c in rows]).copy()
+        t0 = time.perf_counter()
+        preds = np.asarray(predict(prepare(features)), dtype=float)
+        latencies.append((time.perf_counter() - t0) * 1000.0)
+        scored = rows[["userId", "movieId", "rating"]].copy()
+        scored["pred"] = preds
+        eval_frames.append(scored)
+    return pd.concat(eval_frames, ignore_index=True), latencies
+
+
+def latency_stats(latencies_ms) -> dict:
+    """Mean / p50 / p95 of per-request scoring latencies (0.0 on empty input)."""
+    if not latencies_ms:
+        return {"avg_latency_ms": 0.0, "latency_p50_ms": 0.0, "latency_p95_ms": 0.0}
+    return {
+        "avg_latency_ms": round(float(np.mean(latencies_ms)), 2),
+        "latency_p50_ms": round(float(np.percentile(latencies_ms, 50)), 2),
+        "latency_p95_ms": round(float(np.percentile(latencies_ms, 95)), 2),
+    }
 
 
 # ── Hyperparameters ──────────────────────────────────────────────────────────
@@ -184,10 +251,10 @@ def plot_and_save_comparison(
     axes[1].bar_label(axes[1].containers[0], fmt="%.2fs", padding=3, fontsize=9)
 
     axes[2].bar(models, [lgb_inf_time, cb_inf_time], color=colors, width=0.45, edgecolor="black", alpha=0.85)
-    axes[2].set_title("Inference Latency (Lower is Better)", fontsize=11, fontweight="bold")
-    axes[2].set_ylabel("Seconds per User (s/user)")
+    axes[2].set_title("Scoring Latency p95 (Lower is Better)", fontsize=11, fontweight="bold")
+    axes[2].set_ylabel("Milliseconds (ms)")
     axes[2].set_ylim(0, max(lgb_inf_time, cb_inf_time) * 1.18)
-    axes[2].bar_label(axes[2].containers[0], fmt="%.4fs", padding=3, fontsize=9)
+    axes[2].bar_label(axes[2].containers[0], fmt="%.1fms", padding=3, fontsize=9)
 
     plt.suptitle("Offline A/B Comparison: LightGBM vs. CatBoost", fontsize=13, fontweight="bold", y=1.02)
     plt.tight_layout()
@@ -225,31 +292,34 @@ def publish_bundle(bundle: dict, path: Optional[str] = None) -> str:
 
 
 def log_to_mlflow(bundle: dict, metrics: dict, params: dict) -> None:
-    """Log the run to MLflow (params, metrics, env metadata, artifacts)."""
-    try:
-        import mlflow
-        import mlflow.sklearn
+    """Log the run to MLflow (params, metrics, env metadata, artifacts).
 
-        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
-        mlflow.set_experiment("MovieRecSys-Rating")
-        with mlflow.start_run(run_name=f"ml_training_{int(time.time())}"):
-            mlflow.log_params({k: str(v) for k, v in params.items()})
-            mlflow.log_metrics({k: v for k, v in metrics.items() if isinstance(v, (int, float))})
-            mlflow.log_params({f"env_{k}": str(v) for k, v in _environment_metadata().items()})
-            mlflow.log_dict(metrics, "metrics.json")
-            mlflow.sklearn.log_model(
-                bundle["lgbm"], artifact_path="lgbm",
-                registered_model_name="MovieRating-LGBM")
-            mlflow.sklearn.log_model(
-                bundle["catboost"], artifact_path="catboost",
-                registered_model_name="MovieRating-CatBoost")
-    except Exception as exc:
-        print(f">>> MLflow logging skipped ({exc}).")
+    Uses the correct flavors (``mlflow.lightgbm`` / ``mlflow.catboost``) so
+    the registered weights are actually loadable from the registry.  Raises
+    on failure: a registration that silently never happened must not pass as
+    "tracked" (alert, never lose a production artifact reference quietly).
+    """
+    import mlflow
+    import mlflow.catboost
+    import mlflow.lightgbm
+
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+    mlflow.set_experiment("MovieRecSys-Rating")
+    with mlflow.start_run(run_name=f"ml_training_{int(time.time())}"):
+        mlflow.log_params({k: str(v) for k, v in params.items()})
+        mlflow.log_metrics({k: v for k, v in metrics.items() if isinstance(v, (int, float))})
+        mlflow.log_params({f"env_{k}": str(v) for k, v in _environment_metadata().items()})
+        mlflow.log_dict(metrics, "metrics.json")
+        mlflow.lightgbm.log_model(
+            bundle["lgbm"], artifact_path="lgbm",
+            registered_model_name="MovieRating-LGBM")
+        mlflow.catboost.log_model(
+            bundle["catboost"], artifact_path="catboost",
+            registered_model_name="MovieRating-CatBoost")
 
 
 def _environment_metadata() -> dict:
     import platform
-    import subprocess
 
     import sklearn
 
@@ -259,13 +329,8 @@ def _environment_metadata() -> dict:
         "numpy_version": np.__version__,
         "pandas_version": pd.__version__,
         "sklearn_version": sklearn.__version__,
+        "git_sha": git_sha(),
     }
-    try:
-        out = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, timeout=5)
-        meta["git_sha"] = out.decode().strip()
-    except Exception:
-        meta["git_sha"] = "nogit"
     return meta
 
 
@@ -325,10 +390,7 @@ def main():
     X_test_lgb = prepare_lgb_prediction_data(test, lgb_cols, lgb_category_maps)
 
     pred_val_lgb = lgb_model.predict(X_val_lgb, num_iteration=lgb_model.best_iteration)
-
-    t_inf_lgb = time.time()
     pred_te_lgb = lgb_model.predict(X_test_lgb, num_iteration=lgb_model.best_iteration)
-    lgb_inf_time = (time.time() - t_inf_lgb) / max(test["userId"].nunique(), 1)
 
     rmse_v_lgb, _ = rmse_mae(y_val, pred_val_lgb)
     rmse_t_lgb, mae_t_lgb = rmse_mae(y_te, pred_te_lgb)
@@ -356,25 +418,41 @@ def main():
     X_test_cb = prepare_catboost_prediction_data(test, cb_cols, cb_cats)
 
     pred_val_cb = cb_model.predict(X_val_cb)
-
-    t_inf_cb = time.time()
     pred_te_cb = cb_model.predict(X_test_cb)
-    cb_inf_time = (time.time() - t_inf_cb) / max(test["userId"].nunique(), 1)
 
     rmse_v_cb, _ = rmse_mae(y_val, pred_val_cb)
     rmse_t_cb, mae_t_cb = rmse_mae(y_te, pred_te_cb)
     print(f"[CB]   val RMSE={rmse_v_cb:.4f} | test RMSE={rmse_t_cb:.4f} MAE={mae_t_cb:.4f} | time={cb_time:.1f}s")
 
-    # -------- Validation ranking metrics + paired model comparison --------
-    eval_val_lgb = val[["userId", "movieId", "rating"]].copy()
-    eval_val_lgb["pred"] = pred_val_lgb
-    print(f"[VAL ranking] LGBM {evaluate_ranking_metrics(eval_val_lgb, k=k, relevance_threshold=relevance_threshold)[f'NDCG@{k}']:.4f}")
+    # -------- Ranking metrics (negative-sampling protocol) --------
+    # pred_te_* above only feed RMSE; ranking is scored on dedicated pools so
+    # the metrics measure actual ranking skill against distractors.
+    n_negatives = int(eval_cfg.get("ranking_negatives", 99))
+    catalog_ids = movie_feats["movieId"].dropna().astype(int).unique()
+    print(f">>> Sampling ranking pools ({n_negatives} negatives/user, seeded) ...")
+    val_pool = build_negative_pools(ratings, val_r, catalog_ids, n_negatives, seed + 1)
+    test_pool = build_negative_pools(ratings, test_r, catalog_ids, n_negatives, seed)
 
-    eval_val_cb = val[["userId", "movieId", "rating"]].copy()
-    eval_val_cb["pred"] = pred_val_cb
+    def _prep_lgb(df):
+        return prepare_lgb_prediction_data(df, lgb_cols, lgb_category_maps)
 
-    # Paired bootstrap on the *validation* set: a point estimate alone is not
-    # enough to declare a winner.
+    def _prep_cb(df):
+        return prepare_catboost_prediction_data(df, cb_cols, cb_cats)
+
+    lgb_iter = lgb_model.best_iteration or None
+    eval_val_lgb, _lat_val_lgb = score_pools(
+        val_pool, movie_feats, user_feats, _prep_lgb,
+        lambda X: lgb_model.predict(X, num_iteration=lgb_iter))
+    eval_val_cb, _ = score_pools(
+        val_pool, movie_feats, user_feats, _prep_cb, lambda X: cb_model.predict(X))
+    eval_te_lgb, lat_te_lgb = score_pools(
+        test_pool, movie_feats, user_feats, _prep_lgb,
+        lambda X: lgb_model.predict(X, num_iteration=lgb_iter))
+    eval_te_cb, lat_te_cb = score_pools(
+        test_pool, movie_feats, user_feats, _prep_cb, lambda X: cb_model.predict(X))
+
+    # Paired bootstrap on the *validation* pools: a point estimate alone is
+    # not enough to declare a winner.
     per_user_lgb = per_user_ranking_scores(eval_val_lgb, k=k, relevance_threshold=relevance_threshold)
     per_user_cb = per_user_ranking_scores(eval_val_cb, k=k, relevance_threshold=relevance_threshold)
     delta = paired_bootstrap_delta(per_user_lgb, per_user_cb, metric="ndcg", n_boot=n_boot, seed=seed)
@@ -388,16 +466,11 @@ def main():
         print(">>> Delta is within bootstrap noise — treat the two models as tied "
               "and prefer the incumbent/cheaper one.")
 
-    # -------- Test ranking metrics --------
-    eval_df_lgb = test[["userId", "movieId", "rating"]].copy()
-    eval_df_lgb["pred"] = pred_te_lgb
-    metrics_lgb = evaluate_ranking_metrics(eval_df_lgb, k=k, relevance_threshold=relevance_threshold)
+    # -------- Test ranking metrics (negative-sampling pools) --------
+    metrics_lgb = evaluate_ranking_metrics(eval_te_lgb, k=k, relevance_threshold=relevance_threshold)
+    metrics_cb = evaluate_ranking_metrics(eval_te_cb, k=k, relevance_threshold=relevance_threshold)
 
-    eval_df_cb = test[["userId", "movieId", "rating"]].copy()
-    eval_df_cb["pred"] = pred_te_cb
-    metrics_cb = evaluate_ranking_metrics(eval_df_cb, k=k, relevance_threshold=relevance_threshold)
-
-    per_user_test_lgb = per_user_ranking_scores(eval_df_lgb, k=k, relevance_threshold=relevance_threshold)
+    per_user_test_lgb = per_user_ranking_scores(eval_te_lgb, k=k, relevance_threshold=relevance_threshold)
     ci = bootstrap_ranking_ci(per_user_test_lgb, metric="ndcg", n_boot=n_boot, seed=seed)
     metrics_lgb[f"NDCG@{k}_ci_low"] = round(ci["ci_low"], 4)
     metrics_lgb[f"NDCG@{k}_ci_high"] = round(ci["ci_high"], 4)
@@ -413,7 +486,7 @@ def main():
     print(f"| **Test RMSE** | {rmse_t_lgb:.4f} | {rmse_t_cb:.4f} |")
     print(f"| **Test MAE** | {mae_t_lgb:.4f} | {mae_t_cb:.4f} |")
     print(f"| **Train Time (sec)** | {lgb_time:.2f}s | {cb_time:.2f}s |")
-    print(f"| **Inference Time (sec/user)** | {lgb_inf_time:.4f}s | {cb_inf_time:.4f}s |")
+    print(f"| **Scoring latency p95** | {np.percentile(lat_te_lgb, 95):.1f}ms | {np.percentile(lat_te_cb, 95):.1f}ms |" if lat_te_lgb and lat_te_cb else "| **Scoring latency p95** | n/a | n/a |")
     print(f"| **Evaluable users** | {metrics_lgb['n_users_evaluated']:.0f} | {metrics_cb['n_users_evaluated']:.0f} |")
 
     print(f"\n>>> Best model based on Validation NDCG@10: {best_model_name}")
@@ -423,8 +496,8 @@ def main():
         metrics_cb=metrics_cb,
         lgb_time=lgb_time,
         cb_time=cb_time,
-        lgb_inf_time=lgb_inf_time,
-        cb_inf_time=cb_inf_time,
+        lgb_inf_time=float(np.percentile(lat_te_lgb, 95)) if lat_te_lgb else 0.0,
+        cb_inf_time=float(np.percentile(lat_te_cb, 95)) if lat_te_cb else 0.0,
         save_path="ranking_comparison_results.png"
     )
 
@@ -436,7 +509,7 @@ def main():
         f"NDCG@{k}": metrics_lgb[f"NDCG@{k}"],
         f"MRR@{k}": metrics_lgb[f"MRR@{k}"],
         "n_users_evaluated": metrics_lgb["n_users_evaluated"],
-        "avg_latency_ms": round(lgb_inf_time * 1000.0, 2),
+        **latency_stats(lat_te_lgb),
     }
 
     incumbent = load_published_bundle()

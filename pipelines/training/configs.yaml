@@ -33,6 +33,7 @@ quality_gates:
   min_ndcg: 0.12
   min_ild: 0.30
   max_latency_ms: 30.0
+  max_latency_p95_ms: 30.0
   # A gate must never pass on a handful of users.
   min_users_evaluated: 1
   # Incumbent comparison: challenger must beat the champion, not just pass.

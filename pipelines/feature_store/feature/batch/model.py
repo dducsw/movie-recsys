@@ -71,7 +71,18 @@ def load_datasets() -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     if movies_df is not None:
         if "movieid" in movies_df.columns:
             movies_df.rename(columns={"movieid": "movieId"}, inplace=True)
-        if "genres" not in movies_df.columns and len(movies_df.columns) >= 3:
+        if "genres" not in movies_df.columns:
+            # Only the legacy 3-column CSV (movieId, title, genres) may be
+            # positional-renamed. Anything else (e.g. a Postgres load whose
+            # genre join failed, carrying `overview` in 3rd place) must fail
+            # loudly — silently turning overview text into "genres" corrupts
+            # TF-IDF, similarity and Qdrant vectors for the whole catalog.
+            legacy_csv = {"movieId", "title"}.issubset(movies_df.columns) \
+                and len(movies_df.columns) == 3
+            if not legacy_csv:
+                raise ValueError(
+                    "Movies source has no 'genres' column — refusing to guess one; "
+                    f"got columns {list(movies_df.columns)}.")
             movies_df.columns = ["movieId", "title", "genres"] + list(movies_df.columns[3:])
         movies_df["genres"] = movies_df["genres"].fillna("(no genres listed)")
 
@@ -118,59 +129,15 @@ def extract_genre_tfidf_features(movies_df: pd.DataFrame) -> Tuple[np.ndarray, l
 def train_als_model(ratings_df: Optional[pd.DataFrame]) -> Dict[int, np.ndarray]:
     """Train true iALS item factors (confidence c = 1 + alpha * r).
 
-    Delegates to ``recsys_core.retrieval.train_ials_factors`` so offline
-    training and online serving share one implementation (no skew).
-    Falls back to TruncatedSVD when ``implicit`` is unavailable.
+    Delegates entirely to ``recsys_core.retrieval.train_ials_factors`` — the
+    core module owns both the implicit-ALS primary path and the
+    TruncatedSVD fallback, so there is exactly one implementation offline
+    and online (the previous local SVD copy drifted from the core one).
     """
     if ratings_df is None or ratings_df.empty:
         return {}
-    try:
-        from recsys_core.retrieval import IALSConfig, train_ials_factors
+    from recsys_core.retrieval import IALSConfig, train_ials_factors
 
-        factors = train_ials_factors(ratings_df, config=IALSConfig())
-        logger.info("iALS factors computed for %d movies.", len(factors))
-        return factors
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.warning("iALS training failed, using SVD fallback: %s", e)
-    try:
-        logger.info(f"Extracting item collaborative factors from {len(ratings_df)} ratings...")
-        # SVD fallback on confidence-weighted interactions
-        from scipy.sparse import csr_matrix
-        from sklearn.decomposition import TruncatedSVD
-
-        als_factors_map: Dict[int, np.ndarray] = {}
-        user_ids = ratings_df["userId"].astype("category").cat.codes
-        movie_ids = ratings_df["movieId"].astype("category").cat.codes
-        unique_movies = ratings_df["movieId"].astype("category").cat.categories
-
-        alpha = 40.0
-        confidence_vals = (1.0 + alpha * ratings_df["rating"].values).astype(np.float32)
-        n_users = user_ids.max() + 1
-        n_movies = movie_ids.max() + 1
-
-        interaction_matrix = csr_matrix((confidence_vals, (user_ids, movie_ids)), shape=(n_users, n_movies))
-
-        n_components = min(32, min(n_users, n_movies) - 1)
-        if n_components >= 2:
-            svd = TruncatedSVD(n_components=n_components, random_state=42)
-            item_factors = svd.fit_transform(interaction_matrix.T).astype(np.float32)
-
-            # Pad to 32 if needed for stable downstream dim
-            if item_factors.shape[1] < 32:
-                item_factors = np.pad(item_factors, ((0, 0), (0, 32 - item_factors.shape[1])), mode='constant')
-
-            for idx, m_id in enumerate(unique_movies):
-                vec = item_factors[idx].astype(np.float32)
-                norm = np.linalg.norm(vec)
-                if norm > 0:
-                    vec = vec / norm
-                als_factors_map[int(m_id)] = vec
-
-            logger.info(f"Collaborative SVD factors computed for {len(als_factors_map)} movies.")
-    except Exception as e:
-        logger.warning(f"Collaborative factor extraction skipped: {e}")
-        return {}
-
-    return als_factors_map
+    factors = train_ials_factors(ratings_df, config=IALSConfig())
+    logger.info("Collaborative factors computed for %d movies.", len(factors))
+    return factors

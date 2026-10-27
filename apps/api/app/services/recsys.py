@@ -26,11 +26,14 @@ import json
 import logging
 import os
 import pickle
+import threading
+import time
 from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 
+from app.config.settings import get_settings
 from app.models.movie import MovieModel
 from app.services.cache import recsys_cache
 from app.services.feature_store import FeatureStoreService
@@ -45,7 +48,8 @@ from app.services.metrics import (
 from app.services.ml_training_service import MLTrainingModelService, get_user_bias
 
 try:
-    from recsys_core.features import ALL_GENRES, RANKING_FEATURES, build_ranking_row
+    from recsys_core.features import (
+        ALL_GENRES, RANKING_FEATURES, bayesian_rating, build_ranking_row)
     from recsys_core.reranking import calculate_user_lambda, maximal_marginal_relevance
 except ImportError:  # pragma: no cover - only hit when the package isn't installed
     import sys
@@ -60,7 +64,8 @@ except ImportError:  # pragma: no cover - only hit when the package isn't instal
     _core_src = os.path.join(_root, "libs", "recsys_core", "src")
     if _core_src not in sys.path:
         sys.path.insert(0, _core_src)
-    from recsys_core.features import ALL_GENRES, RANKING_FEATURES, build_ranking_row
+    from recsys_core.features import (
+        ALL_GENRES, RANKING_FEATURES, bayesian_rating, build_ranking_row)
     from recsys_core.reranking import calculate_user_lambda, maximal_marginal_relevance
 
 logger = logging.getLogger(__name__)
@@ -68,6 +73,17 @@ logger = logging.getLogger(__name__)
 # In-process singletons (lazy)
 _qdrant_client = None
 _ranker_model = None
+_qdrant_lock = threading.Lock()
+_ranker_lock = threading.Lock()
+
+# Tuning constants (env-overridable, defined once in app.config.settings).
+_S = get_settings()
+
+# Transient failures degrade Qdrant/the ranker for a bounded window, not
+# forever — retries are allowed again after the TTL elapses.
+_QDRANT_RETRY_SECONDS = 60.0
+_qdrant_last_failure = 0.0
+
 _MODEL_VERSION: Optional[str] = None
 
 # Never trust an unbounded network response: cap the artifact size we will
@@ -118,36 +134,37 @@ def get_redis_client():
 
 
 def get_qdrant_client():
-    global _qdrant_client
+    global _qdrant_client, _qdrant_last_failure
     if _qdrant_client is not None:
         return _qdrant_client
-    try:
-        from qdrant_client import QdrantClient
+    if _qdrant_last_failure and time.time() - _qdrant_last_failure < _QDRANT_RETRY_SECONDS:
+        return None
+    with _qdrant_lock:
+        if _qdrant_client is not None:
+            return _qdrant_client
+        try:
+            from qdrant_client import QdrantClient
 
-        host = os.getenv("QDRANT_HOST", "localhost")
-        port = int(os.getenv("QDRANT_PORT", 6333))
-        client = QdrantClient(host=host, port=port, timeout=5.0, check_compatibility=False)
-        _qdrant_client = client
-        logger.info("Connected to Qdrant Vector Database.")
-    except Exception as e:
-        logger.warning(f"Could not connect to Qdrant: {e}")
-        _qdrant_client = False
-    return _qdrant_client if _qdrant_client is not False else None
+            host = os.getenv("QDRANT_HOST", "localhost")
+            port = int(os.getenv("QDRANT_PORT", 6333))
+            client = QdrantClient(host=host, port=port, timeout=5.0, check_compatibility=False)
+            _qdrant_client = client
+            logger.info("Connected to Qdrant Vector Database.")
+        except Exception as e:
+            logger.warning(
+                "Could not connect to Qdrant (%s); retrying in %.0fs",
+                e, _QDRANT_RETRY_SECONDS)
+            _qdrant_last_failure = time.time()
+            return None
+    return _qdrant_client
 
 
 # ── Ranker artifact loading ──────────────────────────────────────────────────
 
 def _ranker_model_paths() -> List[str]:
-    curr = os.path.dirname(os.path.abspath(__file__))
-    repo_root = curr
-    while repo_root and not (
-        os.path.exists(os.path.join(repo_root, ".git"))
-        or os.path.exists(os.path.join(repo_root, "docker-compose.yml"))
-    ):
-        parent = os.path.dirname(repo_root)
-        if parent == repo_root:
-            break
-        repo_root = parent
+    from app.services.paths import find_repo_root
+
+    repo_root = find_repo_root(".git", "docker-compose.yml")
 
     candidates = [
         os.path.join(repo_root, "pipelines", "training", "ml_pipeline", "models", "lgb_ranker.pkl"),
@@ -222,7 +239,12 @@ def get_ranker_model():
     global _ranker_model
     if _ranker_model is not None:
         return _ranker_model if _ranker_model is not False else None
-    _ranker_model = _load_ranker_model()
+    # Locked: two concurrent cold-start requests must not both unpickle a
+    # 200+ MB artifact.
+    with _ranker_lock:
+        if _ranker_model is not None:
+            return _ranker_model if _ranker_model is not False else None
+        _ranker_model = _load_ranker_model()
     return _ranker_model if _ranker_model is not False else None
 
 
@@ -286,8 +308,9 @@ def invalidate_model_caches() -> None:
 
 def reset_model_state() -> None:  # pragma: no cover - test hook
     """Test hook: drop cached clients/models so state is not shared across tests."""
-    global _qdrant_client, _ranker_model, _MODEL_VERSION
+    global _qdrant_client, _qdrant_last_failure, _ranker_model, _MODEL_VERSION
     _qdrant_client = None
+    _qdrant_last_failure = 0.0
     _ranker_model = None
     _MODEL_VERSION = None
 
@@ -331,9 +354,9 @@ def _heuristic_rank(
     _fallback("heuristic_ranking", endpoint)
     for idx, feat in enumerate(feature_rows):
         valid_candidates[idx]["rank_score"] = (
-            float(feat.get("genre_overlap", 0.0)) * 10.0
-            + float(feat.get("retrieval_score", 0.0)) * 5.0
-            + float(feat.get("vote_average", 0.0)) * 0.5
+            float(feat.get("genre_overlap", 0.0)) * _S.RECSYS_HEUR_W_GENRE
+            + float(feat.get("retrieval_score", 0.0)) * _S.RECSYS_HEUR_W_RETRIEVAL
+            + float(feat.get("vote_average", 0.0)) * _S.RECSYS_HEUR_W_QUALITY
         )
 
 
@@ -369,11 +392,12 @@ class RecsysService:
                         if m_id and m_id != movie_id:
                             candidates[m_id] = {
                                 "movieId": m_id,
-                                "retrieval_score": item.get("score", 0.5),
+                                "retrieval_score": item.get("score", _S.RECSYS_SCORE_REDIS_SIMILAR),
                                 "source": "redis_similar",
                             }
             except Exception as e:
                 logger.warning(f"Redis similar lookup error: {e}")
+                _fallback("redis_similar", endpoint)
 
         # Source B: Qdrant Vector Nearest Neighbors
         qdrant = get_qdrant_client()
@@ -423,7 +447,7 @@ class RecsysService:
         # Source C: Realtime Trending from Redis
         if r:
             try:
-                for tid_str in r.zrevrange("realtime:trending", 0, 30):
+                for tid_str in r.zrevrange("realtime:trending", 0, _S.RECSYS_TRENDING_ZSTOP):
                     try:
                         tid = int(tid_str)
                     except ValueError:
@@ -431,14 +455,15 @@ class RecsysService:
                     if tid != movie_id and tid not in candidates:
                         candidates[tid] = {
                             "movieId": tid,
-                            "retrieval_score": 0.3,
+                            "retrieval_score": _S.RECSYS_SCORE_TRENDING,
                             "source": "redis_trending",
                         }
             except Exception as e:
                 logger.warning(f"Redis trending lookup error: {e}")
+                _fallback("redis_trending", endpoint)
 
         # Fallback: popular movies when the pool is thin.
-        if len(candidates) < 20:
+        if len(candidates) < _S.RECSYS_POOL_FLOOR_SIMILAR:
             trending = _safe_trending(30, endpoint)
             if trending:
                 _fallback("db_trending", endpoint)
@@ -447,7 +472,7 @@ class RecsysService:
                 if mid != movie_id and mid not in candidates:
                     candidates[mid] = {
                         "movieId": mid,
-                        "retrieval_score": 0.2,
+                        "retrieval_score": _S.RECSYS_SCORE_DB_FALLBACK,
                         "source": "db_trending",
                     }
 
@@ -469,9 +494,9 @@ class RecsysService:
         # Source A: Qdrant vector search on a recency-weighted user vector.
         if qdrant and liked_movie_ids:
             try:
-                # Cache hits follow the provided recency order; the misses
-                # fetched from Qdrant are appended in the same order, so the
-                # recency weights stay aligned with ``liked_movie_ids``.
+                # Cache hits follow the recency order of ``liked_movie_ids``;
+                # Qdrant misses are mapped back by id so every appended vector
+                # lands in the same recency order (see below).
                 missing_ids: List[int] = []
                 vectors: List[Any] = []
                 if r:
@@ -490,14 +515,21 @@ class RecsysService:
                 if missing_ids:
                     liked_points = qdrant.retrieve(
                         collection_name="movies", ids=missing_ids, with_vectors=True)
-                    for pt in liked_points:
-                        if pt.vector:
-                            vectors.append(pt.vector)
-                            if r:
-                                try:
-                                    r.setex(f"movie:{pt.id}:vec", 86400, json.dumps(pt.vector))
-                                except Exception:
-                                    pass
+                    # Map by id, NOT positionally: Qdrant does not guarantee
+                    # response order, and mispairing a vector with a stolen
+                    # recency weight quietly skews the user vector.
+                    by_id = {int(pt.id): pt.vector for pt in liked_points
+                             if pt.vector is not None}
+                    for mid in missing_ids:
+                        vec = by_id.get(mid)
+                        if vec is None:
+                            continue
+                        vectors.append(vec)
+                        if r:
+                            try:
+                                r.setex(f"movie:{mid}:vec", 86400, json.dumps(vec))
+                            except Exception:
+                                pass
 
                 if vectors:
                     arr = np.array(vectors, dtype=np.float32)
@@ -532,7 +564,7 @@ class RecsysService:
                     for item in json.loads(cache)[:20]:
                         m_id = item.get("movieId")
                         if m_id and m_id not in liked_set:
-                            score = float(item.get("score", 0.4))
+                            score = float(item.get("score", _S.RECSYS_SCORE_PERSONAL_SIMILAR))
                             if m_id not in candidates or score > candidates[m_id]["retrieval_score"]:
                                 candidates[m_id] = {
                                     "movieId": m_id,
@@ -541,11 +573,12 @@ class RecsysService:
                                 }
             except Exception as e:
                 logger.warning(f"Redis personalized lookup error: {e}")
+                _fallback("redis_similar", endpoint)
 
         # Source C: Real-time Trending
         if r:
             try:
-                for tid_str in r.zrevrange("realtime:trending", 0, 30):
+                for tid_str in r.zrevrange("realtime:trending", 0, _S.RECSYS_TRENDING_ZSTOP):
                     try:
                         tid = int(tid_str)
                     except ValueError:
@@ -553,14 +586,15 @@ class RecsysService:
                     if tid not in liked_set and tid not in candidates:
                         candidates[tid] = {
                             "movieId": tid,
-                            "retrieval_score": 0.3,
+                            "retrieval_score": _S.RECSYS_SCORE_TRENDING,
                             "source": "redis_trending",
                         }
             except Exception as e:
                 logger.warning(f"Redis trending lookup error: {e}")
+                _fallback("redis_trending", endpoint)
 
         # Fallback to DB trending when the pool is thin.
-        if len(candidates) < 30:
+        if len(candidates) < _S.RECSYS_POOL_FLOOR_PERSONALIZED:
             trending = _safe_trending(50, endpoint)
             if trending:
                 _fallback("db_trending", endpoint)
@@ -569,7 +603,7 @@ class RecsysService:
                 if mid not in liked_set and mid not in candidates:
                     candidates[mid] = {
                         "movieId": mid,
-                        "retrieval_score": 0.2,
+                        "retrieval_score": _S.RECSYS_SCORE_DB_FALLBACK,
                         "source": "db_trending",
                     }
 
@@ -658,10 +692,7 @@ class RecsysService:
             pop = float(online_f.get("popularity") or movie.get("popularity", 0.0) or 0.0)
             vote_avg = float(online_f.get("vote_average") or movie.get("vote_average", 0.0) or 0.0)
             vote_cnt = float(online_f.get("vote_count") or movie.get("vote_count") or pop or 0.0)
-            bayesian_rating = (
-                float((vote_cnt / (vote_cnt + 25.0)) * vote_avg + (25.0 / (vote_cnt + 25.0)) * 5.0)
-                if vote_cnt else vote_avg
-            )
+            bayesian = bayesian_rating(vote_cnt, vote_avg)
 
             if online_f.get("release_year"):
                 release_year = int(online_f["release_year"])
@@ -678,7 +709,7 @@ class RecsysService:
             meta = {
                 "popularity": pop,
                 "vote_average": vote_avg,
-                "bayesian_rating": bayesian_rating,
+                "bayesian_rating": bayesian,
                 "release_year": float(release_year),
                 "genres": movie_genres,
                 "als_vec": None,
@@ -761,10 +792,10 @@ class RecsysService:
         key = _cache_key("similar", movie_id, limit)
         cached = recsys_cache.get(key)
         if cached is not None:
-            RECSYS_CACHE_HITS.labels(cache_type="similar_l1").inc()
+            RECSYS_CACHE_HITS.labels(cache_type="similar_redis").inc()
             return cached
 
-        RECSYS_CACHE_MISSES.labels(cache_type="similar_l1").inc()
+        RECSYS_CACHE_MISSES.labels(cache_type="similar_redis").inc()
         POOL = "similar_movies"
         try:
             target_movie = _safe_get_by_id(movie_id, endpoint=POOL)
@@ -787,10 +818,10 @@ class RecsysService:
             dyn_lambda = calculate_user_lambda(list(target_genres), ALL_GENRES) if target_genres else 0.7
             with track_stage_latency("stage_3_mmr_reranking", endpoint=POOL):
                 final = cls._stage_3_mmr_reranking(ranked, limit=limit, lmbda=dyn_lambda)
-            RECSYS_CANDIDATES_COUNT.labels(stage="stage_3_reranking", endpoint=POOL).observe(len(final))
+            RECSYS_CANDIDATES_COUNT.labels(stage="stage_3_mmr_reranking", endpoint=POOL).observe(len(final))
 
             res = cls._to_response(final)
-            recsys_cache.set(key, res, ttl_seconds=300)
+            recsys_cache.set(key, res, ttl_seconds=_S.RECSYS_CACHE_TTL_SIMILAR)
             RECSYS_REQUESTS_TOTAL.labels(endpoint=POOL, status="success").inc()
             return res
         except Exception as exc:
@@ -847,10 +878,10 @@ class RecsysService:
             )
             cached = recsys_cache.get(cache_key)
             if cached is not None:
-                RECSYS_CACHE_HITS.labels(cache_type="personalized_l1").inc()
+                RECSYS_CACHE_HITS.labels(cache_type="personalized_redis").inc()
                 return cached
 
-            RECSYS_CACHE_MISSES.labels(cache_type="personalized_l1").inc()
+            RECSYS_CACHE_MISSES.labels(cache_type="personalized_redis").inc()
 
             liked_movies = list(_safe_get_by_ids(unique_in_order(liked_movie_ids), endpoint=POOL).values())
             target_genres = set()
@@ -880,10 +911,10 @@ class RecsysService:
             dyn_lambda = calculate_user_lambda(list(target_genres), ALL_GENRES) if target_genres else 0.7
             with track_stage_latency("stage_3_mmr_reranking", endpoint=POOL):
                 final = cls._stage_3_mmr_reranking(ranked, limit=limit, lmbda=dyn_lambda)
-            RECSYS_CANDIDATES_COUNT.labels(stage="stage_3_reranking", endpoint=POOL).observe(len(final))
+            RECSYS_CANDIDATES_COUNT.labels(stage="stage_3_mmr_reranking", endpoint=POOL).observe(len(final))
 
             res = cls._to_response(final)
-            recsys_cache.set(cache_key, res, ttl_seconds=180)
+            recsys_cache.set(cache_key, res, ttl_seconds=_S.RECSYS_CACHE_TTL_PERSONALIZED)
             RECSYS_REQUESTS_TOTAL.labels(endpoint=POOL, status="success").inc()
             return res
         except Exception as exc:
@@ -948,7 +979,7 @@ class RecsysService:
         else:
             status = "success"
 
-        recsys_cache.set(cache_key, recs, ttl_seconds=300)
+        recsys_cache.set(cache_key, recs, ttl_seconds=_S.RECSYS_CACHE_TTL_USER_RECS)
         RECSYS_REQUESTS_TOTAL.labels(endpoint=POOL, status=status).inc()
         return recs
 
@@ -980,7 +1011,7 @@ class RecsysService:
                 (matched if pref_set.intersection(m_genres) else unmatched).append(m)
             res = (matched + unmatched)[:limit]
 
-        recsys_cache.set(cache_key, res, ttl_seconds=300)
+        recsys_cache.set(cache_key, res, ttl_seconds=_S.RECSYS_CACHE_TTL_USER_RECS)
         RECSYS_REQUESTS_TOTAL.labels(endpoint=POOL, status="success" if res else "fallback").inc()
         return res
 

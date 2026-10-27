@@ -24,7 +24,6 @@ from __future__ import annotations
 import logging
 import os
 import platform
-import subprocess
 import sys
 import time
 from typing import Any, Optional
@@ -38,6 +37,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, REPO_ROOT)
 
 try:
+    from recsys_core.envinfo import git_sha
     from recsys_core.features import (
         RANKING_FEATURES,
         build_movie_meta,
@@ -51,6 +51,7 @@ except ImportError:
     _core_path = os.path.join(REPO_ROOT, "libs", "recsys_core", "src")
     if _core_path not in sys.path:
         sys.path.insert(0, _core_path)
+    from recsys_core.envinfo import git_sha
     from recsys_core.features import (
         RANKING_FEATURES,
         build_movie_meta,
@@ -118,16 +119,8 @@ def load_configs() -> dict[str, Any]:
 
 
 def _git_sha() -> str:
-    """Current git commit SHA (or ``nogit``)."""
-    try:
-        out = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            stderr=subprocess.DEVNULL, timeout=5,
-            cwd=REPO_ROOT,
-        )
-        return out.decode().strip()
-    except Exception:
-        return "nogit"
+    """Current git commit SHA (or ``nogit``) — see :mod:`recsys_core.envinfo`."""
+    return git_sha()
 
 
 def _environment_metadata() -> dict[str, Any]:
@@ -423,6 +416,7 @@ def evaluate_pipeline(
         f"ILD@{k}": round(float(np.mean(ild_list)) if ild_list else 0.0, 4),
         "coverage": round(len(recommended) / max(len(catalog_ids), 1), 4),
         "avg_latency_ms": round(float(np.mean(latencies)) if latencies else 0.0, 2),
+        "latency_p95_ms": round(float(np.percentile(latencies, 95)) if latencies else 0.0, 2),
         "evaluated_users": len(hr_list),
     }
 
@@ -645,7 +639,14 @@ def run_pipeline() -> dict[str, float]:
     if baseline:
         logger.info("Incumbent baseline: %s", baseline)
     else:
-        logger.info("No incumbent baseline available; gate uses absolute thresholds only.")
+        # Loud, not silent: until the first promotion writes
+        # ``lgb_ranker.{champion}.metrics.json``, the incumbent comparison
+        # (RMSE improvement + NDCG regression guardrail) is disabled and the
+        # gate runs absolute thresholds only.
+        logger.warning(
+            "No incumbent baseline sidecar found in %s — incumbent comparison "
+            "is DISABLED (absolute thresholds only). Bootstrap it by completing "
+            "one promotion, or restore the metrics sidecar.", MODELS_DIR)
 
     metrics = evaluate_pipeline(
         ranker, df_movies, test_ratings, train_ratings,

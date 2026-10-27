@@ -2,6 +2,17 @@ global:
   scrape_interval: 5s
   evaluation_interval: 5s
 
+# Load the recsys serving alert rules (contract in alerts.yml).
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# Alert routing: Alertmanager groups/deduplicates and can fan out to
+# Slack/PagerDuty/email once receivers are configured.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   - job_name: "movienex-backend"
     metrics_path: "/metrics"
@@ -10,3 +21,7 @@ scrape_configs:
         labels:
           application: "movienex-api"
           environment: "production"
+
+  - job_name: "alertmanager"
+    static_configs:
+      - targets: ["alertmanager:9093"]

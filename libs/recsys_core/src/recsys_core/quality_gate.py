@@ -37,6 +37,9 @@ class QualityGateConfig:
     min_ndcg: float = 0.12
     min_ild: float = 0.30
     max_latency_ms: float = 30.0
+    # Optional tail-latency cap: a slow outlier request must not hide behind
+    # a low mean — p95 is the number real users feel.
+    max_latency_p95_ms: Optional[float] = None
     # Optional absolute cap on the rating-prediction error (regression models).
     max_rmse: Optional[float] = None
 
@@ -123,6 +126,14 @@ def check_quality_gate(
         failures.append("metric avg_latency_ms missing from metrics dict")
     elif float(latency) > cfg.max_latency_ms:
         failures.append(f"latency={float(latency):.2f}ms > max {cfg.max_latency_ms}ms")
+
+    if cfg.max_latency_p95_ms is not None:
+        latency_p95 = metrics.get("latency_p95_ms")
+        if latency_p95 is None:
+            failures.append("metric latency_p95_ms missing from metrics dict")
+        elif float(latency_p95) > cfg.max_latency_p95_ms:
+            failures.append(
+                f"latency p95={float(latency_p95):.2f}ms > max {cfg.max_latency_p95_ms}ms")
 
     # --- incumbent comparison ------------------------------------------------
     if baseline_metrics is None:

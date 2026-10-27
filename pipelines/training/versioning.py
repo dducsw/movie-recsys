@@ -28,9 +28,10 @@ import json
 import logging
 import os
 import pickle
-import subprocess
 import time
 from typing import Any, Mapping, Optional
+
+from recsys_core.envinfo import git_sha
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +39,8 @@ KEEP_LAST = 3
 
 
 def _git_sha() -> str:
-    try:
-        out = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.DEVNULL, timeout=5,
-        )
-        return out.decode().strip()
-    except Exception:
-        return "nogit"
+    """Short SHA (used in file names) — see :mod:`recsys_core.envinfo`."""
+    return git_sha(short=True)
 
 
 def _champion_pointer_path(models_dir: str, base_name: str) -> str:

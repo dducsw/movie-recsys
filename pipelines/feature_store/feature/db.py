@@ -5,6 +5,7 @@ Database connections and client initializers (Redis, Qdrant).
 """
 
 import logging
+import os
 from typing import Any
 
 from pipelines.feature_store.feature.config import (
@@ -33,7 +34,12 @@ def connect_redis() -> Any | None:
 
 
 def connect_qdrant() -> Any | None:
-    """Connect to Qdrant and ensure collection matches pinned embedding dim."""
+    """Connect to Qdrant and ensure collection matches pinned embedding dim.
+
+    A dimension mismatch is a hard error by default — silently wiping the
+    collection would destroy the serving index. Set QDRANT_RECREATE=1 to
+    explicitly allow destructive recreation (e.g. after re-embedding).
+    """
     try:
         from qdrant_client import QdrantClient
         from qdrant_client.models import Distance, VectorParams
@@ -41,15 +47,18 @@ def connect_qdrant() -> Any | None:
         client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, check_compatibility=False)
         collections = [c.name for c in client.get_collections().collections]
         if COLLECTION_NAME in collections:
-            try:
-                dim = client.get_collection(COLLECTION_NAME).config.params.vectors.size
-                if dim != EMBEDDING_DIM:
-                    logger.warning("Qdrant dim mismatch (%s != %s), recreating.",
-                                   dim, EMBEDDING_DIM)
+            dim = client.get_collection(COLLECTION_NAME).config.params.vectors.size
+            if dim != EMBEDDING_DIM:
+                if os.getenv("QDRANT_RECREATE", "").lower() in ("1", "true"):
+                    logger.warning("Qdrant dim mismatch (%s != %s) — recreating "
+                                   "collection (QDRANT_RECREATE).", dim, EMBEDDING_DIM)
                     client.delete_collection(COLLECTION_NAME)
                     collections.remove(COLLECTION_NAME)
-            except Exception:
-                pass
+                else:
+                    raise RuntimeError(
+                        f"Qdrant collection '{COLLECTION_NAME}' has dim {dim} "
+                        f"but the pinned embedding dim is {EMBEDDING_DIM}. "
+                        "Fix the collection or set QDRANT_RECREATE=1.")
         if COLLECTION_NAME not in collections:
             client.create_collection(
                 collection_name=COLLECTION_NAME,

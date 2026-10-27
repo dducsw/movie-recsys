@@ -61,6 +61,20 @@ def reference_year() -> int:
     return DEFAULT_REFERENCE_YEAR if DEFAULT_REFERENCE_YEAR is not None else date.today().year
 
 
+def bayesian_rating(vote_count: float, vote_average: float,
+                    min_votes: float = 25.0, prior_mean: float = 5.0) -> float:
+    """IMDb-style weighted rating: WR = (v/(v+m))*R + (m/(v+m))*C.
+
+    Single source of truth — used by the CT feature builder and the serving
+    fallback scoring so the two never drift.
+    """
+    v = float(vote_count)
+    if v <= 0.0:
+        return float(vote_average)
+    m, c = float(min_votes), float(prior_mean)
+    return float((v / (v + m)) * vote_average + (m / (v + m)) * c)
+
+
 def build_ranking_row(meta: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, float]:
     """Unified 11-feature row. Shared by training and serving (100% parity)."""
     prof_genres = profile.get("genres", set()) or set()
@@ -131,12 +145,11 @@ def build_movie_meta(df_movies: pd.DataFrame, als_map: Optional[Dict[int, np.nda
         rel_year = float(r["release_year"]) if has_year else float(extract_movie_release_year(r))
         vote_avg = float(r.get("vote_average", 5.0))
         vote_cnt = float(r.get("vote_count", r.get("popularity", 10.0)))
-        bayesian_rating = float((vote_cnt / (vote_cnt + m_prior)) * vote_avg + (m_prior / (vote_cnt + m_prior)) * c_prior)
 
         movie_meta[mid] = {
             "popularity": float(r.get("popularity", 1.0)),
             "vote_average": vote_avg,
-            "bayesian_rating": bayesian_rating,
+            "bayesian_rating": bayesian_rating(vote_cnt, vote_avg, m_prior, c_prior),
             "release_year": rel_year,
             "genres": g_set,
             "als_vec": als_map.get(mid) if als_map else None,

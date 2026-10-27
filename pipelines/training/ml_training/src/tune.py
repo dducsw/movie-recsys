@@ -23,7 +23,6 @@ Usage::
 import json
 import os
 import platform
-import subprocess
 import time
 from typing import Any, Dict, Optional
 
@@ -41,6 +40,18 @@ try:
     from configs import CFG
 except ImportError:
     from .configs import CFG
+
+try:
+    from recsys_core.envinfo import git_sha
+except ImportError:
+    import sys as _sys
+    import os as _os
+    _repo_root = _os.path.dirname(_os.path.dirname(_os.path.dirname(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))))
+    _core_src = _os.path.join(_repo_root, "libs", "recsys_core", "src")
+    if _core_src not in _sys.path:
+        _sys.path.insert(0, _core_src)
+    from recsys_core.envinfo import git_sha
 
 import optuna
 
@@ -61,12 +72,8 @@ def _sampler() -> optuna.samplers.BaseSampler:
 
 
 def _git_sha() -> str:
-    try:
-        out = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, timeout=5)
-        return out.decode().strip()
-    except Exception:
-        return "nogit"
+    """Git provenance — single shared implementation in recsys_core.envinfo."""
+    return git_sha()
 
 
 def _provenance() -> Dict[str, Any]:
@@ -121,7 +128,13 @@ def objective_lgbm(trial, X_tr, y_tr, X_val, y_val):
     model = lgb.train(
         param, dtr, num_boost_round=1000,
         valid_sets=[dval], valid_names=["val"],
-        callbacks=[lgb.early_stopping(50), lgb.log_evaluation(0)]
+        callbacks=[
+            lgb.early_stopping(50), lgb.log_evaluation(0),
+            # Report each iteration so MedianPruner can actually prune bad
+            # trials mid-run (a declared pruner without reporting is dead).
+            optuna.integration.LightGBMPruningCallback(
+                trial, metric="rmse", valid_name="val"),
+        ]
     )
     preds = model.predict(X_val[cols], num_iteration=model.best_iteration)
     trial.set_user_attr("best_iteration", int(model.best_iteration or 0))
@@ -154,7 +167,8 @@ def objective_catboost(trial, X_tr, y_tr, X_val, y_val):
     }
 
     model = cb.CatBoostRegressor(iterations=1000, early_stopping_rounds=50, **param)
-    model.fit(tr_pool, eval_set=val_pool, use_best_model=True)
+    prune_cb = optuna.integration.CatBoostPruningCallback(trial, "RMSE")
+    model.fit(tr_pool, eval_set=val_pool, use_best_model=True, callbacks=[prune_cb])
     preds = model.predict(X_val[cols])
     trial.set_user_attr("best_iteration", int(model.get_best_iteration() or 0))
     return float(np.sqrt(mean_squared_error(y_val, preds)))

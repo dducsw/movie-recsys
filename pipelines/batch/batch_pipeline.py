@@ -34,12 +34,11 @@ logger = logging.getLogger("BatchPipeline")
 
 
 def run_batch_pipeline() -> None:
-    """Run lean batch feature pipeline."""
+    """Run lean batch feature pipeline. Raises on any critical failure."""
     logger.info("Starting lean batch feature pipeline...")
     movies_df, ratings_df = load_datasets()
     if movies_df is None or movies_df.empty:
-        logger.error("Batch aborted: no movies data.")
-        return
+        raise RuntimeError("Batch aborted: no movies data.")
 
     logger.info("Loaded %d movies.", len(movies_df))
     genre_vectors, _ = extract_genre_tfidf_features(movies_df)
@@ -47,21 +46,27 @@ def run_batch_pipeline() -> None:
     similarities, movie_meta = compute_item_similarity_matrix(
         movies_df, genre_vectors, als_map)
     if not similarities or not movie_meta:
-        logger.error("Batch aborted: empty result set.")
-        return
+        raise RuntimeError("Batch aborted: empty result set.")
 
     compute_offline_metrics(similarities)
+    # Exports are critical: a failure propagates so the scheduler sees exit 1
+    # instead of a half-written offline store silently "succeeding".
     export_to_redis(similarities, movie_meta)
     export_to_qdrant(movies_df)  # 384-dim semantic vectors
 
-    try:
-        from pipelines.feature_store.feast_repo.materialize import run_materialization
+    from pipelines.feature_store.feast_repo.materialize import run_materialization
 
-        run_materialization()
-    except Exception as exc:
-        logger.warning("Skipping Feast materialization: %s", exc)
+    run_materialization()
     logger.info("Batch pipeline completed.")
 
 
+def main() -> None:
+    try:
+        run_batch_pipeline()
+    except Exception:
+        logger.exception("Batch pipeline FAILED.")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    run_batch_pipeline()
+    main()

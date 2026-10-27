@@ -299,7 +299,7 @@ The project enforces comprehensive test automation across all layers:
 | :--- | :--- | :--- |
 | **Core Algorithms** | `libs/recsys_core/tests/` | Feature extraction, ranking metrics ($HR@K$, $NDCG@K$, $ILD$), MMR diversity, RRF fusion. |
 | **Training Pipeline** | `pipelines/training/tests/` | Latent factor generation, LightGBM schema compatibility, quality gate evaluation. |
-| **API Endpoints** | `apps/api/tests/test_api.py` | JWT auth lifecycle, candidate scoring SLA ($< 80\,\text{ms}$), cold-start fallback. |
+| **API Endpoints** | `apps/api/tests/test_api.py` | JWT auth lifecycle, candidate scoring SLA ($< 50\,\text{ms}$ p95), cold-start fallback. |
 | **SQL Retriever & Chat** | `apps/api/tests/test_sql_retriever.py` | SQL injection prevention, safe SELECT validation, heuristic parser, LLM intent routing. |
 
 Run the full automated test suite:

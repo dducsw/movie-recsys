@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List, Optional
 
@@ -49,7 +50,10 @@ async def get_personalized_recommendations(
     if current_user:
         user_identifier = str(current_user["id"])
         try:
-            user_prefs = UserModel.get_user_preferences(current_user["id"])
+            # The preferences fetch is a blocking psycopg query — offload it
+            # so it never stalls the event loop under load.
+            user_prefs = await asyncio.to_thread(
+                UserModel.get_user_preferences, current_user["id"])
             for pid in user_prefs.get("favorite_movie_ids", []):
                 if pid not in liked_ids and len(liked_ids) < MAX_LIKED_IDS:
                     liked_ids.append(pid)
